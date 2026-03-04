@@ -1,26 +1,18 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
-  // reactCompiler: true, // Commenting out potential invalid config if needed, or keeping if it works.
-  async rewrites() {
-    return [
-      {
-        source: '/api/:path*',
-        destination: 'http://localhost:5022/api/:path*',
-      },
-    ];
-  },
+  output: "standalone",
   images: {
+    formats: ["image/avif", "image/webp"],
+    minimumCacheTTL: 86400,
     remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: 'images.unsplash.com',
-        port: '',
-        pathname: '/**',
-      },
+      { protocol: "https", hostname: "images.unsplash.com", pathname: "/**" },
+      { protocol: "https", hostname: "avatars.githubusercontent.com", pathname: "/**" },
+      { protocol: "https", hostname: "opengraph.githubassets.com", pathname: "/**" },
     ],
   },
+  compress: true,
+  productionBrowserSourceMaps: false,
 };
 
 export default nextConfig;

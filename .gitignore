@@ -67,3 +67,8 @@ packages/
 # VS Code/Omnisharp
 .omnisharp/
 
+Caddyfile
+docker-compose.yml
+hero_ref.mp4
+
+

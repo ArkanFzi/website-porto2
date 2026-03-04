@@ -2,75 +2,89 @@
 
 import React from "react";
 import { motion } from "framer-motion";
-import { Github, ArrowRight, MousePointer2 } from "lucide-react";
-import { AnimatedText } from "@/components/UI/AnimatedText";
-import { TypewriterText } from "@/components/UI/TypewriterText";
-// import { ScrambleText } from "@/components/UI/ScrambleText";
 
 const Hero: React.FC = () => {
   return (
-    <section id="hero" className="min-h-screen flex items-center justify-center relative overflow-hidden">
-      {/* Content */}
-      <div className="text-center px-4 z-10 pt-20">
-        
-        <div className="mb-6 flex justify-center">
-          <AnimatedText 
-            text="M. Arkan Fauzi" 
-            className="text-6xl md:text-8xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-red-500 via-white to-accent-primary drop-shadow-[0_0_15px_rgba(220,20,60,0.5)]"
-          />
-        </div>
-        
-        <div className="h-20 md:h-24 mb-6">
-          <p className="text-xl md:text-3xl text-gray-200 font-light tracking-wide flex justify-center gap-2 items-center flex-wrap">
-            I Engineer <span className="font-bold text-red-500 bg-red-950/30 px-2"><TypewriterText text="High-Performance Systems" delay={1} /></span>
-          </p>
-        </div>
-        
-        <motion.div 
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 2.5, duration: 0.8 }}
-          className="flex flex-col sm:flex-row gap-6 justify-center items-center mt-4"
-        >
-          {/* Magnetic Start Button */}
-          <motion.a
-            href="#projects"
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            className="group relative px-8 py-4 rounded-full bg-accent-primary border border-accent-secondary text-white font-bold text-lg overflow-hidden transition-all shadow-[0_0_20px_rgba(220,20,60,0.4)] hover:shadow-[0_0_50px_rgba(220,20,60,0.7)] flex items-center gap-3"
-          >
-            <span className="relative z-10">Start Exploring</span>
-            <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform z-10" />
-            
-            {/* Gloss Effect */}
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover:animate-shine" />
-          </motion.a>
-          
-          {/* Magnetic GitHub Button */}
-          <motion.a
-            href="https://github.com/ArkanFzi"
-            target="_blank"
-            rel="noopener noreferrer"
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            className="group px-8 py-4 rounded-full border border-white/20 text-white hover:bg-white/10 hover:border-white/40 transition-all font-semibold backdrop-blur-sm flex items-center gap-3"
-          >
-            <Github className="w-6 h-6 group-hover:text-accent-primary transition-colors" />
-            <span>GitHub Profile</span>
-          </motion.a>
-        </motion.div>
+    <section id="hero" className="relative w-full h-[100vh] flex flex-col justify-center items-center overflow-hidden">
+      {/* ── Background Image Layer ── */}
+      <div
+        className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat"
+        style={{ backgroundImage: "url('https://images.unsplash.com/photo-1542273917363-3b1817f69a2d?q=80&w=2500&auto=format&fit=crop')" }}
+      />
+      {/* Bottom fade to black to match the reference transition */}
+      <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[var(--bg)] to-transparent z-10" />
+
+      {/* ── UI Elements matching reference ── */}
+
+      {/* Left Vertical Nav Indicators */}
+      <div className="absolute left-10 top-1/2 -translate-y-1/2 hidden lg:flex flex-col items-center gap-10 z-20">
+        <span className="text-[9px] text-white/40 tracking-[0.2em] transform -rotate-90">04</span>
+        <div className="w-[1px] h-12 bg-white/20" />
+        <span className="text-[9px] text-white tracking-[0.2em] transform -rotate-90">01</span>
+        <div className="w-[1px] h-12 bg-white/20" />
+        <span className="text-[9px] text-white/40 tracking-[0.2em] transform -rotate-90">02</span>
       </div>
 
-      {/* Scroll Indicator */}
-      <motion.div 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1, y: [0, 10, 0] }}
-        transition={{ delay: 3, duration: 2, repeat: Infinity }}
-        className="absolute bottom-10 left-1/2 -translate-x-1/2 text-gray-400 flex flex-col items-center gap-2"
-      >
-        <span className="text-xs uppercase tracking-[0.2em]">Scroll</span>
-        <MousePointer2 className="w-5 h-5" />
-      </motion.div>
+      {/* Right Vertical Text */}
+      <div className="absolute right-10 bottom-32 hidden lg:block z-20">
+        <p className="side-marker">SCROLL TO EXPLORE</p>
+      </div>
+
+      {/* ── Main Content Block ── */}
+      <div className="relative z-20 flex flex-col items-center mt-[-10vh] text-center w-full max-w-7xl px-4">
+
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 2, ease: [0.16, 1, 0.3, 1] }}
+          className="flex flex-col items-center"
+        >
+          {/* Top Title: ПОЗНАЙ СЕБЯ -> TEMUKAN DIRIMU */}
+          <h1 className="title-font text-[clamp(28px,4vw,42px)] tracking-tight text-white mb-4">
+            SOFTWARE ENGINEER
+          </h1>
+
+          {/* Subtitle */}
+
+        </motion.div>
+
+        {/* Giant Ghost Text: ИСТОКИ -> ARKAN */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9, y: 50 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ duration: 4, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
+          className="relative w-full flex justify-center mt-[-2%]"
+        >
+          <h2 className="hero-ghost-text text-[clamp(120px,25vw,350px)] leading-[0.8] select-none pointer-events-none">
+            ARKAN
+          </h2>
+        </motion.div>
+
+      </div>
+
+      {/* Bottom Icons (Left arrow down, Right social dots) */}
+      <div className="absolute bottom-10 left-10 z-20 flex flex-col gap-2">
+        <div className="w-8 h-8 rounded-full border border-white/20 flex items-center justify-center bg-black/20 backdrop-blur-sm cursor-pointer hover:bg-white/10 transition-colors">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 5V19M19 12L12 19L5 12" />
+          </svg>
+        </div>
+        <div className="w-8 h-8 rounded-full border border-white/20 flex items-center justify-center bg-black/20 backdrop-blur-sm cursor-pointer hover:bg-white/10 transition-colors">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 19V5M5 12L12 5L19 12" />
+          </svg>
+        </div>
+      </div>
+
+      <div className="absolute bottom-10 right-10 z-20 flex gap-3">
+        {[1, 2, 3].map((i) => (
+          <a key={i} href="#" className="w-6 h-6 rounded-full border border-white/20 flex items-center justify-center bg-black/20 hover:bg-white/10 transition-colors">
+            {/* Using simple dots to replicate reference small icons */}
+            <span className="w-1 h-1 bg-white/70 rounded-full" />
+          </a>
+        ))}
+      </div>
+
     </section>
   );
 };

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useProgress } from "@react-three/drei";
 
 const bootSequence = [
   "Initializing System Core...",
@@ -14,42 +15,56 @@ const bootSequence = [
 export default function Preloader() {
   const [complete, setComplete] = useState(false);
   const [textIndex, setTextIndex] = useState(0);
+  const { progress, active, loaded, total } = useProgress();
+  const [displayProgress, setDisplayProgress] = useState(0);
 
+  // Initialize and check session
   useEffect(() => {
-    // Check if already booted in this session
     const hasBooted = sessionStorage.getItem("booted");
     if (hasBooted) {
       setComplete(true);
       return;
     }
-
-    // Lock scroll
     document.body.style.overflow = "hidden";
-
-    // Text Sequence Interval
-    const textInterval = setInterval(() => {
-      setTextIndex((prev) => {
-        if (prev < bootSequence.length - 1) return prev + 1;
-        return prev;
-      });
-    }, 400);
-
-    // Completion Timeout
-    const timeout = setTimeout(() => {
-      setComplete(true);
-      document.body.style.overflow = "unset";
-      clearInterval(textInterval);
-      sessionStorage.setItem("booted", "true"); // Mark as booted
-    }, 2500);
-
     return () => {
-      clearTimeout(timeout);
-      clearInterval(textInterval);
       document.body.style.overflow = "unset";
     };
   }, []);
 
-  if (complete) return null; // Unmount immediately if complete
+  // Track real 3D progress
+  useEffect(() => {
+    setDisplayProgress((prev) => Math.max(prev, progress));
+
+    // Map text sequence to real progress
+    const newTextIndex = Math.min(
+      Math.floor((progress / 100) * (bootSequence.length - 1)),
+      bootSequence.length - 1
+    );
+    setTextIndex(newTextIndex);
+
+    // Complete loading when fully loaded or no longer active
+    if (progress === 100 || (!active && loaded > 0 && loaded === total)) {
+      const timeout = setTimeout(() => {
+        setComplete(true);
+        document.body.style.overflow = "unset";
+        sessionStorage.setItem("booted", "true");
+      }, 1000);
+      return () => clearTimeout(timeout);
+    }
+  }, [progress, active, loaded, total]);
+
+  // Robust Failsafe (force finish after 8 seconds no matter what)
+  useEffect(() => {
+    if (complete) return;
+    const failsafe = setTimeout(() => {
+      setComplete(true);
+      document.body.style.overflow = "unset";
+      sessionStorage.setItem("booted", "true");
+    }, 8000);
+    return () => clearTimeout(failsafe);
+  }, [complete]);
+
+  if (complete) return null;
 
   return (
     <AnimatePresence>
@@ -62,13 +77,13 @@ export default function Preloader() {
         >
           {/* Pulse Circle */}
           <div className="relative w-24 h-24 mb-8">
-             <div className="absolute inset-0 border-t-2 border-accent-primary rounded-full animate-spin" />
-             <div className="absolute inset-2 border-r-2 border-red-800 rounded-full animate-spin-slow" />
-             <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-xl font-bold text-accent-primary animate-pulse">
-                   {(textIndex / (bootSequence.length - 1) * 100).toFixed(0)}%
-                </span>
-             </div>
+            <div className="absolute inset-0 border-t-2 border-accent-primary rounded-full animate-spin" />
+            <div className="absolute inset-2 border-r-2 border-red-800 rounded-full animate-spin-slow" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-xl font-bold text-accent-primary animate-pulse">
+                {Math.round(displayProgress)}%
+              </span>
+            </div>
           </div>
 
           {/* Text Sequence */}
@@ -83,14 +98,14 @@ export default function Preloader() {
               {`> ${bootSequence[textIndex]}`}
             </motion.p>
           </div>
-          
+
           {/* Progress Bar */}
           <div className="w-64 h-1 bg-red-900/20 mt-8 rounded-full overflow-hidden">
-            <motion.div 
-               className="h-full bg-accent-primary"
-               initial={{ width: "0%" }}
-               animate={{ width: "100%" }}
-               transition={{ duration: 2.2, ease: "easeInOut" }}
+            <motion.div
+              className="h-full bg-accent-primary"
+              initial={{ width: "0%" }}
+              animate={{ width: `${displayProgress}%` }}
+              transition={{ duration: 0.3, ease: "linear" }}
             />
           </div>
         </motion.div>

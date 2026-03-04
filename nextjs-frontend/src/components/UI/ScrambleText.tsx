@@ -6,25 +6,39 @@ import { motion } from "framer-motion";
 interface ScrambleTextProps {
   text: string;
   className?: string;
+  delay?: number;
+  duration?: number;
+  as?: React.ElementType;
 }
 
-const CHARS = "!@#$%^&*():{};|,.<>/?~0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%&*()_+{}:<>?";
 
-export const ScrambleText: React.FC<ScrambleTextProps> = ({ text, className }) => {
-  const [displayText, setDisplayText] = useState(text);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+export const ScrambleText: React.FC<ScrambleTextProps> = ({
+  text,
+  className = "",
+  delay = 0,
+  duration = 1.5,
+  as = motion.span
+}) => {
+  const [displayText, setDisplayText] = useState("");
+  const [isScrambling, setIsScrambling] = useState(false);
+  const frameRef = useRef<number>(0);
+
+  const Component = as as any;
 
   const scramble = () => {
     let iteration = 0;
-    
-    clearInterval(intervalRef.current as NodeJS.Timeout);
+    const maxIterations = duration * 60; // Assuming 60fps
 
-    intervalRef.current = setInterval(() => {
+    cancelAnimationFrame(frameRef.current);
+
+    const update = () => {
       setDisplayText((prev) =>
-        prev
+        text
           .split("")
-          .map((letter, index) => {
-            if (index < iteration) {
+          .map((char, index) => {
+            if (char === " ") return " ";
+            if (index < (iteration / maxIterations) * text.length) {
               return text[index];
             }
             return CHARS[Math.floor(Math.random() * CHARS.length)];
@@ -32,25 +46,41 @@ export const ScrambleText: React.FC<ScrambleTextProps> = ({ text, className }) =
           .join("")
       );
 
-      if (iteration >= text.length) {
-        clearInterval(intervalRef.current as NodeJS.Timeout);
-      }
+      iteration += 1;
 
-      iteration += 1 / 3;
-    }, 30);
+      if (iteration <= maxIterations) {
+        frameRef.current = requestAnimationFrame(update);
+      } else {
+        setDisplayText(text);
+        setIsScrambling(false);
+      }
+    };
+
+    frameRef.current = requestAnimationFrame(update);
   };
 
   useEffect(() => {
-    scramble();
-    return () => clearInterval(intervalRef.current as NodeJS.Timeout);
-  }, [text]);
+    const timeout = setTimeout(() => {
+      setIsScrambling(true);
+      scramble();
+    }, delay * 1000);
+
+    return () => {
+      clearTimeout(timeout);
+      cancelAnimationFrame(frameRef.current);
+    };
+  }, [text, delay, duration]);
+
+  if (!isScrambling && displayText === "") {
+    return <Component className={`opacity-0 ${className}`}>{text}</Component>;
+  }
 
   return (
-    <motion.h1
+    <Component
       onMouseEnter={scramble}
       className={className}
     >
-      {displayText}
-    </motion.h1>
+      {displayText || text}
+    </Component>
   );
 };

@@ -1,141 +1,198 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import Image from "next/image";
-import { GlassCard } from "@/components/UI/GlassCard";
-import { TiltCard } from "@/components/UI/TiltCard";
-import { ExternalLink, Github } from "lucide-react";
-import { motion } from "framer-motion";
+import { Github, ExternalLink, ChevronLeft, ChevronRight } from "lucide-react";
+import { staticProjects } from "@/data/projects";
+import Diamond3D from "@/components/UI/Diamond3D";
 
-interface Project {
+interface GitHubRepo {
   id: number;
-  title: string;
-  description: string;
-  technologies: string;
-  imageUrl: string;
-  projectUrl: string;
-  githubUrl: string;
-  createdDate: string;
+  name: string;
+  description: string | null;
+  html_url: string;
+  homepage: string | null;
+  stargazers_count: number;
+  language: string | null;
+  fork: boolean;
 }
 
 const Projects: React.FC = () => {
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [ghRepos, setGhRepos] = useState<GitHubRepo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(0);
 
   useEffect(() => {
-    fetch("/api/projects")
-      .then((res) => res.json())
-      .then((data) => setProjects(data))
-      .catch((err) => console.error("Error fetching projects:", err));
+    fetch("/api/github-repos")
+      .then((r) => r.ok ? r.json() : [])
+      .then((repos: GitHubRepo[]) => {
+        // Store all original non-fork repos
+        setGhRepos(repos.filter((r) => !r.fork));
+      })
+      .catch(() => { })
+      .finally(() => setLoading(false));
   }, []);
 
-  // Animation variants
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: { 
-      opacity: 1,
-      transition: { 
-        staggerChildren: 0.2 
-      }
-    }
-  };
+  // Pagination Logic
+  const itemsPerPage = 3;
+  const totalPages = Math.ceil(ghRepos.length / itemsPerPage);
+  const currentRepos = ghRepos.slice(page * itemsPerPage, (page + 1) * itemsPerPage);
 
-  const cardVariants = {
-    hidden: { y: 50, opacity: 0 },
-    visible: { 
-      y: 0, 
-      opacity: 1, 
-      transition: { 
-        type: "spring", 
-        stiffness: 100 
-      } 
-    }
-  };
+  const nextPage = () => setPage((p) => (p + 1) % totalPages);
+  const prevPage = () => setPage((p) => (p - 1 + totalPages) % totalPages);
 
   return (
-    <section id="projects" className="py-20 relative">
-      <div className="max-w-6xl mx-auto px-4">
-        <motion.h2 
-          initial={{ opacity: 0, y: -20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          className="text-4xl font-bold text-center mb-12 bg-clip-text text-transparent bg-gradient-to-r from-white to-accent-primary"
-        >
-          Featured Projects
-        </motion.h2>
-        
-        <motion.div 
-          variants={containerVariants}
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, amount: 0.2 }}
-          className="grid md:grid-cols-2 lg:grid-cols-3 gap-12"
-        >
-          {projects.map((project) => (
-            <motion.div key={project.id} variants={cardVariants} className="h-full">
-              <TiltCard className="h-full">
-                <GlassCard className="group h-full flex flex-col border-red-900/30 hover:border-accent-primary/50 !transform-none !transition-none" hoverEffect={false}>
-                  <div className="relative h-48 w-full overflow-hidden rounded-t-xl bg-black">
-                    <Image
-                      src={project.imageUrl || "/placeholder-project.jpg"}
-                      alt={project.title}
-                      fill
-                      className="object-cover transition-transform duration-500 group-hover:scale-110 opacity-80 group-hover:opacity-100"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-80" />
-                    
-                    <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center gap-4 bg-black/60 backdrop-blur-sm">
-                      {project.projectUrl && (
-                        <a
-                          href={project.projectUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-3 bg-accent-primary rounded-full hover:bg-red-500 transition-colors text-white shadow-lg shadow-red-900/50 transform hover:scale-110"
-                          title="View Live"
-                        >
-                          <ExternalLink size={20} />
-                        </a>
-                      )}
-                      {project.githubUrl && (
-                        <a
-                          href={project.githubUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-3 bg-white/10 backdrop-blur-md rounded-full hover:bg-white/20 transition-colors text-white border border-white/20 transform hover:scale-110"
-                          title="View Code"
-                        >
-                          <Github size={20} />
-                        </a>
-                      )}
+    <section id="projects" className="relative w-full min-h-[120vh] bg-[#0c1410] pt-32 pb-40 overflow-hidden text-white flex flex-col items-center">
+
+      {/* Animated Gradient Mesh Background */}
+      <div className="absolute inset-0 z-0 overflow-hidden">
+        {/* Blob 1: Golden Amber (top-left, drifts right) */}
+        <div
+          className="absolute w-[600px] h-[600px] rounded-full opacity-[0.07] blur-[120px]"
+          style={{
+            background: "radial-gradient(circle, #c49a56 0%, transparent 70%)",
+            top: "-10%",
+            left: "-5%",
+            animation: "meshDrift1 18s ease-in-out infinite alternate",
+            willChange: "transform",
+          }}
+        />
+        {/* Blob 2: Deep Emerald (center, drifts up) */}
+        <div
+          className="absolute w-[700px] h-[700px] rounded-full opacity-[0.06] blur-[140px]"
+          style={{
+            background: "radial-gradient(circle, #1a5c3a 0%, transparent 70%)",
+            top: "30%",
+            left: "40%",
+            animation: "meshDrift2 22s ease-in-out infinite alternate",
+            willChange: "transform",
+          }}
+        />
+        {/* Blob 3: Warm Gold (bottom-right, drifts left) */}
+        <div
+          className="absolute w-[500px] h-[500px] rounded-full opacity-[0.05] blur-[100px]"
+          style={{
+            background: "radial-gradient(circle, #d4a853 0%, transparent 70%)",
+            bottom: "5%",
+            right: "-5%",
+            animation: "meshDrift3 20s ease-in-out infinite alternate",
+            willChange: "transform",
+          }}
+        />
+        {/* Blob 4: Subtle Teal accent (center-left) */}
+        <div
+          className="absolute w-[400px] h-[400px] rounded-full opacity-[0.04] blur-[100px]"
+          style={{
+            background: "radial-gradient(circle, #2a8a6a 0%, transparent 70%)",
+            top: "60%",
+            left: "10%",
+            animation: "meshDrift1 25s ease-in-out infinite alternate-reverse",
+            willChange: "transform",
+          }}
+        />
+      </div>
+      {/* Vignette overlay for depth */}
+      <div className="absolute inset-0 bg-gradient-to-b from-[#0a0f0c] via-transparent to-[#0a0f0c] z-[1]" />
+
+      <div className="relative z-10 w-full max-w-[1200px] mx-auto px-6 flex flex-col items-center">
+
+        {/* ── HEADER ── */}
+        <div className="text-center flex flex-col items-center mb-20 max-w-2xl mx-auto">
+          <span className="text-[11px] uppercase tracking-[0.3em] font-bold text-[#c49a56] mb-4" style={{ fontFamily: "var(--f-sans)" }}>
+            PORTFOLIO HIGHLIGHTS
+          </span>
+          <h2 className="title-font text-[clamp(40px,5vw,60px)] tracking-wide uppercase leading-[1.1] mb-8 text-[#e8e9e4]">
+            PENGALAMAN &<br />REKAM JEJAK
+          </h2>
+          <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-[#c49a56] mb-8" style={{ fontFamily: "var(--f-sans)" }}>
+            OPEN SOURCE REPOSITORIES
+          </span>
+          <p className="text-white/60 text-[13px] leading-[2] font-medium tracking-wide text-center" style={{ fontFamily: "var(--f-serif)" }}>
+            Berlokasi di ekosistem pengembangan sumber terbuka, repositori ini dibangun sejak awal untuk memajukan fondasi teknologi perangkat lunak.
+            Masing-masing memiliki filosofi arsitektur dan kegunaan nyata yang terus dikembangkan seiring waktu.
+          </p>
+        </div>
+
+        {/* ── DIAMOND GRID ── */}
+        <div className="relative w-full aspect-square md:aspect-[2/1] max-w-[900px] mx-auto mt-10 md:mt-4">
+
+          {loading ? (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-[#c49a56] tracking-[0.2em] text-xs uppercase animate-pulse">Menghubungkan ke GitHub...</span>
+            </div>
+          ) : (
+            currentRepos.map((repo, idx) => {
+              // Calculate positioning for the triangle arrangement
+              const positions = [
+                { top: "10%", left: "15%", delay: 0 },
+                { top: "50%", left: "50%", delay: 0.2 },
+                { top: "20%", left: "85%", delay: 0.4 }
+              ];
+              // Ensure fallback if less than 3 items on last page
+              const pos = positions[idx] || positions[0];
+
+              return (
+                <div
+                  key={repo.id}
+                  className="absolute flex flex-col items-center group -translate-x-1/2 -translate-y-1/2 w-[220px] sm:w-[280px]"
+                  style={{ top: pos.top, left: pos.left }}
+                >
+                  {/* Diamond Shape Wrapper */}
+                  <a
+                    href={repo.html_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="relative w-40 h-40 sm:w-60 sm:h-60 z-10 group/diamond hover:scale-110 transition-all duration-700 block"
+                  >
+                    <Diamond3D language={repo.language} />
+                    <div className="absolute top-4 right-4 p-2 opacity-0 group-hover/diamond:opacity-100 transition-opacity duration-500 z-20 pointer-events-none">
+                      <span className="flex items-center gap-1 text-[10px] font-bold text-[#c49a56] tracking-widest uppercase bg-black/80 px-2 py-1 rounded backdrop-blur-md shadow-[0_0_15px_rgba(196,154,86,0.3)] border border-[#c49a56]/30">
+                        {repo.stargazers_count} ★
+                      </span>
                     </div>
-                  </div>
-                  
-                  <div className="p-6 flex-1 flex flex-col">
-                    <h3 className="text-xl font-bold text-white mb-2 group-hover:text-accent-primary transition-colors">
-                      {project.title}
+                  </a>
+
+                  {/* Text Info */}
+                  <div className="mt-10 sm:mt-14 text-center lg:opacity-70 group-hover:opacity-100 group-hover:-translate-y-1 transition-all duration-500">
+                    <h3 className="text-[12px] sm:text-[14px] font-bold uppercase tracking-[0.2em] text-[#e8e9e4] mb-2 leading-tight max-w-[200px] mx-auto">
+                      {repo.name.replace(/[-_]/g, " ")}
                     </h3>
-                    
-                    <p className="text-gray-400 mb-4 text-sm leading-relaxed flex-1">
-                      {project.description}
-                    </p>
-                    
-                    <div className="mt-auto pt-4 border-t border-red-900/30">
-                      <div className="flex flex-wrap gap-2">
-                        {project.technologies.split(",").map((tech, index) => (
-                          <span
-                            key={index}
-                            className="bg-accent-dark border border-accent-secondary/50 text-red-200 px-2 py-1 rounded text-xs font-medium"
-                          >
-                            {tech.trim()}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
+                    {repo.language && (
+                      <span className="text-[8px] uppercase tracking-[0.3em] font-bold text-[#c49a56]">
+                        {repo.language}
+                      </span>
+                    )}
                   </div>
-                </GlassCard>
-              </TiltCard>
-            </motion.div>
-          ))}
-        </motion.div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* ── PAGINATION CONTROLS ── */}
+        {!loading && ghRepos.length > itemsPerPage && (
+          <div className="mt-20 lg:mt-32 flex items-center gap-8">
+            <button
+              onClick={prevPage}
+              className="w-10 h-10 rounded-full border border-[#c49a56]/30 flex items-center justify-center text-[#c49a56]/60 hover:text-[#c49a56] hover:border-[#c49a56] transition-all bg-black/40 backdrop-blur-sm"
+            >
+              <ChevronLeft size={16} />
+            </button>
+
+            <div className="flex items-center gap-3 text-[10px] tracking-[0.3em] font-bold" style={{ fontFamily: "var(--f-mono)" }}>
+              <span className="text-white">{page + 1}</span>
+              <span className="text-white/30">/</span>
+              <span className="text-white/50">{totalPages}</span>
+            </div>
+
+            <button
+              onClick={nextPage}
+              className="w-10 h-10 rounded-full border border-[#c49a56]/30 flex items-center justify-center text-[#c49a56]/60 hover:text-[#c49a56] hover:border-[#c49a56] transition-all bg-black/40 backdrop-blur-sm"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        )}
+
       </div>
     </section>
   );

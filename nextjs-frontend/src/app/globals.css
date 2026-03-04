@@ -1,36 +1,22 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap');
 
 :root {
-  --background: #050000;
-  --foreground: #FFFFFF;
-  
-  /* Glassmorphism - Red Tint */
-  --glass-bg: rgba(20, 0, 0, 0.3);
-  --glass-border: rgba(220, 20, 60, 0.2);
-  --glass-highlight: rgba(255, 0, 0, 0.1);
+  --bg: #000000;
+  --fg: #ffffff;
+  --fg-mut: #a0a0a0;
 
-  /* Accents */
-  --accent-primary: #DC143C; /* Crimson */
-  --accent-secondary: #800020; /* Burgundy */
-  --accent-dark: #1a0505;
-  
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Typography derived from reference */
+  --f-sans: 'Montserrat', sans-serif;
+  --f-serif: 'Playfair Display', serif;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  
-  --color-glass: var(--glass-bg);
-  --color-glass-border: var(--glass-border);
-  
-  --color-accent-primary: var(--accent-primary);
-  --color-accent-secondary: var(--accent-secondary);
-  --color-accent-dark: var(--accent-dark);
-
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-mono);
+  --color-background: var(--bg);
+  --color-foreground: var(--fg);
+  --color-muted: var(--fg-mut);
+  --font-sans: var(--f-sans);
+  --font-serif: var(--f-serif);
 }
 
 html {
@@ -38,28 +24,107 @@ html {
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  background-color: var(--bg);
+  color: var(--fg);
+  font-family: var(--f-sans);
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Custom Scrollbar for Webkit */
-::-webkit-scrollbar {
-  width: 8px;
+/* ── Section-level containment for paint isolation ── */
+section {
+  contain: layout style paint;
 }
 
-::-webkit-scrollbar-track {
-  background: var(--background);
+/* ── Typography Utility ── */
+.title-font {
+  font-family: var(--f-sans);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
 }
 
-::-webkit-scrollbar-thumb {
-  background: var(--glass-border);
-  border-radius: 4px;
+/* ── Special Ghost Text (Hero) ── */
+.hero-ghost-text {
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0) 90%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-family: var(--f-sans);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  mix-blend-mode: overlay;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: var(--glass-highlight);
+/* ── Thin lines ── */
+.line-y {
+  width: 1px;
+  background-color: rgba(255, 255, 255, 0.15);
+}
+
+.line-x {
+  height: 1px;
+  background-color: rgba(255, 255, 255, 0.15);
+}
+
+/* ── Minimalist Inputs ── */
+.input-minimal {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  padding: 10px 0;
+  font-size: 13px;
+  width: 100%;
+  transition: border-color 0.3s;
+}
+
+.input-minimal:focus {
+  outline: none;
+  border-bottom-color: white;
+}
+
+.input-minimal::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* ── Vertical side markers ── */
+.side-marker {
+  writing-mode: vertical-lr;
+  transform: rotate(180deg);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--fg-mut);
+  text-transform: uppercase;
+}
+
+/* ── Animated Gradient Mesh Keyframes ── */
+@keyframes meshDrift1 {
+  0% {
+    transform: translate(0, 0) scale(1);
+  }
+
+  100% {
+    transform: translate(120px, 80px) scale(1.15);
+  }
+}
+
+@keyframes meshDrift2 {
+  0% {
+    transform: translate(0, 0) scale(1);
+  }
+
+  100% {
+    transform: translate(-80px, -100px) scale(1.2);
+  }
+}
+
+@keyframes meshDrift3 {
+  0% {
+    transform: translate(0, 0) scale(1);
+  }
+
+  100% {
+    transform: translate(-100px, 60px) scale(1.1);
+  }
 }

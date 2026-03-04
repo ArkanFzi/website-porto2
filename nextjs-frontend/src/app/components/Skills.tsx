@@ -1,44 +1,39 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { GlassCard } from "@/components/UI/GlassCard";
 import { TiltCard } from "@/components/UI/TiltCard";
 import { motion } from "framer-motion";
 import { TechCloud } from "@/components/Three/TechCloud";
 import { Canvas } from "@react-three/fiber";
-
-interface Skill {
-  id: number;
-  name: string;
-  category: string;
-  proficiency: number;
-}
+import { staticSkills } from "@/data/skills";
 
 const Skills: React.FC = () => {
-  const [skills, setSkills] = useState<Skill[]>([]);
-
-  useEffect(() => {
-    fetch("/api/skills")
-      .then((res) => res.json())
-      .then((data) => setSkills(data))
-      .catch((err) => console.error("Error fetching skills:", err));
-  }, []);
-
-  const groupedSkills = skills.reduce((acc, skill) => {
-    if (!acc[skill.category]) {
-      acc[skill.category] = [];
-    }
+  const groupedSkills = staticSkills.reduce((acc, skill) => {
+    if (!acc[skill.category]) acc[skill.category] = [];
     acc[skill.category].push(skill);
     return acc;
-  }, {} as Record<string, Skill[]>);
+  }, {} as Record<string, typeof staticSkills>);
 
   return (
     <section id="skills" className="py-20 relative overflow-hidden">
       <div className="max-w-7xl mx-auto px-4">
-        <h2 className="text-4xl font-bold text-center mb-12 bg-clip-text text-transparent bg-gradient-to-r from-accent-primary to-gray-400">
-          Technical Expertise
-        </h2>
-        
+        {/* Section header */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          className="flex items-center gap-6 mb-12"
+        >
+          <h2
+            className="text-6xl md:text-8xl text-white"
+            style={{ fontFamily: "var(--font-display)", letterSpacing: "0.05em" }}
+          >
+            SKILLS
+          </h2>
+          <div className="flex-1 h-px bg-gradient-to-r from-accent-primary/50 to-transparent" />
+        </motion.div>
+
         <div className="flex flex-col lg:flex-row gap-12 items-center">
           {/* Left: Skills List */}
           <div className="w-full lg:w-1/2 grid gap-6">
@@ -57,7 +52,7 @@ const Skills: React.FC = () => {
                   </h3>
                   <div className="flex flex-wrap gap-2">
                     {categorySkills.map((skill) => (
-                      <span 
+                      <span
                         key={skill.id}
                         className="px-3 py-1 bg-black/40 border border-white/10 rounded-md text-sm text-gray-300 flex items-center gap-2"
                       >
@@ -71,18 +66,17 @@ const Skills: React.FC = () => {
             ))}
           </div>
 
-          {/* Right: 3D Cloud with Tilt */}
           <TiltCard className="w-full lg:w-1/2 h-[500px]">
-             <div className="relative w-full h-full">
+            <div className="relative w-full h-full">
               <div className="absolute inset-0 bg-gradient-to-r from-accent-primary/20 to-transparent blur-3xl rounded-full opacity-20" />
               <GlassCard className="h-full w-full border-red-900/20 bg-black/20" hoverEffect={false}>
-                <Canvas camera={{ position: [0, 0, 6] }} gl={{ alpha: true, antialias: true }}>
+                <Canvas camera={{ position: [0, 0, 6] }} gl={{ alpha: true, antialias: false }}>
                   <ambientLight intensity={0.8} />
                   <pointLight position={[10, 10, 10]} intensity={1.5} color="#DC143C" />
                   <TechCloud />
                 </Canvas>
               </GlassCard>
-             </div>
+            </div>
           </TiltCard>
         </div>
       </div>
