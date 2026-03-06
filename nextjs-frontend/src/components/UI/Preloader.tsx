@@ -48,6 +48,7 @@ export default function Preloader() {
         setComplete(true);
         document.body.style.overflow = "unset";
         sessionStorage.setItem("booted", "true");
+        window.dispatchEvent(new Event("app-booted"));
       }, 1000);
       return () => clearTimeout(timeout);
     }
@@ -60,6 +61,7 @@ export default function Preloader() {
       setComplete(true);
       document.body.style.overflow = "unset";
       sessionStorage.setItem("booted", "true");
+      window.dispatchEvent(new Event("app-booted"));
     }, 8000);
     return () => clearTimeout(failsafe);
   }, [complete]);

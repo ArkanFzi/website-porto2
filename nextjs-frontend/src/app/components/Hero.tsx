@@ -1,17 +1,42 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 
 const Hero: React.FC = () => {
+  const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    // If the app was already booted in this session, start immediately
+    if (sessionStorage.getItem("booted") === "true") {
+      setIsReady(true);
+    } else {
+      // Otherwise wait for the preloader to finish
+      const handleBoot = () => setIsReady(true);
+      window.addEventListener("app-booted", handleBoot);
+      return () => window.removeEventListener("app-booted", handleBoot);
+    }
+  }, []);
+
   return (
     <section id="hero" className="relative w-full h-[100vh] flex flex-col justify-center items-center overflow-hidden">
-      {/* ── Background Image Layer ── */}
-      <div
-        className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat"
-        style={{ backgroundImage: "url('https://images.unsplash.com/photo-1542273917363-3b1817f69a2d?q=80&w=2500&auto=format&fit=crop')" }}
-      />
-      {/* Bottom fade to black to match the reference transition */}
+      {/* ── Background Video Layer ── */}
+      <div className="absolute inset-0 z-0 overflow-hidden">
+        <video
+          className="w-full h-full object-cover"
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="auto"
+          aria-hidden="true"
+        >
+          <source src="/hero-bg.mp4" type="video/mp4" />
+        </video>
+        {/* Dark overlay to preserve legibility */}
+        <div className="absolute inset-0 bg-[#050a07]/70" />
+      </div>
+      {/* Bottom fade to match the section transition */}
       <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[var(--bg)] to-transparent z-10" />
 
       {/* ── UI Elements matching reference ── */}
@@ -35,12 +60,12 @@ const Hero: React.FC = () => {
 
         <motion.div
           initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
+          animate={isReady ? { opacity: 1, y: 0 } : { opacity: 0, y: 30 }}
           transition={{ duration: 2, ease: [0.16, 1, 0.3, 1] }}
           className="flex flex-col items-center"
         >
           {/* Top Title: ПОЗНАЙ СЕБЯ -> TEMUKAN DIRIMU */}
-          <h1 className="title-font text-[clamp(28px,4vw,42px)] tracking-tight text-white mb-4">
+          <h1 className="title-font text-[clamp(24px,4vw,42px)] tracking-tight text-white mb-4">
             SOFTWARE ENGINEER
           </h1>
 
@@ -51,11 +76,11 @@ const Hero: React.FC = () => {
         {/* Giant Ghost Text: ИСТОКИ -> ARKAN */}
         <motion.div
           initial={{ opacity: 0, scale: 0.9, y: 50 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
+          animate={isReady ? { opacity: 1, scale: 1, y: 0 } : { opacity: 0, scale: 0.9, y: 50 }}
           transition={{ duration: 4, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
           className="relative w-full flex justify-center mt-[-2%]"
         >
-          <h2 className="hero-ghost-text text-[clamp(120px,25vw,350px)] leading-[0.8] select-none pointer-events-none">
+          <h2 className="hero-ghost-text text-[clamp(80px,25vw,350px)] leading-[0.8] select-none pointer-events-none">
             ARKAN
           </h2>
         </motion.div>

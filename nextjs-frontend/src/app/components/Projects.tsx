@@ -113,10 +113,10 @@ const Projects: React.FC = () => {
         </div>
 
         {/* ── DIAMOND GRID ── */}
-        <div className="relative w-full aspect-square md:aspect-[2/1] max-w-[900px] mx-auto mt-10 md:mt-4">
+        <div className="relative w-full md:aspect-[2/1] max-w-[900px] mx-auto mt-10 md:mt-4 flex flex-col md:block items-center gap-16 md:gap-0">
 
           {loading ? (
-            <div className="absolute inset-0 flex items-center justify-center">
+            <div className="md:absolute inset-0 flex items-center justify-center min-h-[300px]">
               <span className="text-[#c49a56] tracking-[0.2em] text-xs uppercase animate-pulse">Menghubungkan ke GitHub...</span>
             </div>
           ) : (
@@ -133,7 +133,9 @@ const Projects: React.FC = () => {
               return (
                 <div
                   key={repo.id}
-                  className="absolute flex flex-col items-center group -translate-x-1/2 -translate-y-1/2 w-[220px] sm:w-[280px]"
+                  /* On mobile, 'static' forces the browser to ignore 'top' and 'left' inline styles, stacking normally via flex.
+                     On 'md:' and above, 'absolute' re-enables them for the triangle grid layout. */
+                  className="static md:absolute flex flex-col items-center group w-[220px] sm:w-[280px] md:-translate-x-1/2 md:-translate-y-1/2"
                   style={{ top: pos.top, left: pos.left }}
                 >
                   {/* Diamond Shape Wrapper */}
@@ -141,7 +143,7 @@ const Projects: React.FC = () => {
                     href={repo.html_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="relative w-40 h-40 sm:w-60 sm:h-60 z-10 group/diamond hover:scale-110 transition-all duration-700 block"
+                    className="relative w-48 h-48 md:w-60 md:h-60 z-10 group/diamond md:hover:scale-110 transition-all duration-700 block"
                   >
                     <Diamond3D language={repo.language} />
                     <div className="absolute top-4 right-4 p-2 opacity-0 group-hover/diamond:opacity-100 transition-opacity duration-500 z-20 pointer-events-none">
@@ -152,7 +154,7 @@ const Projects: React.FC = () => {
                   </a>
 
                   {/* Text Info */}
-                  <div className="mt-10 sm:mt-14 text-center lg:opacity-70 group-hover:opacity-100 group-hover:-translate-y-1 transition-all duration-500">
+                  <div className="mt-6 md:mt-14 text-center lg:opacity-70 group-hover:opacity-100 group-hover:-translate-y-1 transition-all duration-500">
                     <h3 className="text-[12px] sm:text-[14px] font-bold uppercase tracking-[0.2em] text-[#e8e9e4] mb-2 leading-tight max-w-[200px] mx-auto">
                       {repo.name.replace(/[-_]/g, " ")}
                     </h3>

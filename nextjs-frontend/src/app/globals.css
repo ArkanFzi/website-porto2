@@ -128,3 +128,37 @@ section {
     transform: translate(-100px, 60px) scale(1.1);
   }
 }
+
+/* ── Inline Conversational Form Inputs (Contact) ── */
+.inline-input {
+  box-shadow: none !important;
+  caret-color: #c49a56;
+}
+
+.inline-input:-webkit-autofill,
+.inline-input:-webkit-autofill:hover,
+.inline-input:-webkit-autofill:focus,
+.inline-input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 30px #0c1410 inset !important;
+  -webkit-text-fill-color: white !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+/* ── Custom Scrollbar ── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(196, 154, 86, 0.5);
+}

@@ -47,10 +47,10 @@ const About: React.FC = () => {
 
   const { reposCount, starsCount, followersCount } = metrics;
   return (
-    <section id="about" className="relative w-full min-h-screen bg-[var(--bg)] pt-20 pb-32 overflow-hidden">
+    <section id="about" className="relative w-full min-h-screen bg-[var(--bg)] pt-20 pb-20 lg:pb-32 overflow-hidden">
 
       {/* Container max-width matching the reference */}
-      <div className="max-w-[1400px] mx-auto px-8 relative z-10">
+      <div className="max-w-[1400px] mx-auto px-6 md:px-8 relative z-10">
 
         {/* Left Vertical Side Marker */}
         <div className="absolute left-8 top-40 hidden lg:flex flex-col items-center gap-10">

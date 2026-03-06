@@ -66,11 +66,11 @@ const Skills: React.FC = () => {
             ))}
           </div>
 
-          <TiltCard className="w-full lg:w-1/2 h-[500px]">
+          <TiltCard className="w-full lg:w-1/2 h-[350px] lg:h-[500px]">
             <div className="relative w-full h-full">
               <div className="absolute inset-0 bg-gradient-to-r from-accent-primary/20 to-transparent blur-3xl rounded-full opacity-20" />
               <GlassCard className="h-full w-full border-red-900/20 bg-black/20" hoverEffect={false}>
-                <Canvas camera={{ position: [0, 0, 6] }} gl={{ alpha: true, antialias: false }}>
+                <Canvas camera={{ position: [0, 0, 8] }} gl={{ alpha: true, antialias: false }}>
                   <ambientLight intensity={0.8} />
                   <pointLight position={[10, 10, 10]} intensity={1.5} color="#DC143C" />
                   <TechCloud />
