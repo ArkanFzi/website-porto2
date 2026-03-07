@@ -2,22 +2,49 @@
 
 import React, { useState } from "react";
 import { motion } from "framer-motion";
+import { Toast } from "@/components/UI/Toast";
 
 const Contact: React.FC = () => {
   const [form, setForm] = useState({ name: "", email: "", message: "" });
   const [isHovered, setIsHovered] = useState(false);
+  const [toast, setToast] = useState<{ isVisible: boolean; message: string; type: "success" | "error" }>({
+    isVisible: false,
+    message: "",
+    type: "success"
+  });
+  const [isLoading, setIsLoading] = useState(false);
 
-  const onSubmit = (e: React.FormEvent) => {
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const sub = encodeURIComponent(`Portofolio — dari ${form.name}`);
-    const body = encodeURIComponent(
-      `Nama: ${form.name}\nEmail: ${form.email}\n\nPesan:\n${form.message}`
-    );
-    window.open(`mailto:arkan@example.com?subject=${sub}&body=${body}`, "_self");
+    setIsLoading(true);
+
+    try {
+      const res = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form)
+      });
+
+      if (!res.ok) throw new Error("Failed to send message");
+
+      setToast({ isVisible: true, message: "Thank you! Your message has been sent.", type: "success" });
+      setForm({ name: "", email: "", message: "" });
+    } catch (err) {
+      setToast({ isVisible: true, message: "Failed to send message. Please try again.", type: "error" });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
     <section id="contact" className="relative w-full min-h-screen bg-[#0c1410] text-white flex flex-col items-center justify-center py-20 lg:py-32 overflow-hidden">
+
+      <Toast
+        isVisible={toast.isVisible}
+        message={toast.message}
+        type={toast.type}
+        onClose={() => setToast(prev => ({ ...prev, isVisible: false }))}
+      />
 
       {/* Dynamic Background */}
       <div
@@ -119,16 +146,21 @@ const Contact: React.FC = () => {
           >
             <button
               type="submit"
+              disabled={isLoading}
               onMouseEnter={() => setIsHovered(true)}
               onMouseLeave={() => setIsHovered(false)}
-              className="group relative flex items-center justify-center w-32 h-32 md:w-48 md:h-48 rounded-full border border-white/20 bg-black/40 backdrop-blur-md hover:bg-white hover:border-white transition-all duration-500 overflow-hidden isolate"
+              className="group relative flex items-center justify-center w-32 h-32 md:w-48 md:h-48 rounded-full border border-white/20 bg-black/40 backdrop-blur-md hover:bg-white hover:border-white transition-all duration-500 overflow-hidden isolate disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {/* Button text */}
               <span
                 className="relative z-10 text-[11px] md:text-[13px] uppercase tracking-[0.3em] font-bold text-white group-hover:text-black transition-colors duration-500"
                 style={{ fontFamily: "var(--f-sans)" }}
               >
-                Send<br />Message
+                {isLoading ? (
+                  <>Sending...</>
+                ) : (
+                  <>Send<br />Message</>
+                )}
               </span>
 
               {/* Hover expanding circle fill */}

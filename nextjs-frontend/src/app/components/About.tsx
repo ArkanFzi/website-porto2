@@ -21,20 +21,14 @@ const About: React.FC = () => {
   useEffect(() => {
     async function loadMetrics() {
       try {
-        const userRes = await fetch(`https://api.github.com/users/${GITHUB_USERNAME}`);
-        if (!userRes.ok) throw new Error("Failed to fetch GitHub profile");
-        const user = await userRes.json();
-
-        const reposRes = await fetch(`https://api.github.com/users/${GITHUB_USERNAME}/repos?per_page=100`);
-        if (!reposRes.ok) throw new Error("Failed to fetch repos");
-        const repos = await reposRes.json();
-
-        const totalStars = repos.reduce((acc: number, r: any) => acc + (r.stargazers_count || 0), 0);
+        const res = await fetch('/api/github-profile');
+        if (!res.ok) throw new Error("Failed to fetch GitHub profile metrics");
+        const data = await res.json();
 
         setMetrics({
-          reposCount: user.public_repos?.toString() || "10+",
-          starsCount: totalStars > 0 ? totalStars.toString() : "0",
-          followersCount: user.followers?.toString() || "0",
+          reposCount: data.reposCount || "—",
+          starsCount: data.starsCount || "—",
+          followersCount: data.followersCount || "—",
         });
       } catch (err) {
         console.error("GitHub metrics fetch failed", err);

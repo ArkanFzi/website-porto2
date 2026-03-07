@@ -8,7 +8,7 @@ const links = [
   { label: "PROFIL", href: "/#about" },
   { label: "REKAM", href: "/#projects" },
   { label: "KONTAK", href: "/#contact" },
-  { label: "DOSSIER", href: "/archive" },
+  { label: "DOSSIER", href: "/dossier" },
 ];
 
 const Navigation = () => {

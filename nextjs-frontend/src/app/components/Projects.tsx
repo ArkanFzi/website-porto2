@@ -44,7 +44,7 @@ const Projects: React.FC = () => {
     <section id="projects" className="relative w-full min-h-[120vh] bg-[#0c1410] pt-32 pb-40 overflow-hidden text-white flex flex-col items-center">
 
       {/* Animated Gradient Mesh Background */}
-      <div className="absolute inset-0 z-0 overflow-hidden">
+      <div className="absolute inset-0 z-0 overflow-hidden hidden md:block">
         {/* Blob 1: Golden Amber (top-left, drifts right) */}
         <div
           className="absolute w-[600px] h-[600px] rounded-full opacity-[0.07] blur-[120px]"
