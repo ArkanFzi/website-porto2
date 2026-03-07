@@ -40,7 +40,7 @@ const Footer: React.FC = () => {
             © {new Date().getFullYear()} ALL RIGHTS RESERVED
           </p>
           <p className="text-[10px] md:text-[11px] text-[#c49a56] tracking-[0.3em] uppercase mt-2 opacity-80" style={{ fontFamily: "var(--f-sans)" }}>
-            JAKARTA, INDONESIA
+            MALANG, INDONESIA
           </p>
         </div>
 
