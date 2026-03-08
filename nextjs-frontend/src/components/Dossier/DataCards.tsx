@@ -29,16 +29,9 @@ interface Experience {
     period: string;
 }
 
-const MOCK_CERTIFICATES: Certificate[] = [
-    { id: "c1", title: "AWS Solutions Architect", issuer: "Amazon Web Services", date: "2024" },
-    { id: "c2", title: "Advanced React Patterns", issuer: "Frontend Masters", date: "2023" },
-    { id: "c3", title: "Full-Stack Design", issuer: "Educative", date: "2023" },
-];
+import { useRouter } from "next/navigation";
 
-const MOCK_EXPERIENCE: Experience[] = [
-    { id: "e1", role: "Senior Software Engineer", company: "TechNova Solutions", period: "2023 - Pres" },
-    { id: "e2", role: "Fullstack Developer", company: "Digital Artisan", period: "2021 - 2023" },
-];
+// Mock data removed in favor of dynamic API fetching
 
 // ── 3D Trading Card Component ──
 interface TradingCardProps {
@@ -49,6 +42,7 @@ interface TradingCardProps {
     bgImage: string;
     verticalText: string;
     icon: ReactNode;
+    href: string;         // <-- Target route
     defaultRotateY?: number;
     defaultRotateZ?: number;
     defaultTranslateY?: number;
@@ -57,11 +51,12 @@ interface TradingCardProps {
 }
 
 const TradingCard: React.FC<TradingCardProps> = ({ 
-    colorHex, title, subtitle, bgImage, verticalText, icon, 
+    colorHex, title, subtitle, bgImage, verticalText, icon, href,
     defaultRotateY = 0, defaultRotateZ = 0, defaultTranslateY = 0, defaultTranslateX = 0,
     children 
 }) => {
     const cardRef = useRef<HTMLDivElement>(null);
+    const router = useRouter();
     const [isHovered, setIsHovered] = useState(false);
 
     // Motion values for animations
@@ -132,6 +127,7 @@ const TradingCard: React.FC<TradingCardProps> = ({
                 onMouseEnter={handleMouseEnter}
                 onMouseMove={handleMouseMove}
                 onMouseLeave={handleMouseLeave}
+                onClick={() => router.push(href)}
                 style={{
                     rotateX,
                     rotateY,
@@ -221,9 +217,15 @@ const TradingCard: React.FC<TradingCardProps> = ({
 // ── MAIN COMPONENT ──
 export default function DataCards() {
   const [ghRepos, setGhRepos] = useState<GitHubRepo[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [certs, setCerts] = useState<Certificate[]>([]);
+  const [experiences, setExperiences] = useState<Experience[]>([]);
+  
+  const [loadingGh, setLoadingGh] = useState(true);
+  const [loadingCerts, setLoadingCerts] = useState(true);
+  const [loadingExp, setLoadingExp] = useState(true);
 
   useEffect(() => {
+    // Fetch GitHub Repos
     fetch("/api/github-repos")
       .then((r) => r.ok ? r.json() : [])
       .then((repos: GitHubRepo[]) => {
@@ -231,7 +233,21 @@ export default function DataCards() {
         setGhRepos(filtered);
       })
       .catch((e) => console.error(e))
-      .finally(() => setLoading(false));
+      .finally(() => setLoadingGh(false));
+
+    // Fetch Certificates from Go Backend
+    fetch("http://localhost:8080/api/certificates")
+      .then((r) => r.ok ? r.json() : [])
+      .then((data: Certificate[]) => setCerts(data))
+      .catch((e) => console.error(e))
+      .finally(() => setLoadingCerts(false));
+
+    // Fetch Experiences from Go Backend
+    fetch("http://localhost:8080/api/experience")
+      .then((r) => r.ok ? r.json() : [])
+      .then((data: Experience[]) => setExperiences(data))
+      .catch((e) => console.error(e))
+      .finally(() => setLoadingExp(false));
   }, []);
 
   return (
@@ -246,12 +262,13 @@ export default function DataCards() {
         bgImage="https://images.unsplash.com/photo-1550439062-609e1531270e?auto=format&fit=crop&q=80&w=800"
         verticalText="Source Code"
         icon={<Github className="w-5 h-5" />}
+        href="/dossier/repos"
         defaultRotateY={30}
         defaultRotateZ={-4}
         defaultTranslateX={20}
         defaultTranslateY={15}
       >
-          {loading ? (
+          {loadingGh ? (
               <span className="text-white/50 font-mono text-xs animate-pulse">Loading Repos...</span>
           ) : (
               ghRepos.map((repo) => (
@@ -284,12 +301,15 @@ export default function DataCards() {
         bgImage="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=800"
         verticalText="Verified Achvmnts"
         icon={<Award className="w-5 h-5" />}
+        href="/dossier/certificates"
         defaultRotateY={0}
         defaultRotateZ={0}
         defaultTranslateX={0}
         defaultTranslateY={-10}
       >
-          {MOCK_CERTIFICATES.map((cert) => (
+          {loadingCerts ? (
+               <span className="text-white/50 font-mono text-xs animate-pulse">Loading Awards...</span>
+          ) : certs.map((cert) => (
               <div key={cert.id} className="flex flex-col bg-gradient-to-r from-black/80 to-transparent p-3 rounded-lg border-l-2 border-[#c49a56]/50 backdrop-blur-sm">
                   <h4 className="text-white font-bold text-sm leading-tight mb-1">{cert.title}</h4>
                   <div className="flex justify-between items-center text-[10px] font-mono font-semibold uppercase text-white/60">
@@ -309,12 +329,15 @@ export default function DataCards() {
         bgImage="https://images.unsplash.com/photo-1614850523459-c2f4c699c52e?auto=format&fit=crop&q=80&w=800"
         verticalText="Work Experience"
         icon={<Briefcase className="w-5 h-5" />}
+        href="/dossier/experience"
         defaultRotateY={-30}
         defaultRotateZ={4}
         defaultTranslateX={-20}
         defaultTranslateY={15}
       >
-          {MOCK_EXPERIENCE.map((exp) => (
+          {loadingExp ? (
+               <span className="text-white/50 font-mono text-xs animate-pulse">Loading Journey...</span>
+          ) : experiences.map((exp) => (
               <div key={exp.id} className="flex flex-col relative pl-4 pb-2 border-l border-white/20 last:border-0 last:pb-0">
                   <div className="absolute left-[-5px] top-1.5 w-2 h-2 rounded-full bg-[#ff5500] shadow-[0_0_10px_#ff5500]" />
                   <h4 className="text-white font-bold text-[15px] mb-0.5">{exp.role}</h4>

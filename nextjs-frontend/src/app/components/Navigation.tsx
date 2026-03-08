@@ -2,10 +2,17 @@
 
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Github, Grid2X2, X } from "lucide-react";
+import { Github, Grid2X2, X, Instagram, Linkedin, MessageCircle } from "lucide-react";
+
+const socialLinks = [
+  { icon: <Linkedin size={16} />, href: "https://www.linkedin.com/in/muhamad-arkan-fauzi-5a6799380/", label: "LinkedIn", hoverClass: "hover:text-[#0A66C2]" },
+  { icon: <Instagram size={16} />, href: "https://instagram.com/arkan_fzi", label: "Instagram", hoverClass: "hover:text-[#E1306C]" },
+  { icon: <MessageCircle size={16} />, href: "https://wa.me/6281332314854", label: "WhatsApp", hoverClass: "hover:text-[#25D366]" },
+  { icon: <Github size={16} />, href: "https://github.com/ArkanFzi", label: "GitHub", hoverClass: "hover:text-white" },
+];
 
 const links = [
-  { label: "PROFIL", href: "/#about" },
+  { label: "HOME", href: "/" },
   { label: "REKAM", href: "/#projects" },
   { label: "KONTAK", href: "/#contact" },
   { label: "DOSSIER", href: "/dossier" },
@@ -39,16 +46,16 @@ const Navigation = () => {
       >
         <div className="max-w-[1400px] mx-auto px-6 md:px-8 flex items-center justify-between">
           {/* Brand */}
-          <a href="#hero" className="flex items-center gap-2 group z-50 relative">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <a href="#hero" className="flex items-center gap-3 group z-50 relative">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M12 3L21 20H3L12 3Z" className="group-hover:fill-white/20 transition-all" />
               <circle cx="12" cy="14" r="2" fill="currentColor" />
             </svg>
-            <span className="font-semibold tracking-[0.1em] text-sm">Fz.</span>
+            <span className="font-semibold tracking-[0.1em] text-base">Fz.</span>
           </a>
 
           {/* Center Links (Desktop) */}
-          <nav className="hidden md:flex items-center gap-12">
+          <nav className="hidden md:flex items-center gap-14">
             {links.map((l) => {
               const isActive = active === l.href.substring(1);
               return (
@@ -56,7 +63,7 @@ const Navigation = () => {
                   key={l.href}
                   href={l.href}
                   onClick={() => setActive(l.href.substring(1))}
-                  className={`text-[10px] tracking-[0.2em] font-medium uppercase transition-colors relative ${isActive ? "text-white" : "text-white/60 hover:text-white"
+                  className={`text-xs tracking-[0.25em] font-medium uppercase transition-colors relative ${isActive ? "text-white" : "text-white/60 hover:text-white"
                     }`}
                 >
                   {l.label}
@@ -70,20 +77,27 @@ const Navigation = () => {
 
           {/* Right Area */}
           <div className="flex items-center gap-4 md:gap-6 z-50 relative">
-            <a href="https://github.com/ArkanFzi" target="_blank" rel="noopener noreferrer"
-              className="hidden md:flex items-center gap-2 text-[10px] tracking-[0.2em] uppercase text-white/80 hover:text-white transition-opacity">
-              <span>| GitHub</span>
-              <Github size={14} />
-            </a>
+            <div className="hidden lg:flex items-center gap-7 mr-6 border-r border-white/20 pr-8">
+              {socialLinks.map((social, idx) => (
+                <a 
+                  key={idx} 
+                  href={social.href} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className={`text-white/50 transition-colors hover:scale-110 transform p-2 rounded-lg hover:bg-white/5 border border-transparent hover:border-white/10 ${social.hoverClass}`}
+                  title={social.label}
+                >
+                  {React.cloneElement(social.icon, { size: 22 })}
+                </a>
+              ))}
+            </div>
 
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="w-10 h-10 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-sm transition-colors border border-white/10 md:hidden"
+              className="lg:hidden w-10 h-10 flex shrink-0 items-center justify-center bg-white/5 hover:bg-white/10 rounded-sm transition-colors border border-white/10 cursor-pointer"
+              aria-label="Toggle Menu"
             >
               {isMobileMenuOpen ? <X size={16} strokeWidth={1} /> : <Grid2X2 size={16} strokeWidth={1} />}
-            </button>
-            <button className="hidden md:flex w-10 h-10 items-center justify-center bg-white/5 hover:bg-white/10 rounded-sm transition-colors border border-white/10">
-              <Grid2X2 size={16} strokeWidth={1} />
             </button>
           </div>
         </div>
@@ -97,7 +111,7 @@ const Navigation = () => {
             animate={{ opacity: 1, backdropFilter: "blur(12px)" }}
             exit={{ opacity: 0, backdropFilter: "blur(0px)" }}
             transition={{ duration: 0.4 }}
-            className="fixed inset-0 z-40 bg-black/95 flex flex-col justify-center items-center md:hidden"
+            className="fixed inset-0 z-40 bg-black/95 flex flex-col justify-center items-center"
           >
             <nav className="flex flex-col items-center gap-8">
               {links.map((l, i) => (
@@ -117,19 +131,24 @@ const Navigation = () => {
                   {l.label}
                 </motion.a>
               ))}
-              <motion.a
-                href="https://github.com/ArkanFzi"
-                target="_blank"
-                rel="noopener noreferrer"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                transition={{ delay: 0.3, duration: 0.4 }}
-                className="mt-8 flex items-center gap-3 text-sm tracking-[0.2em] uppercase text-white/60 hover:text-white transition-colors"
-              >
-                <Github size={20} />
-                <span>GitHub</span>
-              </motion.a>
+              
+              <div className="mt-8 flex gap-6 pt-5 border-t border-white/10 text-white/60 w-full justify-center">
+                {socialLinks.map((social, idx) => (
+                  <motion.a
+                    key={idx}
+                    href={social.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    transition={{ delay: 0.3 + (idx * 0.1), duration: 0.4 }}
+                    className={`transition-colors p-3 bg-white/5 rounded-full border border-white/10 hover:border-white/50 ${social.hoverClass}`}
+                  >
+                    {React.cloneElement(social.icon, { size: 20 })}
+                  </motion.a>
+                ))}
+              </div>
             </nav>
           </motion.div>
         )}

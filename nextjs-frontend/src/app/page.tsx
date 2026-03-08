@@ -9,6 +9,7 @@ import About from "./components/About";
 import Projects from "./components/Projects";
 import Contact from "./components/Contact";
 import Footer from "./components/Footer";
+import GlobalScrollNav from "./components/GlobalScrollNav";
 
 export default function Home() {
   return (
@@ -29,6 +30,9 @@ export default function Home() {
         <Contact />
         <Footer />
       </div>
+
+      {/* Global Sticky Overlays */}
+      <GlobalScrollNav />
     </main>
   );
 }

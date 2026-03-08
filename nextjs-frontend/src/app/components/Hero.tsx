@@ -7,48 +7,34 @@ const Hero: React.FC = () => {
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
-    // If the app was already booted in this session, start immediately
+    // Boot Logic
     if (sessionStorage.getItem("booted") === "true") {
-      setIsReady(true);
+      setTimeout(() => setIsReady(true), 0);
     } else {
-      // Otherwise wait for the preloader to finish
       const handleBoot = () => setIsReady(true);
       window.addEventListener("app-booted", handleBoot);
-      return () => window.removeEventListener("app-booted", handleBoot);
+      return () => {
+        window.removeEventListener("app-booted", handleBoot);
+      };
     }
   }, []);
 
   return (
     <section id="hero" className="relative w-full h-[100vh] flex flex-col justify-center items-center overflow-hidden">
-      {/* ── Background Video Layer ── */}
+      {/* ── Background Image Layer ── */}
       <div className="absolute inset-0 z-0 overflow-hidden">
-        <video
-          className="w-full h-full object-cover"
-          autoPlay
-          muted
-          loop
-          playsInline
-          preload="auto"
-          aria-hidden="true"
-        >
-          <source src="/hero-bg.mp4" type="video/mp4" />
-        </video>
+        <img
+          src="https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&q=80&w=2000"
+          alt="Dark Geometric Building Corner"
+          className="w-full h-full object-cover object-center opacity-[0.7] grayscale"
+        />
         {/* Dark overlay to preserve legibility */}
-        <div className="absolute inset-0 bg-[#050a07]/70" />
+        <div className="absolute inset-0 bg-[#050a07]/60 mix-blend-multiply" />
       </div>
       {/* Bottom fade to match the section transition */}
       <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[var(--bg)] to-transparent z-10" />
 
       {/* ── UI Elements matching reference ── */}
-
-      {/* Left Vertical Nav Indicators */}
-      <div className="absolute left-10 top-1/2 -translate-y-1/2 hidden lg:flex flex-col items-center gap-10 z-20">
-        <span className="text-[9px] text-white/40 tracking-[0.2em] transform -rotate-90">04</span>
-        <div className="w-[1px] h-12 bg-white/20" />
-        <span className="text-[9px] text-white tracking-[0.2em] transform -rotate-90">01</span>
-        <div className="w-[1px] h-12 bg-white/20" />
-        <span className="text-[9px] text-white/40 tracking-[0.2em] transform -rotate-90">02</span>
-      </div>
 
       {/* Right Vertical Text */}
       <div className="absolute right-10 bottom-32 hidden lg:block z-20">
@@ -86,30 +72,6 @@ const Hero: React.FC = () => {
         </motion.div>
 
       </div>
-
-      {/* Bottom Icons (Left arrow down, Right social dots) */}
-      <div className="absolute bottom-10 left-10 z-20 flex flex-col gap-2">
-        <div className="w-8 h-8 rounded-full border border-white/20 flex items-center justify-center bg-black/20 backdrop-blur-sm cursor-pointer hover:bg-white/10 transition-colors">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 5V19M19 12L12 19L5 12" />
-          </svg>
-        </div>
-        <div className="w-8 h-8 rounded-full border border-white/20 flex items-center justify-center bg-black/20 backdrop-blur-sm cursor-pointer hover:bg-white/10 transition-colors">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 19V5M5 12L12 5L19 12" />
-          </svg>
-        </div>
-      </div>
-
-      <div className="absolute bottom-10 right-10 z-20 flex gap-3">
-        {[1, 2, 3].map((i) => (
-          <a key={i} href="#" className="w-6 h-6 rounded-full border border-white/20 flex items-center justify-center bg-black/20 hover:bg-white/10 transition-colors">
-            {/* Using simple dots to replicate reference small icons */}
-            <span className="w-1 h-1 bg-white/70 rounded-full" />
-          </a>
-        ))}
-      </div>
-
     </section>
   );
 };

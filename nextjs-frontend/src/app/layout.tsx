@@ -1,5 +1,12 @@
 import type { Metadata } from "next";
+import { Inter } from "next/font/google";
 import "./globals.css";
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--f-sans",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "M. Arkan Fauzi — Software Engineer Portfolio",
@@ -18,12 +25,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning className={`${inter.variable}`}>
       <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </head>
-      <body className="antialiased" style={{ fontFamily: "var(--font-body)" }}>
+      <body className="antialiased font-sans">
         {children}
       </body>
     </html>

@@ -1,11 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"time"
 
+	"github.com/arkanFzi/website-porto2/go-backend/mailer"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -126,8 +128,38 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"message": "deleted"})
 	})
 
+	//api contact
+	api.POST("/contact", func(c *gin.Context) {
+		var msg struct {
+			Name    string `json:"name"`
+			Email   string `json:"email"`
+			Subject string `json:"subject"`
+			Body    string `json:"body"`
+		}
+
+		if err := c.ShouldBindJSON(&msg); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Format data salah"})
+			return
+		}
+
+		adminEmail := "muhammadarkanfauzi9@gmail.com"
+
+		fullBody := fmt.Sprintf("Pesan dari: %s (%s)\n\nIsi Pesan:\n%s", msg.Name, msg.Email, msg.Body)
+
+		go func() {
+			err := mailer.SendEmail(adminEmail, "Contact Form: "+msg.Subject, fullBody)
+			if err != nil {
+				fmt.Printf("Gagal kirim email: %v\n", err)
+			}
+		}()
+		c.JSON(http.StatusOK, gin.H{
+			"message": "Pesan kamu sedang dikirim, terima kasih!",
+		})
+	})
+
 	log.Println("Server running on port 8080")
 	r.Run(":8080")
+
 }
 
 func seedData() {

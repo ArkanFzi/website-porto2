@@ -46,15 +46,6 @@ const About: React.FC = () => {
       {/* Container max-width matching the reference */}
       <div className="max-w-[1400px] mx-auto px-6 md:px-8 relative z-10">
 
-        {/* Left Vertical Side Marker */}
-        <div className="absolute left-8 top-40 hidden lg:flex flex-col items-center gap-10">
-          <span className="text-[9px] text-white/40 tracking-[0.2em] transform -rotate-90">02</span>
-          <div className="w-[1px] h-12 bg-white/20" />
-          <span className="side-marker">PROFIL</span>
-          <div className="w-[1px] h-12 bg-white/20" />
-          <span className="text-[9px] text-white/40 tracking-[0.2em] transform -rotate-90">03</span>
-        </div>
-
         {/* Top Header Block */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 lg:ml-20 mt-16 lg:mt-32">
 

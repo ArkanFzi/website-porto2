@@ -18,11 +18,18 @@ const Contact: React.FC = () => {
     e.preventDefault();
     setIsLoading(true);
 
+    const payload = {
+      name: form.name,
+      email: form.email,
+      subject: `Visionary Project : ${form.name}`,
+      body: form.message
+    };
+
     try {
-      const res = await fetch("/api/contact", {
+      const res = await fetch("http://localhost:8080/api/contact", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form)
+        body: JSON.stringify(payload)
       });
 
       if (!res.ok) throw new Error("Failed to send message");
