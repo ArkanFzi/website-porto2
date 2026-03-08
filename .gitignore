@@ -66,6 +66,7 @@ packages/
 
 # VS Code/Omnisharp
 .omnisharp/
+.claude/
 
 Caddyfile
 docker-compose.yml
