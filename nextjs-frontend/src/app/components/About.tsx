@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from "react";
 import { motion, motionValue, useSpring } from "framer-motion";
-import { GITHUB_USERNAME } from "@/data/github";
 
 // --- GitHub Metrics State ---
 interface GitHubMetrics {
@@ -124,7 +123,7 @@ const About: React.FC = () => {
                   { label: "System Architecture", percent: 80 },
                 ].map((stat, i) => (
                   <div key={i} className="flex flex-col gap-3">
-                    <div className="flex justify-between text-[9px] tracking-[0.15em] text-white/50 uppercase font-semibold" style={{ fontFamily: "var(--f-sans)" }}>
+                    <div className="flex justify-between text-[9px] tracking-[0.15em] text-[#c49a56] uppercase font-semibold" style={{ fontFamily: "var(--f-sans)" }}>
                       <span>{stat.label}</span>
                       <span>{stat.percent}%</span>
                     </div>
@@ -134,7 +133,7 @@ const About: React.FC = () => {
                         whileInView={{ scaleX: 1 }}
                         viewport={{ once: true, margin: "-50px" }}
                         transition={{ duration: 1.5, delay: 0.4 + (i * 0.15), ease: [0.16, 1, 0.3, 1] }}
-                        className="absolute inset-y-0 left-0 bg-white origin-left"
+                        className="absolute inset-y-0 left-0 bg-[#ff5500] origin-left"
                         style={{ width: `${stat.percent}%` }}
                       />
                     </div>
@@ -142,12 +141,12 @@ const About: React.FC = () => {
                 ))}
               </div>
 
-              <a href="#contact" className="inline-flex items-center gap-2 text-[12px] tracking-[0.1em] text-white font-medium hover:text-white/70 transition-colors uppercase">
+              <a href="#contact" className="inline-flex items-center gap-2 text-[12px] tracking-[0.1em] text-[#c49a56] font-medium hover:text-[#ff5500] transition-colors uppercase">
                 <span className="relative overflow-hidden group/link flex items-center gap-2">
                   <span className="transform transition-transform duration-300 group-hover/link:translate-x-1">+</span>
                   <span className="relative">
                     HUBUNGI SAYA
-                    <span className="absolute -bottom-1 left-0 w-0 h-[1px] bg-white transition-all duration-300 group-hover/link:w-full"></span>
+                    <span className="absolute -bottom-1 left-0 w-0 h-[1px] bg-[#ff5500] transition-all duration-300 group-hover/link:w-full"></span>
                   </span>
                 </span>
               </a>
@@ -258,10 +257,10 @@ function MagneticMetricBox({ value, label, sub, index }: { value: string, label:
           {value}
         </h4>
         <div className="flex flex-col gap-0.5">
-          <span className="text-[8px] lg:text-[9px] text-white/50 tracking-[0.2em] uppercase font-semibold">
+          <span className="text-[8px] lg:text-[9px] text-[#c49a56] tracking-[0.2em] uppercase font-semibold">
             {label}
           </span>
-          <span className="text-[7px] text-white/30 tracking-[0.15em] uppercase">
+          <span className="text-[7px] text-[#ff5500] tracking-[0.15em] uppercase">
             {sub}
           </span>
         </div>

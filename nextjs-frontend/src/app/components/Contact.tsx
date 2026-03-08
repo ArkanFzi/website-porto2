@@ -64,7 +64,7 @@ const Contact: React.FC = () => {
 
       {/* Ambient Glows */}
       <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-[#c49a56]/10 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-[#1a5c3a]/10 rounded-full blur-[100px] pointer-events-none" />
+      <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-[#ff5500]/10 rounded-full blur-[100px] pointer-events-none" />
 
       {/* Massive Edge-to-Edge Typography Background */}
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden opacity-5">
@@ -107,7 +107,7 @@ const Contact: React.FC = () => {
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 placeholder="your name"
-                className="inline-input focus:outline-none bg-transparent text-white border-b-2 border-white/20 focus:border-[#c49a56] transition-colors pb-1 md:pb-2 text-center w-[clamp(150px,25vw,350px)] placeholder-white/20 not-italic"
+                className="inline-input focus:outline-none bg-transparent text-white border-b-2 border-white/20 focus:border-[#ff5500] transition-colors pb-1 md:pb-2 text-center w-[clamp(150px,25vw,350px)] placeholder-white/20 not-italic"
                 style={{ fontFamily: "var(--f-sans)" }}
               />
             </div>
@@ -121,7 +121,7 @@ const Contact: React.FC = () => {
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
                 placeholder="your email"
-                className="inline-input focus:outline-none bg-transparent text-white border-b-2 border-white/20 focus:border-[#c49a56] transition-colors pb-1 md:pb-2 text-center w-[clamp(200px,30vw,450px)] placeholder-white/20 not-italic"
+                className="inline-input focus:outline-none bg-transparent text-white border-b-2 border-white/20 focus:border-[#ff5500] transition-colors pb-1 md:pb-2 text-center w-[clamp(200px,30vw,450px)] placeholder-white/20 not-italic"
                 style={{ fontFamily: "var(--f-sans)" }}
               />
             </div>
@@ -135,7 +135,7 @@ const Contact: React.FC = () => {
                 value={form.message}
                 onChange={(e) => setForm({ ...form, message: e.target.value })}
                 placeholder="your visionary project idea..."
-                className="inline-input focus:outline-none bg-transparent text-white border-b-2 border-white/20 focus:border-[#c49a56] transition-colors pb-1 md:pb-2 text-left lg:text-center w-full lg:w-[clamp(400px,40vw,800px)] placeholder-white/20 not-italic"
+                className="inline-input focus:outline-none bg-transparent text-white border-b-2 border-white/20 focus:border-[#ff5500] transition-colors pb-1 md:pb-2 text-left lg:text-center w-full lg:w-[clamp(400px,40vw,800px)] placeholder-white/20 not-italic"
                 style={{ fontFamily: "var(--f-sans)" }}
               />
             </div>

@@ -16,14 +16,31 @@ interface GitHubRepo {
   fork: boolean;
 }
 
-// Curated high-quality unsplash backgrounds for repose
-const REPO_BACKGROUNDS = [
-    "https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&q=80&w=2000",
-    "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&q=80&w=2000",
-    "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&q=80&w=2000",
-    "https://images.unsplash.com/photo-1504639725590-34d0984388bd?auto=format&fit=crop&q=80&w=2000",
-    "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&q=80&w=2000"
-];
+// Mapping of languages to their official logos (using Devicon) for the repo cards
+const getLanguageLogo = (language: string | null) => {
+  if (!language) return "https://images.unsplash.com/photo-1623282033815-40b05d96c903?auto=format&fit=crop&q=80&w=2000"; // Generic API/Code background
+
+  const langMap: Record<string, string> = {
+    "TypeScript": "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/typescript/typescript-original.svg",
+    "JavaScript": "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/javascript/javascript-original.svg",
+    "Go": "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/go/go-original.svg",
+    "Python": "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/python/python-original.svg",
+    "Dart": "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/dart/dart-original.svg",
+    "HTML": "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/html5/html5-original.svg",
+    "CSS": "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/css3/css3-original.svg",
+    "Java": "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/java/java-original.svg",
+    "C++": "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/cplusplus/cplusplus-original.svg",
+    "C#": "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/csharp/csharp-original.svg",
+    "PHP": "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/php/php-original.svg",
+    "Ruby": "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/ruby/ruby-original.svg",
+    "Swift": "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/swift/swift-original.svg",
+    "Kotlin": "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/kotlin/kotlin-original.svg",
+    "Rust": "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/rust/rust-original.svg",
+    "Vue": "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/vuejs/vuejs-original.svg",
+  };
+
+  return langMap[language] || "https://images.unsplash.com/photo-1623282033815-40b05d96c903?auto=format&fit=crop&q=80&w=2000";
+};
 
 export default function ReposPage() {
   const [items, setItems] = useState<CarouselItem[]>([]);
@@ -41,12 +58,12 @@ export default function ReposPage() {
 
         const top5 = filtered.slice(0, 5); // Take top 5 for the carousel so it's not overwhelming
 
-        const mappedItems: CarouselItem[] = top5.map((repo, idx) => {
+        const mappedItems: CarouselItem[] = top5.map((repo) => {
             return {
                 id: repo.id,
                 title: repo.name,
                 subtitle: repo.language || "Open Source",
-                imageUrl: REPO_BACKGROUNDS[idx % REPO_BACKGROUNDS.length],
+                imageUrl: getLanguageLogo(repo.language),
                 metrics: (
                     <div className="flex items-center gap-6 mt-4">
                         <span className="flex items-center gap-2 font-mono text-xl"><Star className="w-5 h-5 text-yellow-500" /> {repo.stargazers_count}</span>

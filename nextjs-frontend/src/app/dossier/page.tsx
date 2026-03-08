@@ -4,6 +4,7 @@ import React from "react";
 import { motion } from "framer-motion";
 import Navigation from "@/app/components/Navigation";
 import DataCards from "@/components/Dossier/DataCards";
+import SuperCTA from "@/components/Dossier/SuperCTA";
 
 // Remove metadata export since this is now a client component
 // export const metadata = {
@@ -13,7 +14,7 @@ import DataCards from "@/components/Dossier/DataCards";
 
 export default function DossierPage() {
     return (
-        <main className="w-full bg-[#111111] min-h-screen text-white font-sans selection:bg-[#ff5500]/30 overflow-x-hidden">
+        <main className="w-full bg-[#111111] min-h-screen text-white font-sans selection:bg-[#c49a56]/30 overflow-x-hidden">
             <div className="fixed top-0 z-[1000] w-full">
                 <Navigation />
             </div>
@@ -158,6 +159,8 @@ export default function DossierPage() {
                 <DataCards />
             </motion.section>
             </section>
+
+            <SuperCTA />
         </main>
     );
 }

@@ -1,8 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Github, ExternalLink, ChevronLeft, ChevronRight } from "lucide-react";
-import { staticProjects } from "@/data/projects";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import Diamond3D from "@/components/UI/Diamond3D";
 
 interface GitHubRepo {
@@ -56,11 +55,11 @@ const Projects: React.FC = () => {
             willChange: "transform",
           }}
         />
-        {/* Blob 2: Deep Emerald (center, drifts up) */}
+        {/* Blob 2: Deep Orange (center, drifts up) */}
         <div
           className="absolute w-[700px] h-[700px] rounded-full opacity-[0.06] blur-[140px]"
           style={{
-            background: "radial-gradient(circle, #1a5c3a 0%, transparent 70%)",
+            background: "radial-gradient(circle, #ff5500 0%, transparent 70%)",
             top: "30%",
             left: "40%",
             animation: "meshDrift2 22s ease-in-out infinite alternate",
@@ -78,11 +77,11 @@ const Projects: React.FC = () => {
             willChange: "transform",
           }}
         />
-        {/* Blob 4: Subtle Teal accent (center-left) */}
+        {/* Blob 4: Subtle Red accent (center-left) */}
         <div
           className="absolute w-[400px] h-[400px] rounded-full opacity-[0.04] blur-[100px]"
           style={{
-            background: "radial-gradient(circle, #2a8a6a 0%, transparent 70%)",
+            background: "radial-gradient(circle, #cc4400 0%, transparent 70%)",
             top: "60%",
             left: "10%",
             animation: "meshDrift1 25s ease-in-out infinite alternate-reverse",
@@ -159,7 +158,7 @@ const Projects: React.FC = () => {
                       {repo.name.replace(/[-_]/g, " ")}
                     </h3>
                     {repo.language && (
-                      <span className="text-[8px] uppercase tracking-[0.3em] font-bold text-[#c49a56]">
+                      <span className="text-[8px] uppercase tracking-[0.3em] font-bold text-[#ff5500]">
                         {repo.language}
                       </span>
                     )}
