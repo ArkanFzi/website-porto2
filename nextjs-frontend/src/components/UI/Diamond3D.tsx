@@ -1,6 +1,6 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import { Canvas, useFrame, invalidate } from "@react-three/fiber";
-import { Float, Environment, useTexture } from "@react-three/drei";
+import { Float, Environment, Lightformer } from "@react-three/drei";
 import * as THREE from "three";
 
 // Map languages to official Devicon SVG URLs (CORS-friendly and transparent)
@@ -25,18 +25,26 @@ function getTextureUrl(language?: string | null) {
 function DiamondMesh({ language }: { language?: string | null }) {
     const meshRef = useRef<THREE.Group>(null);
     const [hovered, setHover] = useState(false);
+    const [texture, setTexture] = useState<THREE.Texture | null>(null);
 
     const textureUrl = getTextureUrl(language);
-    const texture = useTexture(textureUrl);
 
-    // Provide proper color mapping for icons
-    React.useLayoutEffect(() => {
-        if (texture) {
-            texture.colorSpace = THREE.SRGBColorSpace;
-            texture.generateMipmaps = true;
-            texture.needsUpdate = true;
-        }
-    }, [texture]);
+    useEffect(() => {
+        const loader = new THREE.TextureLoader();
+        loader.load(
+            textureUrl,
+            (tex) => {
+                tex.colorSpace = THREE.SRGBColorSpace;
+                tex.generateMipmaps = true;
+                setTexture(tex);
+                invalidate(); // Trigger a re-render when texture is loaded
+            },
+            undefined,
+            (err) => {
+                console.error("Error loading texture:", err);
+            }
+        );
+    }, [textureUrl]);
 
     useFrame((state, delta) => {
         if (meshRef.current) {
@@ -67,15 +75,17 @@ function DiamondMesh({ language }: { language?: string | null }) {
                 onPointerOut={() => setHover(false)}
             >
                 {/* Floating sprite inside that always faces camera */}
-                <sprite scale={[1.6, 1.6, 1.6]}>
-                    <spriteMaterial
-                        map={texture}
-                        transparent={true}
-                        opacity={0.9}
-                        depthWrite={false}
-                        depthTest={false} // Will always render on top
-                    />
-                </sprite>
+                {texture && (
+                    <sprite scale={[1.6, 1.6, 1.6]}>
+                        <spriteMaterial
+                            map={texture}
+                            transparent={true}
+                            opacity={0.9}
+                            depthWrite={false}
+                            depthTest={false} // Will always render on top
+                        />
+                    </sprite>
+                )}
 
                 {/* Outer Glass Diamond */}
                 <mesh castShadow receiveShadow>
@@ -122,10 +132,16 @@ export default function Diamond3D({ language }: { language?: string | null }) {
                 <directionalLight position={[10, 10, 5]} intensity={2} />
                 <directionalLight position={[-10, -10, -5]} intensity={1} color="#c49a56" />
 
-                <React.Suspense fallback={null}>
-                    <DiamondMesh language={language} />
-                    <Environment preset="apartment" />
-                </React.Suspense>
+                <DiamondMesh language={language} />
+                <Environment resolution={256}>
+                    <group rotation={[-Math.PI / 2, 0, 0]}>
+                        <Lightformer intensity={4} rotation-x={Math.PI / 2} position={[0, 5, -9]} scale={[10, 10, 1]} />
+                        <Lightformer intensity={2} rotation-y={Math.PI / 2} position={[-5, 1, -1]} scale={[10, 2, 1]} />
+                        <Lightformer intensity={2} rotation-y={-Math.PI / 2} position={[5, 1, -1]} scale={[10, 2, 1]} />
+                        <Lightformer intensity={2} rotation-y={-Math.PI / 2} position={[0, 1, 9]} scale={[10, 2, 1]} />
+                        <Lightformer intensity={2} position={[0, -5, 0]} scale={[10, 10, 1]} />
+                    </group>
+                </Environment>
             </Canvas>
         </div>
     );

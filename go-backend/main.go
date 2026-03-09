@@ -10,10 +10,39 @@ import (
 	"github.com/arkanFzi/website-porto2/go-backend/mailer"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/joho/godotenv"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
+
+var jwtSecret = []byte("elaris-noir-super-secret-key-2026")
+
+// AuthMiddleware validates JWT tokens for protected routes
+func AuthMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			c.Abort()
+			return
+		}
+		tokenString := authHeader[7:]
+		token, err := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("unexpected signing method")
+			}
+			return jwtSecret, nil
+		})
+
+		if err != nil || !token.Valid {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
 
 // -- Models --
 
@@ -79,17 +108,55 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 
-	// -- API Routes --
+	// --- Public API Routes ---
 	api := r.Group("/api")
 
-	// Certificates
+	// Login Route
+	api.POST("/login", func(c *gin.Context) {
+		var creds struct {
+			Username string `json:"username"`
+			Password string `json:"password"`
+		}
+		if err := c.ShouldBindJSON(&creds); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid payload"})
+			return
+		}
+
+		// Hardcoded admin credentials for portfolio
+		if creds.Username == "admin" && creds.Password == "admin123" {
+			token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+				"username": creds.Username,
+				"exp":      time.Now().Add(time.Hour * 24).Unix(), // 1 day expiration
+			})
+			tokenString, err := token.SignedString(jwtSecret)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not generate token"})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"token": tokenString})
+		} else {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
+		}
+	})
+
+	// Public GET routes
 	api.GET("/certificates", func(c *gin.Context) {
 		var certs []Certificate
 		DB.Order("created_at desc").Find(&certs)
 		c.JSON(http.StatusOK, certs)
 	})
 
-	api.POST("/certificates", func(c *gin.Context) {
+	api.GET("/experience", func(c *gin.Context) {
+		var exps []Experience
+		DB.Order("created_at desc").Find(&exps)
+		c.JSON(http.StatusOK, exps)
+	})
+
+	// --- Protected API Routes ---
+	protected := api.Group("/")
+	protected.Use(AuthMiddleware())
+
+	protected.POST("/certificates", func(c *gin.Context) {
 		var cert Certificate
 		if err := c.ShouldBindJSON(&cert); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -99,20 +166,13 @@ func main() {
 		c.JSON(http.StatusCreated, cert)
 	})
 
-	api.DELETE("/certificates/:id", func(c *gin.Context) {
+	protected.DELETE("/certificates/:id", func(c *gin.Context) {
 		id := c.Param("id")
 		DB.Delete(&Certificate{}, "id = ?", id)
 		c.JSON(http.StatusOK, gin.H{"message": "deleted"})
 	})
 
-	// Experiences
-	api.GET("/experience", func(c *gin.Context) {
-		var exps []Experience
-		DB.Order("created_at desc").Find(&exps)
-		c.JSON(http.StatusOK, exps)
-	})
-
-	api.POST("/experience", func(c *gin.Context) {
+	protected.POST("/experience", func(c *gin.Context) {
 		var exp Experience
 		if err := c.ShouldBindJSON(&exp); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -122,7 +182,7 @@ func main() {
 		c.JSON(http.StatusCreated, exp)
 	})
 
-	api.DELETE("/experience/:id", func(c *gin.Context) {
+	protected.DELETE("/experience/:id", func(c *gin.Context) {
 		id := c.Param("id")
 		DB.Delete(&Experience{}, "id = ?", id)
 		c.JSON(http.StatusOK, gin.H{"message": "deleted"})
