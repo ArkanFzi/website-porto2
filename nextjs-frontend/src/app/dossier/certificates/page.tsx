@@ -24,7 +24,7 @@ export default function CertificatesPage() {
     const [allCerts, setAllCerts] = useState<Certificate[]>([]);
 
     useEffect(() => {
-        fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'}/api/certificates`)
+        fetch(`/api/certificates`)
             .then((r) => r.ok ? r.json() : [])
             .then((data: Certificate[]) => {
                 setAllCerts(data);

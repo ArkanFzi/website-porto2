@@ -28,8 +28,8 @@ export default function AdminDashboard() {
         setLoading(true);
         try {
             const [cRes, eRes] = await Promise.all([
-                fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'}/api/certificates`),
-                fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'}/api/experience`)
+                fetch(`/api/certificates`),
+                fetch(`/api/experience`)
             ]);
             const cData = await cRes.json();
             const eData = await eRes.json();
@@ -55,7 +55,7 @@ export default function AdminDashboard() {
         e.preventDefault();
         setLoginError("");
         try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'}/api/login`, {
+            const res = await fetch(`/api/login`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(loginForm)
@@ -83,7 +83,7 @@ export default function AdminDashboard() {
         e.preventDefault();
         try {
             const token = localStorage.getItem("admin_token");
-            await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'}/api/certificates`, {
+            await fetch(`/api/certificates`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -102,7 +102,7 @@ export default function AdminDashboard() {
         if (!confirm("Are you sure you want to delete this certificate?")) return;
         try {
             const token = localStorage.getItem("admin_token");
-            await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'}/api/certificates/${id}`, {
+            await fetch(`/api/certificates/${id}`, {
                 method: "DELETE",
                 headers: { "Authorization": `Bearer ${token}` }
             });
@@ -116,7 +116,7 @@ export default function AdminDashboard() {
         e.preventDefault();
         try {
             const token = localStorage.getItem("admin_token");
-            await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'}/api/experience`, {
+            await fetch(`/api/experience`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -135,7 +135,7 @@ export default function AdminDashboard() {
         if (!confirm("Are you sure you want to delete this experience?")) return;
         try {
             const token = localStorage.getItem("admin_token");
-            await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'}/api/experience/${id}`, {
+            await fetch(`/api/experience/${id}`, {
                 method: "DELETE",
                 headers: { "Authorization": `Bearer ${token}` }
             });

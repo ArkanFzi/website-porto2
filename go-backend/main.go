@@ -100,7 +100,7 @@ func main() {
 
 	// CORS Setup - Allow the Next.js frontend to access
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000"}, // Next.js port
+		AllowOrigins:     []string{"http://localhost:3000", "https://arkfazone-portofolio.elarisnoir.my.id"}, // Next.js port
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},

@@ -236,14 +236,14 @@ export default function DataCards() {
             .finally(() => setLoadingGh(false));
 
         // Fetch Certificates from Go Backend
-        fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'}/api/certificates`)
+        fetch(`/api/certificates`)
             .then((r) => r.ok ? r.json() : [])
             .then((data: Certificate[]) => setCerts(data))
             .catch((e) => console.error(e))
             .finally(() => setLoadingCerts(false));
 
         // Fetch Experiences from Go Backend
-        fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'}/api/experience`)
+        fetch(`/api/experience`)
             .then((r) => r.ok ? r.json() : [])
             .then((data: Experience[]) => setExperiences(data))
             .catch((e) => console.error(e))

@@ -24,7 +24,7 @@ export default function ExperiencePage() {
     const [allExp, setAllExp] = useState<Experience[]>([]);
 
     useEffect(() => {
-        fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'}/api/experience`)
+        fetch(`/api/experience`)
             .then((r) => r.ok ? r.json() : [])
             .then((data: Experience[]) => {
                 setAllExp(data);
