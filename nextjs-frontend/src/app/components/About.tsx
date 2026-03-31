@@ -58,9 +58,8 @@ const About: React.FC = () => {
               className="title-font text-[clamp(40px,5vw,56px)] leading-[1.1] text-white"
             >
               {[
-                { text: "KISAH", delay: 0.1 },
-                { text: "DIMULAI", delay: 0.2 },
-                { text: "DI SINI", delay: 0.3 }
+                { text: "KISAH DIMULAI", delay: 0.1 },
+                { text: "DI SINI", delay: 0.2 }
               ].map((line, i) => (
                 <span key={i} className="block overflow-hidden">
                   <motion.span
@@ -83,14 +82,14 @@ const About: React.FC = () => {
               whileInView={{ clipPath: "inset(0% 0% 0% 0%)" }}
               viewport={{ once: true, margin: "-100px" }}
               transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
-              className="w-full aspect-[16/9] relative overflow-hidden group"
+              className="w-full aspect-[3/4] relative overflow-hidden group"
             >
               <motion.div
-                initial={{ scale: 1.2 }}
+                initial={{ scale: 1.1 }}
                 whileInView={{ scale: 1 }}
                 viewport={{ once: true, margin: "-100px" }}
                 transition={{ duration: 1.5, ease: "easeOut" }}
-                className="absolute inset-0 bg-cover bg-top transition-transform duration-1000 group-hover:scale-105"
+                className="absolute inset-0 bg-cover bg-[center_5%] transition-transform duration-1000 group-hover:scale-105"
                 style={{ backgroundImage: "url('/FotoDiriFix.png')" }}
               />
               <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors duration-1000" />
@@ -98,7 +97,7 @@ const About: React.FC = () => {
           </div>
 
           {/* RIGHT COLUMN: Text & Link */}
-          <div className="flex flex-col justify-center max-w-lg lg:ml-10">
+          <div className="flex flex-col justify-start max-w-lg lg:ml-10 lg:pt-2">
             <motion.div
               initial={{ opacity: 0, y: 30 }}
               whileInView={{ opacity: 1, y: 0 }}
@@ -150,27 +149,26 @@ const About: React.FC = () => {
                   </span>
                 </span>
               </a>
+              {/* Technical Specs Metrics Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-12 w-full">
+                {[
+                  { value: reposCount, label: "REPOS", sub: "PUBLIC & PRIVATE" },
+                  { value: "90%", label: "TS/JS", sub: "PRIMARY LANG" },
+                  { value: followersCount, label: "FOLLOWERS", sub: "DEV NETWORK" },
+                  { value: starsCount, label: "STARS", sub: "TOTAL APPROVALS" },
+                  { value: "5+", label: "DEPLOY", sub: "PRODUCTION" },
+                  { value: "∞", label: "COFFEE", sub: "CONSUMED" },
+                ].map((metric, i) => (
+                  <MagneticMetricBox key={i} {...metric} index={i} />
+                ))}
+              </div>
             </motion.div>
           </div>
 
         </div>
 
-        {/* BOTTOM ROW: Live Dev Metrics (Magnetic Panel) */}
-        <div className="mt-24 lg:ml-20 flex gap-4 overflow-x-auto pb-12 snap-x scrollbar-hide items-center">
-          <div className="shrink-0 text-[10px] text-white/30 tracking-[0.2em] transform -rotate-90 uppercasemr-4 lg:hidden">
-            Metrics
-          </div>
-          {[
-            { value: reposCount, label: "REPOSITORIES", sub: "Public & Private" },
-            { value: "90%", label: "TYPESCRIPT", sub: "Primary Lang" },
-            { value: followersCount, label: "FOLLOWERS", sub: "Dev Network" },
-            { value: starsCount, label: "STARGAZERS", sub: "Repo Approvals" },
-            { value: "5+", label: "DEPLOYMENTS", sub: "Production" },
-            { value: "∞", label: "COFFEE", sub: "Consumed" },
-          ].map((metric, i) => (
-            <MagneticMetricBox key={i} {...metric} index={i} />
-          ))}
-        </div>
+        {/* BOTTOM ROW: Removed as metrics are now integrated above */}
+
 
         {/* Right Extreme Edge Hidden Text (Matches the vertical text on the right) */}
         <div className="absolute right-8 top-1/2 -translate-y-1/2 hidden xl:block">
@@ -248,19 +246,19 @@ function MagneticMetricBox({ value, label, sub, index }: { value: string, label:
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
         style={{ x: springX, y: springY }}
-        className="w-28 h-28 lg:w-36 lg:h-36 bg-[#0c1410] snap-start relative group cursor-pointer border border-white/5 transition-transform duration-300 hover:scale-110 hover:z-10 hover:border-white/20 flex flex-col items-center justify-center text-center p-2 isolate"
+        className="w-full aspect-square bg-[#0c1410] relative group cursor-pointer border border-white/5 transition-all duration-300 hover:scale-105 hover:z-10 hover:border-[#c49a56]/30 flex flex-col items-center justify-center text-center p-1.5 isolate"
       >
         {/* Subtle glass reflection overlay */}
-        <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500 -z-10" />
+        <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-[#c49a56]/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 -z-10" />
 
-        <h4 className="text-white text-3xl lg:text-4xl font-light mb-2 lg:mb-3" style={{ fontFamily: "var(--f-sans)", letterSpacing: "-0.05em" }}>
+        <h4 className="text-white text-xl lg:text-2xl font-light mb-1 lg:mb-2" style={{ fontFamily: "var(--f-sans)", letterSpacing: "-0.05em" }}>
           {value}
         </h4>
         <div className="flex flex-col gap-0.5">
-          <span className="text-[8px] lg:text-[9px] text-[#c49a56] tracking-[0.2em] uppercase font-semibold">
+          <span className="text-[6px] lg:text-[7px] text-[#c49a56] tracking-[0.2em] uppercase font-bold leading-tight">
             {label}
           </span>
-          <span className="text-[7px] text-[#ff5500] tracking-[0.15em] uppercase">
+          <span className="text-[5px] lg:text-[6px] text-[#ff5500] tracking-[0.15em] uppercase opacity-70">
             {sub}
           </span>
         </div>

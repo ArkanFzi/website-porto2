@@ -32,8 +32,7 @@ export default function SuperCTA() {
                 </Link>
                 
                 <a 
-                    href="/cv.pdf" 
-                    target="_blank"
+                    href="/api/cv" 
                     className="inline-flex items-center justify-center px-10 py-5 font-bold uppercase tracking-widest text-white border border-white/20 hover:border-white/60 hover:bg-white/5 rounded-full transition-all"
                 >
                     Unduh CV (PDF)

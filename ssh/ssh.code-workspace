@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"name": "SSH FS - server-arkan",
+			"uri": "ssh://server-arkan/home/arkan"
+		}
+	],
+	"settings": {}
+}
