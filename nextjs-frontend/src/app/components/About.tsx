@@ -90,8 +90,8 @@ const About: React.FC = () => {
                 whileInView={{ scale: 1 }}
                 viewport={{ once: true, margin: "-100px" }}
                 transition={{ duration: 1.5, ease: "easeOut" }}
-                className="absolute inset-0 bg-cover bg-center transition-transform duration-1000 group-hover:scale-105"
-                style={{ backgroundImage: "url('https://images.unsplash.com/photo-1444703686981-a3abbc4d4fe3?q=80&w=2000&auto=format&fit=crop')" }}
+                className="absolute inset-0 bg-cover bg-top transition-transform duration-1000 group-hover:scale-105"
+                style={{ backgroundImage: "url('/FotoDiriFix.png')" }}
               />
               <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors duration-1000" />
             </motion.div>
