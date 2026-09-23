@@ -1,0 +1,126 @@
+name: Build, Test and Deploy to Cloud Run
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  PROJECT_ID: config-agentic-ubuntu
+  REGION: us-central1
+  AR_REPO: portfolio-app
+  AR_REGISTRY: us-central1-docker.pkg.dev
+  SERVICE_ACCOUNT: github-cd@config-agentic-ubuntu.iam.gserviceaccount.com
+  WIF_PROVIDER: projects/486641216758/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+  VPC_CONNECTOR: portfolio-connector
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.3
+
+      - name: Setup Go
+        uses: actions/setup-go@0aaccfd150d50ccaeb58ebd88d36e91967a5f35b6 # v5.4.0
+        with:
+          go-version-file: go-backend/go.mod
+
+      - name: Go vet
+        working-directory: go-backend
+        run: go vet ./...
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: nextjs-frontend/package-lock.json
+
+      - name: Install frontend deps
+        working-directory: nextjs-frontend
+        run: npm ci
+
+      - name: Lint frontend
+        working-directory: nextjs-frontend
+        run: npm run lint
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.3
+
+      - name: Authenticate to Google Cloud via WIF
+        uses: google-github-actions/auth@71f568410b7cb240f1a8d2dada6992c36e3df1e4 # v2.1.8
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.SERVICE_ACCOUNT }}
+          token_format: access_token
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker $AR_REGISTRY --quiet
+
+      - name: Build and push backend image
+        run: |
+          IMG=$AR_REGISTRY/$PROJECT_ID/$AR_REPO/backend
+          docker build -t $IMG:${{ github.sha }} -t $IMG:latest ./go-backend
+          docker push $IMG:${{ github.sha }}
+          docker push $IMG:latest
+
+      - name: Build and push frontend image
+        run: |
+          IMG=$AR_REGISTRY/$PROJECT_ID/$AR_REPO/frontend
+          docker build -t $IMG:${{ github.sha }} -t $IMG:latest ./nextjs-frontend
+          docker push $IMG:${{ github.sha }}
+          docker push $IMG:latest
+
+      - name: Deploy backend to Cloud Run
+        run: |
+          IMG=$AR_REGISTRY/$PROJECT_ID/$AR_REPO/backend:${{ github.sha }}
+          DB_URL=$(gcloud secrets versions access latest --secret=portfolio-database-url --project=$PROJECT_ID)
+          JWT=$(gcloud secrets versions access latest --secret=portfolio-jwt-secret --project=$PROJECT_ID)
+          ADMIN_PASS=$(gcloud secrets versions access latest --secret=portfolio-admin-pass --project=$PROJECT_ID)
+          CORS=$(gcloud secrets versions access latest --secret=portfolio-cors-origins --project=$PROJECT_ID)
+          ADMIN_EMAIL=$(gcloud secrets versions access latest --secret=portfolio-admin-email --project=$PROJECT_ID)
+          gcloud run deploy portfolio-be \
+            --image $IMG \
+            --platform managed \
+            --region $REGION \
+            --vpc-connector $VPC_CONNECTOR \
+            --egress-internal-only \
+            --allow-unauthenticated \
+            --port 8080 \
+            --set-env-vars DATABASE_URL="$DB_URL",JWT_SECRET="$JWT",ADMIN_USER="admin",ADMIN_PASS="$ADMIN_PASS",ADMIN_EMAIL="$ADMIN_EMAIL" \
+            --set-env-vars CORS_ORIGINS="$CORS"
+
+      - name: Get backend URL
+        id: be_url
+        run: |
+          URL=$(gcloud run services describe portfolio-be --platform managed --region $REGION --format="value(status.url)")
+          echo "url=$URL" >> $GITHUB_OUTPUT
+
+      - name: Deploy frontend to Cloud Run
+        run: |
+          IMG=$AR_REGISTRY/$PROJECT_ID/$AR_REPO/frontend:${{ github.sha }}
+          gcloud run deploy portfolio-fe \
+            --image $IMG \
+            --platform managed \
+            --region $REGION \
+            --allow-unauthenticated \
+            --port 3000 \
+            --set-env-vars BACKEND_URL="${{ steps.be_url.outputs.url }}"
+
+      - name: Output service URLs
+        run: |
+          echo "Frontend: $(gcloud run services describe portfolio-fe --platform managed --region $REGION --format='value(status.url)')"
+          echo "Backend: ${{ steps.be_url.outputs.url }}"

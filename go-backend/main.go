@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/arkanFzi/website-porto2/go-backend/mailer"
@@ -16,7 +17,14 @@ import (
 	"gorm.io/gorm"
 )
 
-var jwtSecret = []byte("elaris-noir-super-secret-key-2026")
+var jwtSecret = []byte(getEnv("JWT_SECRET", "elaris-noir-super-secret-key-2026"))
+
+func getEnv(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
 
 // AuthMiddleware validates JWT tokens for protected routes
 func AuthMiddleware() gin.HandlerFunc {
@@ -98,9 +106,14 @@ func main() {
 
 	r := gin.Default()
 
+	corsOrigins := []string{"http://localhost:3000", "https://arkfazone-portofolio.elarisnoir.my.id"}
+	if env := os.Getenv("CORS_ORIGINS"); env != "" {
+		corsOrigins = strings.Split(env, ",")
+	}
+
 	// CORS Setup - Allow the Next.js frontend to access
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000", "https://arkfazone-portofolio.elarisnoir.my.id"}, // Next.js port
+		AllowOrigins:     corsOrigins, // Next.js port
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
@@ -122,8 +135,10 @@ func main() {
 			return
 		}
 
-		// Hardcoded admin credentials for portfolio
-		if creds.Username == "admin" && creds.Password == "admin123" {
+		// Admin credentials - overridable via env in production
+		adminUser := getEnv("ADMIN_USER", "admin")
+		adminPass := getEnv("ADMIN_PASS", "admin123")
+		if creds.Username == adminUser && creds.Password == adminPass {
 			token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 				"username": creds.Username,
 				"exp":      time.Now().Add(time.Hour * 24).Unix(), // 1 day expiration
@@ -202,7 +217,7 @@ func main() {
 			return
 		}
 
-		adminEmail := "muhammadarkanfauzi9@gmail.com"
+		adminEmail := getEnv("ADMIN_EMAIL", "muhammadarkanfauzi9@gmail.com")
 
 		fullBody := fmt.Sprintf("Pesan dari: %s (%s)\n\nIsi Pesan:\n%s", msg.Name, msg.Email, msg.Body)
 
