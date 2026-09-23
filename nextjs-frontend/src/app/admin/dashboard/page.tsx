@@ -24,8 +24,8 @@ export default function DashboardPage() {
             if (!res.ok) throw new Error("Failed to load messages");
             const data = await res.json();
             setMessages(data);
-        } catch (err: any) {
-            setError(err.message);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Failed to load messages");
         } finally {
             setLoading(false);
         }

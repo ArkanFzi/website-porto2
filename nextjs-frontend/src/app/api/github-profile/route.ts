@@ -31,7 +31,7 @@ export async function GET() {
         }
 
         const repos = await reposRes.json();
-        const totalStars = repos.reduce((acc: number, r: any) => acc + (r.stargazers_count || 0), 0);
+        const totalStars = repos.reduce((acc: number, r: { stargazers_count?: number }) => acc + (r.stargazers_count || 0), 0);
 
         return NextResponse.json({
             reposCount: user.public_repos?.toString() || "10+",

@@ -24,7 +24,11 @@ export const ScrambleText: React.FC<ScrambleTextProps> = ({
   const [isScrambling, setIsScrambling] = useState(false);
   const frameRef = useRef<number>(0);
 
-  const Component = as as any;
+  const Component = as as React.ComponentType<{
+    className?: string;
+    children?: React.ReactNode;
+    onMouseEnter?: () => void;
+  }>;
 
   const scramble = () => {
     let iteration = 0;

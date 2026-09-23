@@ -5,6 +5,20 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Award, Briefcase, Plus, Trash2, ShieldCheck, LogOut, Lock } from "lucide-react";
 import { useRouter } from "next/navigation";
 
+interface Certificate {
+    id: string;
+    title: string;
+    issuer: string;
+    date: string;
+}
+
+interface Experience {
+    id: string;
+    role: string;
+    company: string;
+    period: string;
+}
+
 export default function AdminDashboard() {
     const router = useRouter();
     const [activeTab, setActiveTab] = useState<"certificates" | "experiences">("certificates");
@@ -16,8 +30,8 @@ export default function AdminDashboard() {
     const [loginError, setLoginError] = useState("");
 
     // Data States
-    const [certs, setCerts] = useState<any[]>([]);
-    const [exps, setExps] = useState<any[]>([]);
+    const [certs, setCerts] = useState<Certificate[]>([]);
+    const [exps, setExps] = useState<Experience[]>([]);
     const [loading, setLoading] = useState(true);
 
     // Form States

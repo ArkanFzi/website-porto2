@@ -34,8 +34,8 @@ export default function LoginPage() {
             const data = await res.json();
             setAuthToken(data.token);
             router.push("/admin/dashboard");
-        } catch (err: any) {
-            setError(err.message || "Failed to login");
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Failed to login");
         } finally {
             setLoading(false);
         }

@@ -1,9 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { getAuthToken } from "@/lib/auth";
 import { Sidebar } from "@/components/Admin/Sidebar";
+
+const EMPTY_SUBSCRIBE = () => () => {};
+const getTokenSnapshot = () => getAuthToken();
+const getServerSnapshot = () => null;
 
 export default function AdminLayout({
     children,
@@ -12,22 +16,18 @@ export default function AdminLayout({
 }) {
     const router = useRouter();
     const pathname = usePathname();
-    const [isAuthorized, setIsAuthorized] = useState(false);
+    const token = useSyncExternalStore(EMPTY_SUBSCRIBE, getTokenSnapshot, getServerSnapshot);
+    const isAuthorized = token !== null;
 
     useEffect(() => {
-        // Exclude login page from auth check
-        if (pathname === "/admin/login") {
-            setIsAuthorized(true);
-            return;
-        }
+        if (pathname === "/admin/login") return;
+        if (!token) router.push("/admin/login");
+    }, [pathname, router, token]);
 
-        const token = getAuthToken();
-        if (!token) {
-            router.push("/admin/login");
-        } else {
-            setIsAuthorized(true);
-        }
-    }, [pathname, router]);
+    // Login page layout — render independently of auth state
+    if (pathname === "/admin/login") {
+        return <main className="min-h-screen bg-[#050000]">{children}</main>;
+    }
 
     if (!isAuthorized) {
         return (
@@ -35,11 +35,6 @@ export default function AdminLayout({
                 <div className="w-8 h-8 border-4 border-accent-primary border-t-transparent rounded-full animate-spin"></div>
             </div>
         );
-    }
-
-    // Login page layout
-    if (pathname === "/admin/login") {
-        return <main className="min-h-screen bg-[#050000]">{children}</main>;
     }
 
     // Dashboard layout

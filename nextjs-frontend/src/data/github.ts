@@ -27,7 +27,7 @@ export async function fetchGitHubMetrics(username: string = GITHUB_USERNAME) {
     const repos = await reposRes.json();
     
     // Calculate total stars
-    const totalStars = repos.reduce((acc: number, r: any) => acc + r.stargazers_count, 0);
+    const totalStars = repos.reduce((acc: number, r: { stargazers_count?: number }) => acc + (r.stargazers_count || 0), 0);
     
     // This is basic calculation. Fetching total commits cleanly requires GraphQL.
     // For now we'll display total repos, followers, and proxy commits via repos count.

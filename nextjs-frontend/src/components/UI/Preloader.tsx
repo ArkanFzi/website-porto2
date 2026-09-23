@@ -14,35 +14,34 @@ const bootSequence = [
 
 export default function Preloader() {
   const [complete, setComplete] = useState(false);
-  const [textIndex, setTextIndex] = useState(0);
   const { progress, active, loaded, total } = useProgress();
   const [displayProgress, setDisplayProgress] = useState(0);
+  const [lastProgress, setLastProgress] = useState(progress);
+
+  // Adjust derived state during render (React-recommended pattern to avoid
+  // cascading renders from a synchronous setState inside an effect)
+  if (progress !== lastProgress) {
+    setLastProgress(progress);
+    setDisplayProgress((prev) => Math.max(prev, progress));
+  }
+
+  const textIndex = Math.min(
+    Math.floor((progress / 100) * (bootSequence.length - 1)),
+    bootSequence.length - 1
+  );
 
   // Initialize and check session
   useEffect(() => {
     const hasBooted = sessionStorage.getItem("booted");
-    if (hasBooted) {
-      setComplete(true);
-      return;
-    }
+    if (hasBooted) return;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = "unset";
     };
   }, []);
 
-  // Track real 3D progress
+  // Complete loading when fully loaded or no longer active
   useEffect(() => {
-    setDisplayProgress((prev) => Math.max(prev, progress));
-
-    // Map text sequence to real progress
-    const newTextIndex = Math.min(
-      Math.floor((progress / 100) * (bootSequence.length - 1)),
-      bootSequence.length - 1
-    );
-    setTextIndex(newTextIndex);
-
-    // Complete loading when fully loaded or no longer active
     if (progress === 100 || (!active && loaded > 0 && loaded === total)) {
       const timeout = setTimeout(() => {
         setComplete(true);
@@ -52,6 +51,7 @@ export default function Preloader() {
       }, 1000);
       return () => clearTimeout(timeout);
     }
+    return undefined;
   }, [progress, active, loaded, total]);
 
   // Robust Failsafe (force finish after 8 seconds no matter what)

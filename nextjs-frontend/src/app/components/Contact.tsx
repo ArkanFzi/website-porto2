@@ -84,7 +84,7 @@ const Contact: React.FC = () => {
         >
           <div className="h-[1px] bg-[#c49a56] w-12" />
           <span className="text-[10px] md:text-[12px] uppercase tracking-[0.4em] font-bold text-[#c49a56]" style={{ fontFamily: "var(--f-sans)" }}>
-            Let's Collaborate
+            Let&apos;s Collaborate
           </span>
         </motion.div>
 
