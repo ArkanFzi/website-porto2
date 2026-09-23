@@ -77,13 +77,6 @@ jobs:
           docker push $IMG:${{ github.sha }}
           docker push $IMG:latest
 
-      - name: Build and push frontend image
-        run: |
-          IMG=$AR_REGISTRY/$PROJECT_ID/$AR_REPO/frontend
-          docker build -t $IMG:${{ github.sha }} -t $IMG:latest ./nextjs-frontend
-          docker push $IMG:${{ github.sha }}
-          docker push $IMG:latest
-
       - name: Deploy backend to Cloud Run
         run: |
           IMG=$AR_REGISTRY/$PROJECT_ID/$AR_REPO/backend:${{ github.sha }}
@@ -108,6 +101,14 @@ jobs:
         run: |
           URL=$(gcloud run services describe portfolio-be --platform managed --region $REGION --format="value(status.url)")
           echo "url=$URL" >> $GITHUB_OUTPUT
+
+      - name: Build and push frontend image
+        run: |
+          IMG=$AR_REGISTRY/$PROJECT_ID/$AR_REPO/frontend
+          docker build --build-arg BACKEND_URL="${{ steps.be_url.outputs.url }}" \
+            -t $IMG:${{ github.sha }} -t $IMG:latest ./nextjs-frontend
+          docker push $IMG:${{ github.sha }}
+          docker push $IMG:latest
 
       - name: Deploy frontend to Cloud Run
         run: |

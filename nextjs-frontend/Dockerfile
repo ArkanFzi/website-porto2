@@ -10,6 +10,8 @@ FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+ARG BACKEND_URL
+ENV BACKEND_URL=${BACKEND_URL:-http://localhost:8080}
 ENV NEXT_TELEMETRY_DISABLED 1
 RUN npm run build
 
