@@ -18,6 +18,9 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o main .
 FROM alpine:latest
 WORKDIR /app
 
+# Install tzdata so Postgres driver can resolve TimeZone=Asia/Jakarta
+RUN apk add --no-cache tzdata
+
 # Copy the binary from builder
 COPY --from=builder /app/main .
 
