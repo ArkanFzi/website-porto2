@@ -97,7 +97,7 @@ jobs:
             --platform managed \
             --region $REGION \
             --vpc-connector $VPC_CONNECTOR \
-            --egress-internal-only \
+            --vpc-egress all-traffic \
             --allow-unauthenticated \
             --port 8080 \
             --set-env-vars DATABASE_URL="$DB_URL",JWT_SECRET="$JWT",ADMIN_USER="admin",ADMIN_PASS="$ADMIN_PASS",ADMIN_EMAIL="$ADMIN_EMAIL" \
