@@ -119,6 +119,7 @@ jobs:
             --region $REGION \
             --allow-unauthenticated \
             --port 3000 \
+            --memory 1Gi \
             --set-env-vars BACKEND_URL="${{ steps.be_url.outputs.url }}"
 
       - name: Output service URLs
