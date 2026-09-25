@@ -94,7 +94,7 @@ jobs:
             --allow-unauthenticated \
             --port 8080 \
             --set-env-vars DATABASE_URL="$DB_URL",JWT_SECRET="$JWT",ADMIN_USER="admin",ADMIN_PASS="$ADMIN_PASS",ADMIN_EMAIL="$ADMIN_EMAIL" \
-            --set-env-vars CORS_ORIGINS="$CORS"
+            --set-env-vars "^|^CORS_ORIGINS=$CORS"
 
       - name: Get backend URL
         id: be_url
