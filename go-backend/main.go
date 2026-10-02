@@ -17,13 +17,25 @@ import (
 	"gorm.io/gorm"
 )
 
-var jwtSecret = []byte(getEnv("JWT_SECRET", "elaris-noir-super-secret-key-2026"))
+var (
+	jwtSecret []byte
+	adminUser string
+	adminPass string
+)
 
 func getEnv(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
 	}
 	return fallback
+}
+
+func requireEnv(key string) string {
+	v := os.Getenv(key)
+	if v == "" {
+		log.Fatalf("%s must be set", key)
+	}
+	return v
 }
 
 // AuthMiddleware validates JWT tokens for protected routes
@@ -101,6 +113,10 @@ func initDB() {
 func main() {
 	initDB()
 
+	jwtSecret = []byte(requireEnv("JWT_SECRET"))
+	adminUser = getEnv("ADMIN_USER", "admin")
+	adminPass = requireEnv("ADMIN_PASS")
+
 	// Seed dummy data if empty
 	seedData()
 
@@ -135,9 +151,6 @@ func main() {
 			return
 		}
 
-		// Admin credentials - overridable via env in production
-		adminUser := getEnv("ADMIN_USER", "admin")
-		adminPass := getEnv("ADMIN_PASS", "admin123")
 		if creds.Username == adminUser && creds.Password == adminPass {
 			token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 				"username": creds.Username,

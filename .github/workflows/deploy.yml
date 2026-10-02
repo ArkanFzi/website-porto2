@@ -38,6 +38,12 @@ jobs:
         working-directory: go-backend
         run: go vet ./...
 
+      - name: Go build and test
+        working-directory: go-backend
+        run: |
+          go build ./...
+          go test ./...
+
       - name: Setup Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
@@ -52,6 +58,12 @@ jobs:
       - name: Lint frontend
         working-directory: nextjs-frontend
         run: npm run lint
+
+      - name: Build frontend
+        working-directory: nextjs-frontend
+        env:
+          BACKEND_URL: http://localhost:8080
+        run: npm run build
 
   deploy:
     runs-on: ubuntu-latest
@@ -80,27 +92,31 @@ jobs:
       - name: Deploy backend to Cloud Run
         run: |
           IMG=$AR_REGISTRY/$PROJECT_ID/$AR_REPO/backend:${{ github.sha }}
-          DB_URL=$(gcloud secrets versions access latest --secret=portfolio-database-url --project=$PROJECT_ID)
-          JWT=$(gcloud secrets versions access latest --secret=portfolio-jwt-secret --project=$PROJECT_ID)
-          ADMIN_PASS=$(gcloud secrets versions access latest --secret=portfolio-admin-pass --project=$PROJECT_ID)
-          CORS=$(gcloud secrets versions access latest --secret=portfolio-cors-origins --project=$PROJECT_ID)
-          ADMIN_EMAIL=$(gcloud secrets versions access latest --secret=portfolio-admin-email --project=$PROJECT_ID)
+          PREV_IMG=$(gcloud run services describe portfolio-be --platform managed --region $REGION --format='value(spec.template.spec.containers[0].image)')
+          echo "PREV_IMG=$PREV_IMG" >> "$GITHUB_ENV"
           gcloud run deploy portfolio-be \
-            --image $IMG \
+            --image "$IMG" \
             --platform managed \
             --region $REGION \
             --vpc-connector $VPC_CONNECTOR \
             --vpc-egress all-traffic \
             --allow-unauthenticated \
             --port 8080 \
-            --set-env-vars DATABASE_URL="$DB_URL",JWT_SECRET="$JWT",ADMIN_USER="admin",ADMIN_PASS="$ADMIN_PASS",ADMIN_EMAIL="$ADMIN_EMAIL" \
-            --set-env-vars "^|^CORS_ORIGINS=$CORS"
+            --set-env-vars ADMIN_USER=admin \
+            --set-secrets DATABASE_URL=portfolio-database-url:latest,JWT_SECRET=portfolio-jwt-secret:latest,ADMIN_PASS=portfolio-admin-pass:latest,ADMIN_EMAIL=portfolio-admin-email:latest,CORS_ORIGINS=portfolio-cors-origins:latest
 
       - name: Get backend URL
         id: be_url
         run: |
           URL=$(gcloud run services describe portfolio-be --platform managed --region $REGION --format="value(status.url)")
           echo "url=$URL" >> $GITHUB_OUTPUT
+
+      - name: Smoke test backend
+        run: |
+          for path in /api/certificates /api/experience; do
+            curl -fsS --max-time 30 "${{ steps.be_url.outputs.url }}$path" > /dev/null
+            echo "ok backend $path"
+          done
 
       - name: Build and push frontend image
         run: |
@@ -122,7 +138,31 @@ jobs:
             --memory 1Gi \
             --set-env-vars BACKEND_URL="${{ steps.be_url.outputs.url }}"
 
+      - name: Smoke test frontend
+        run: |
+          FE=$(gcloud run services describe portfolio-fe --platform managed --region $REGION --format='value(status.url)')
+          curl -fsS --max-time 30 "$FE/" > /dev/null
+          echo "ok frontend /"
+          curl -fsS --max-time 30 "$FE/api/certificates" > /dev/null
+          echo "ok frontend /api/certificates (proxy ke backend)"
+
       - name: Output service URLs
         run: |
           echo "Frontend: $(gcloud run services describe portfolio-fe --platform managed --region $REGION --format='value(status.url)')"
           echo "Backend: ${{ steps.be_url.outputs.url }}"
+
+      - name: Rollback backend on failure
+        if: failure() && env.PREV_IMG != ''
+        run: |
+          echo "Deploy/smoke gagal; mengembalikan portfolio-be ke $PREV_IMG"
+          gcloud run deploy portfolio-be \
+            --image "$PREV_IMG" \
+            --platform managed \
+            --region $REGION \
+            --vpc-connector $VPC_CONNECTOR \
+            --vpc-egress all-traffic \
+            --allow-unauthenticated \
+            --port 8080 \
+            --set-env-vars ADMIN_USER=admin \
+            --set-secrets DATABASE_URL=portfolio-database-url:latest,JWT_SECRET=portfolio-jwt-secret:latest,ADMIN_PASS=portfolio-admin-pass:latest,ADMIN_EMAIL=portfolio-admin-email:latest,CORS_ORIGINS=portfolio-cors-origins:latest
+          exit 1
