@@ -4,6 +4,15 @@
 untuk `portfolio-be` dan `portfolio-fe` di project `config-agentic-ubuntu` (region `us-central1`).
 Keputusan ini diambil 2026-10-02 setelah audit terhadap pipeline kedua.
 
+## Cabang `main` diproteksi
+
+`main` adalah cabang deploy produksi, jadi push langsung **tidak bisa**: branch protection aktif
+dengan `enforce_admins=true`, `allow_force_pushes=false`, `allow_deletions=false`. Update masuk
+lewat pull request lalu di-merge; merge tetap menghasilkan event `push: main` sehingga workflow
+deploy tersulut seperti biasa. Tidak ada required status check — satu-satunya workflow di repo ini
+hanya tersulut oleh `push: main`, jadi mewajibkan check akan membuat setiap PR menggantung
+(checked-nya tidak pernah ada di event `pull_request`).
+
 ## Pipeline Cloud Build sudah dimatikan
 
 Trigger `porto2-build-main` (`c0b1a320-6c47-49fe-abcf-4b9fc86626e8`, Cloud Build regional
