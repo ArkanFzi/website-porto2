@@ -98,6 +98,14 @@ npm run dev
 
 ---
 
+## 🚀 Deployment
+
+Push ke `main` membangun dan mendeploy `portfolio-be` + `portfolio-fe` ke Cloud Run lewat
+GitHub Actions. Jalur deploy lain (Cloud Build trigger `porto2-build-main`) sudah dimatikan —
+lihat [DEPLOY.md](DEPLOY.md) untuk alasan dan postur IAM-nya.
+
+---
+
 ## 📬 Contact
 
 **M. Arkan Fauzi** - Software Engineer
