@@ -6,12 +6,15 @@ Keputusan ini diambil 2026-10-02 setelah audit terhadap pipeline kedua.
 
 ## Cabang `main` diproteksi
 
-`main` adalah cabang deploy produksi, jadi push langsung **tidak bisa**: branch protection aktif
-dengan `enforce_admins=true`, `allow_force_pushes=false`, `allow_deletions=false`. Update masuk
-lewat pull request lalu di-merge; merge tetap menghasilkan event `push: main` sehingga workflow
-deploy tersulut seperti biasa. Tidak ada required status check — satu-satunya workflow di repo ini
+`main` adalah cabang deploy produksi, jadi push langsung **tidak bisa**: perubahan apa pun harus
+menjadi pull request lalu di-merge. Yang menutup jalur push bukan `enforce_admins` (sudah dicoba,
+push admin tetap lolos selama tidak ada restriction lain), melainkan `required_pull_request_reviews`
+dengan `required_approving_review_count: 0` — PR boleh di-merge sendiri tanpa approval, tapi commit
+yang tidak lewat PR ditolak. Ditambah `enforce_admins=true`, `allow_force_pushes=false`,
+`allow_deletions=false`. Merge tetap menghasilkan event `push: main` sehingga workflow deploy
+tersulut seperti biasa. Tidak ada required status check — satu-satunya workflow di repo ini
 hanya tersulut oleh `push: main`, jadi mewajibkan check akan membuat setiap PR menggantung
-(checked-nya tidak pernah ada di event `pull_request`).
+(check-nya tidak pernah ada di event `pull_request`).
 
 ## Pipeline Cloud Build sudah dimatikan
 
