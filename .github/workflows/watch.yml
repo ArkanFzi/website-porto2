@@ -252,8 +252,14 @@ jobs:
               > /tmp/hasil.tsv
           fi
           merah=$(awk -F'|' '$2=="MERAH"' /tmp/hasil.tsv | wc -l)
+          rows=$(tail -n +2 /tmp/hasil.tsv | grep -c .)
+          # Cetak juga ke stdout, bukan hanya ke Step Summary. Run #1 di runner membuktikan
+          # alasannya: vonisnya cuma ada di ringkasan run, dan ringkasan tidak bisa dibaca dari
+          # API log — jadi angka "12 baris lainnya hijau" harus disimpulkan, bukan diukur.
+          echo "baris harian: rows=$rows merah=$merah"
+          cat /tmp/hasil.tsv
           {
-            echo "## Watch — $(date -u +'%Y-%m-%d %H:%M UTC') — merah: $merah"
+            echo "## Watch — $(date -u +'%Y-%m-%d %H:%M UTC') — rows: $rows, merah: $merah"
             echo
             echo '```text'
             cat /tmp/hasil.tsv
@@ -269,7 +275,6 @@ jobs:
             echo
             echo '</details>'
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "merah=$merah"
 
       - name: Gerbang (run merah kalau ada probe MERAH)
         if: always()
