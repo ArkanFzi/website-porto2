@@ -1,0 +1,251 @@
+name: Watch
+
+# P6 — jendela observasi. Bukan gerbang: tidak ada satu pun merge yang menunggu workflow ini.
+# Tugasnya hanya satu — membuktikan klaim "produksi stabil" setiap hari dengan angka, dan
+# meninggalkan satu baris di riwayat run. Run merah adalah alarmnya; GitHub mengirim notifikasi
+# default untuk workflow terjadwal yang gagal, dan itu cukup untuk satu operator.
+#
+# Sengaja TIDAK ada `issues: write`. Membuat issue otomatis adalah keputusan pemilik repo
+# (TODO.md §6 butir 5) dan workflow ini berjalan tanpa ulasan manusia, jadi setiap issue yang
+# dihasilkannya adalah efek samping yang tidak bisa dibatalkan sebelum terjadi.
+#
+# Sengaja TIDAK ada kredensial GCP. Cek drift di bawah menjawab "apakah setiap commit kode di
+# main sudah punya run deploy hijau" — ia TIDAK bisa mendeteksi seseorang yang mem-pin traffic
+# dengan tangan setelah deploy sukses. Yang itu hanya bisa dibuktikan dari `status.traffic`, dan
+# membacanya dari workflow terjadwal berarti memberi akses cloud ke jalur tanpa gerbang PR.
+# Perbandingan jujur: deploy.yml sudah memeriksa `cloudrun.sh serving` di dalam run-nya sendiri.
+
+on:
+  schedule:
+    - cron: "37 2 * * *" # 02:37 UTC; menit ganjil supaya tidak sekalian dengan jam penuh
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read # hanya untuk membaca riwayat run deploy.yml (cek drift)
+
+concurrency:
+  group: watch-production
+  cancel-in-progress: false
+
+env:
+  DOMAIN: https://arkfazone-portofolio.elarisnoir.my.id
+  BE_URL: https://portfolio-be-486641216758.us-central1.run.app
+  FE_URL: https://portfolio-fe-486641216758.us-central1.run.app
+  BRANCH_LAYU_JAM: 168 # 7 hari
+
+jobs:
+  watch:
+    name: probe + drift harian
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.3
+        with:
+          # fetch-depth: 0 — cek drift butuh riwayat first-parent, dan .git repo ini 8 MB.
+          fetch-depth: 0
+
+      # Semua langkah di bawah menulis vonisnya ke /tmp/hasil.tsv dan TIDAK pernah exit 1 sendiri.
+      # Itu sengaja: baris harian harus tetap tertulis walaupun sebuah probe merah. Yang membuat
+      # run gagal adalah langkah terakhir, setelah rangkuman tercetak.
+      - name: Probe konten (domain publik + run.app)
+        run: |
+          # `set +e` bukan kosmetik. Reheksal lokal dengan server rusak (200 + `null` untuk
+          # /api/certificates) membuktikan bahwa di bawah `bash -e` langkah ini mati di probe
+          # kedua, dan baris hariannya hilang sebagian — yaitu kegagalan yang paling tidak
+          # kamu inginkan tepat saat produksi sedang rusak. Vonis ditulis eksplisit HIJAU/MERAH,
+          # jadi tidak ada yang perlu menghentikan script.
+          set +e
+          echo "komponen|status|detail" > /tmp/hasil.tsv
+
+          vonis() { echo "$1|$2|$3" >> /tmp/hasil.tsv; }
+
+          for target in "domain=$DOMAIN" "be-runapp=$BE_URL" "fe-runapp=$FE_URL"; do
+            label="${target%%=*}"; base="${target#*=}"
+
+            : > /tmp/h
+            t=$(curl -fsS --max-time 45 -o /tmp/h -w '%{time_total}' "$base/api/health" 2>/dev/null)
+            if jq -e '.status=="ok" and .db=="ok"' /tmp/h > /dev/null 2>&1; then
+              vonis "health/$label" HIJAU "${t}s $(tr -d '\n' < /tmp/h)"
+            else
+              vonis "health/$label" MERAH "isi='$(head -c 120 /tmp/h | tr -d '\n')' time=${t:-koneksi-gagal}"
+            fi
+
+            : > /tmp/c
+            t=$(curl -fsS --max-time 45 -o /tmp/c -w '%{time_total}' "$base/api/certificates" 2>/dev/null)
+            # Program jq ditulis utuh, tidak dirakit dari variabel: '$2' tanpa tanda kutip ganda
+            # membuat jq menerima potongan program saja (sisanya jadi argumen terpisah) dan
+            # kompilasinya gagal — gejalanya MERAH untuk respons yang sebenarnya sehat.
+            n=$(jq 'if type=="array" and length>0 and (.[0] | has("id") and has("title") and has("issuer") and has("date")) then length else null end' /tmp/c 2>/dev/null)
+            if [ "$n" != "null" ] && [ -n "$n" ]; then
+              vonis "certificates/$label" HIJAU "$n baris, ${t}s"
+            else
+              vonis "certificates/$label" MERAH "isi='$(head -c 120 /tmp/c | tr -d '\n')' time=${t:-koneksi-gagal}"
+            fi
+          done
+
+          # experience di domain publik saja; bentuknya kontrak yang sama dengan certificates.
+          : > /tmp/e
+          curl -fsS --max-time 45 -o /tmp/e "$DOMAIN/api/experience" 2>/dev/null
+          n=$(jq 'if type=="array" and length>0 and (.[0] | has("role") and has("company") and has("period")) then length else null end' /tmp/e 2>/dev/null)
+          if [ "$n" != "null" ] && [ -n "$n" ]; then
+            vonis "experience/domain" HIJAU "$n baris"
+          else
+            vonis "experience/domain" MERAH "isi='$(head -c 120 /tmp/e | tr -d '\n')'"
+          fi
+
+          # halaman utama: landing page utuh, bukan error page Next.js.
+          : > /tmp/idx
+          t=$(curl -fsS --max-time 60 -H 'Accept: text/html' -o /tmp/idx -w '%{time_total}' "$DOMAIN/" 2>/dev/null)
+          bytes=$(wc -c < /tmp/idx)
+          if [ -n "$t" ] && [ "$bytes" -ge 5000 ] && ! grep -qi 'Application error' /tmp/idx; then
+            vonis "halaman-utama/domain" HIJAU "$bytes byte, ${t}s"
+          else
+            vonis "halaman-utama/domain" MERAH "$bytes byte, time=${t:-koneksi-gagal}"
+          fi
+
+          # /api/cv: magic byte + ukuran minimum. Daftar sertifikat di PDF itu kosong, dan itu hutang
+          # M11 yang tercatat di README; kalau assertion ini ikut menuntut isinya, workflow jadi merah
+          # permanen — yang mati bukan produksi, tapi nilai informasi jendela observasi.
+          : > /tmp/cv
+          code=$(curl -sS --max-time 180 -o /tmp/cv -w '%{http_code}' "$DOMAIN/api/cv" 2>/dev/null)
+          cb=$(wc -c < /tmp/cv)
+          if [ "$code" = "200" ] && [ "$(head -c 5 /tmp/cv)" = "%PDF-" ] && [ "$cb" -ge 50000 ]; then
+            vonis "cv-pdf/domain" HIJAU "$cb byte PDF"
+          else
+            vonis "cv-pdf/domain" MERAH "http=${code:-?}, $cb byte, awal='$(head -c 20 /tmp/cv | tr -d '\n')'"
+          fi
+
+          # rewrite fe -> be lewat domain publik: jalur yang sama dengan yang dipakai visitor.
+          if curl -fsS --max-time 45 "$DOMAIN/api/health" 2>/dev/null | jq -e '.db=="ok"' > /dev/null 2>&1; then
+            vonis "rewrite/domain" HIJAU "/api/health terproxy ke backend"
+          else
+            vonis "rewrite/domain" MERAH "rewrite fe->be tidak hidup"
+          fi
+
+      - name: Drift — main sudah punya deploy hijau?
+        run: |
+          [ -s /tmp/hasil.tsv ] || echo "komponen|status|detail" > /tmp/hasil.tsv
+          # Langkah ini punya banyak titik gagal yang bukan salah produksi (gh tidak ada, token
+          # ditolak, fetch gagal). Tanpa guard, kegagalan itu abort di tengah dan baris harian
+          # kehilangan komponennya tanpa alasan. Jadi setiap titik gagal menulis vonisnya sendiri.
+          set +e
+          vonis() { echo "$1|$2|$3" >> /tmp/hasil.tsv; }
+
+          git fetch -q origin main || { vonis drift MERAH "git fetch origin main gagal"; exit 0; }
+          expected=$(git log -1 --format=%H --first-parent origin/main -- . ':(exclude)*.md' ':(exclude)docs/**')
+          # --first-parent penting di sini. Tanpa itu, merge yang tree-nya sama dengan orangtuanya
+          # disimplifikasi keluar dan filter menunjuk commit di dalamnya (14859ce), padahal yang
+          # memicu push event adalah merge commit-nya (39eae21). Itu false-positive drift.
+          if [ -z "$expected" ]; then
+            vonis drift MERAH "tidak ada commit non-dokumen di main — filter path salah?"
+            exit 0
+          fi
+          echo "expected (commit kode terakhir di main): ${expected:0:7}"
+
+          if ! command -v gh > /dev/null; then
+            vonis drift MERAH "gh tidak ada di runner"
+            exit 0
+          fi
+          runs=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/deploy.yml/runs?event=push&per_page=20" \
+            --jq '.workflow_runs[] | select(.event=="push") | [.head_sha, .status, .conclusion // "-", .run_number] | @tsv' 2>/tmp/gh.err)
+          if [ -z "$runs" ]; then
+            vonis drift MERAH "daftar run deploy.yml kosong: $(head -c 160 /tmp/gh.err)"
+            exit 0
+          fi
+
+          latest=$(echo "$runs" | awk -F'\t' '$2=="completed"' | head -1)
+          latest_sha=$(echo "$latest" | cut -f1)
+          latest_conc=$(echo "$latest" | cut -f3)
+          latest_no=$(echo "$latest" | cut -f4)
+          ada_yang_jalan=$(echo "$runs" | awk -F'\t' '$2!="completed"' | wc -l)
+
+          echo "deploy push terakhir  : run #${latest_no:-?} @ ${latest_sha:0:7} = $latest_conc"
+          echo "run belum selesai     : $ada_yang_jalan"
+
+          if [ "$latest_conc" != "success" ]; then
+            vonis drift MERAH "deploy push terakhir (run #${latest_no:-?}) kesimpulannya ${latest_conc:-kosong}"
+          elif [ "$latest_sha" != "$expected" ]; then
+            if [ "$ada_yang_jalan" -gt 0 ]; then
+              vonis drift KUNING "deploy untuk ${expected:0:7} masih berjalan"
+            else
+              vonis drift MERAH "produksi di ${latest_sha:0:7}, main minta ${expected:0:7}"
+            fi
+          else
+            vonis drift HIJAU "run #${latest_no} hijau untuk ${expected:0:7}, tidak ada deploy lain di atasnya"
+          fi
+          exit 0
+
+      - name: Tripwire kontrak API
+        run: |
+          [ -s /tmp/hasil.tsv ] || echo "komponen|status|detail" > /tmp/hasil.tsv
+          if node tools/ci/api-contract-check.mjs > /tmp/tripwire.log 2>&1; then
+            tail -1 /tmp/tripwire.log
+            echo "tripwire|HIJAU|$(tail -1 /tmp/tripwire.log)" >> /tmp/hasil.tsv
+          else
+            tail -20 /tmp/tripwire.log
+            echo "tripwire|MERAH|kontrak tidak sesuai baseline — lihat log langkah ini" >> /tmp/hasil.tsv
+          fi
+
+      - name: Branch layu
+        run: |
+          [ -s /tmp/hasil.tsv ] || echo "komponen|status|detail" > /tmp/hasil.tsv
+          set +e # informasi saja: langkah ini tidak boleh membuat run merah
+          now=$(date -u +%s)
+          temu=0
+          while read -r name sha; do
+            [ "$name" = "main" ] && continue
+            date_str=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$sha" --jq '.committer.date')
+            d=$(date -u -d "$date_str" +%s 2>/dev/null)
+            [ -z "$d" ] && { echo "  $name: tanggal tip tidak terbaca ($date_str)"; continue; }
+            jam=$(( (now - d) / 3600 ))
+            if [ "$jam" -gt "$BRANCH_LAYU_JAM" ]; then
+              echo "  $name (${jam} jam)"
+              temu=$((temu + 1))
+            fi
+          done < <(gh api "repos/$GITHUB_REPOSITORY/git/refs/heads" --paginate \
+            --jq '.[] | "\(.ref|sub("^refs/heads/";"")) \(.object.sha)"')
+          echo "branch lebih tua dari ${BRANCH_LAYU_JAM} jam: $temu (tidak ada yang dihapus)"
+          echo "branch-layu|INFO|$temu branch > ${BRANCH_LAYU_JAM} jam" >> /tmp/hasil.tsv
+          exit 0
+
+      - name: Rangkuman satu baris
+        if: always()
+        run: |
+          # if: always() — baris hariannya wajib tetap tertulis walaupun ada langkah yang mati
+          # karena sebab di luar probe (gh api gagal, runner bermasalah).
+          if [ ! -s /tmp/hasil.tsv ]; then
+            printf '%s\n' "komponen|status|detail" \
+              "rangkuman|MERAH|/tmp/hasil.tsv kosong: langkah probe tidak menulis vonis apa pun" \
+              > /tmp/hasil.tsv
+          fi
+          merah=$(awk -F'|' '$2=="MERAH"' /tmp/hasil.tsv | wc -l)
+          {
+            echo "## Watch — $(date -u +'%Y-%m-%d %H:%M UTC') — merah: $merah"
+            echo
+            echo '```text'
+            cat /tmp/hasil.tsv
+            echo '```'
+            echo
+            echo '<details><summary>baris machine-readable</summary>'
+            echo
+            echo '```json'
+            tail -n +2 /tmp/hasil.tsv | jq -Rsc '
+              split("\n") | map(select(length>0) | split("|") | {c: .[0], s: .[1], d: (.[2:] | join("|"))})
+              | {at: "'$(date -u +%FT%TZ)'", merah: (map(select(.s=="MERAH") | .c)), rows: length}'
+            echo '```'
+            echo
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "merah=$merah"
+
+      - name: Gerbang (run merah kalau ada probe MERAH)
+        if: always()
+        run: |
+          if awk -F'|' '$2=="MERAH"{found=1} END{exit !found}' /tmp/hasil.tsv; then
+            echo "Ada probe MERAH hari ini:"
+            awk -F'|' '$2=="MERAH"{print "  - " $1 ": " $3}' /tmp/hasil.tsv
+            exit 1
+          fi
+          echo "Semua probe hijau."

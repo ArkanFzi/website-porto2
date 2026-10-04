@@ -1,13 +1,14 @@
 # Jalur Deploy
 
 **GitHub Actions adalah satu-satunya jalur deploy** ke Cloud Run untuk `portfolio-be` dan
-`portfolio-fe` di project `config-agentic-ubuntu` (region `us-central1`). Ada dua workflow, dan
+`portfolio-fe` di project `config-agentic-ubuntu` (region `us-central1`). Ada tiga workflow, dan
 masing-masing membuktikan hal yang berbeda:
 
 | Workflow | Pemicu | Isi | Kredensial GCP |
 |---|---|---|---|
 | `ci.yml` (nama: **CI**) | `pull_request: [main]`, `push: [main]`, `workflow_dispatch` | `go` (gofmt/vet/build/test), `web` (lint, `tsc --noEmit`, `next build`, tripwire kontrak), `api` (Postgres 15 service container + binary Go asli, assertion isi JSON + round-trip tulis/hapus dengan JWT) | **tidak ada** — `permissions: contents: read`, tanpa `id-token` |
 | `deploy.yml` (nama: **Deploy to Cloud Run**) | `push: [main]` dengan `paths-ignore`, `workflow_dispatch` | build + push by digest, deploy, alokasi traffic eksplisit, verifikasi isi respons, rollback | WIF ke `github-cd@…` (`contents: read`, `id-token: write`) |
+| `watch.yml` (nama: **Watch**) | `schedule` 02:37 UTC + `workflow_dispatch` | probe konten produksi (domain publik + run.app), cek drift `main` vs deploy terakhir, tripwire kontrak, branch layu; satu baris per hari | **tidak ada** — `contents: read` + `actions: read`, tanpa `id-token`. Lihat bagiannya di bawah |
 
 Pembagian ini disengaja. `deploy.yml` dulu punya job `test` sendiri — salinan gerbang yang lebih
 lemah (tanpa `tsc`, tanpa tripwire, tanpa tes DB). Salinan itulah yang membuat run #14 hijau
@@ -117,6 +118,35 @@ experience, dan halaman utama tidak tersentuh. Diperiksa mandiri setelahnya (buk
 Drill ini juga menunjukkan pembagian kerja dua gerbang: **CI tidak bisa melihat kegagalan ini sama
 sekali** (`go`/`web`/`api`/GitGuardian semuanya hijau untuk `6b56d38`), karena CI tidak pernah
 menjalankan server Next.js. Yang menangkap adalah probe pasca-deploy.
+
+## Watch (P6) — apa yang dibuktikan, dan apa yang tidak
+
+`watch.yml` jalan setiap hari 02:37 UTC dan menulis satu baris ke ringkasan run. Ia **bukan
+gerbang**: tidak ada merge yang menunggunya, dan tidak ada satu langkah pun yang punya akses tulis.
+Isinya tiga hal:
+
+1. **Probe konten** ke tiga origin (`arkfazone-portofolio.elarisnoir.my.id`, `…be-…run.app`,
+   `…fe-…run.app`) dengan assertion yang sama kerasnya dengan `deploy.yml`: `health` harus
+   `{"status":"ok","db":"ok"}`, `certificates`/`experience` harus array berisi objek lengkap,
+   `/` harus ≥ 5000 byte dan tidak memuat `Application error`, `/api/cv` harus diawali `%PDF-`
+   dan ≥ 50000 byte. Semua vonis dikumpulkan di `/tmp/hasil.tsv` dan langkah terakhir yang
+   memutuskan merah — jadi satu endpoint mati tidak memotong probe sisanya.
+2. **Drift**: `git log -1 --first-parent origin/main -- . ':(exclude)*.md' ':(exclude)docs/**'`
+   memberi commit terakhir yang benar-benar seharusnya ter-deploy, lalu dibandingkan dengan run
+   `deploy.yml` (event `push`) terakhir yang selesai. Merah kalau run itu gagal, atau kalau SHA-nya
+   bukan yang diharapkan dan tidak ada deploy yang sedang berjalan.
+3. **Tripwire kontrak** terhadap sumber `main` hari itu, dan daftar branch yang tip-nya lebih tua
+   dari 7 hari (informasi saja, tidak ada yang dihapus).
+
+Yang **tidak** bisa dibuktikannya, dan itu pilihan, bukan kelalaian: Watch tidak punya kredensial
+GCP, jadi ia tidak membaca `status.traffic`. Kalau seseorang mem-pin traffic dengan tangan
+(kegagalan yang benar-benar terjadi di run #16), production bisa tetap serve revisi lama sementara
+Watch hijau — soalnya commit yang di-serve memang masih punya run deploy hijau. Yang menutup celah
+itu hanya `cloudrun.sh serving` di dalam `deploy.yml`. Menambah pemeriksaan itu ke workflow terjadwal
+berarti memberi akses cloud ke jalur tanpa ulasan PR; itu keputusan §6, bukan sesuatu yang kusisipkan
+sendiri.
+
+`issues: write` juga sengaja tidak dipasang. Alarmnya adalah run merah + notifikasi default GitHub.
 
 ## Postur IAM (diverifikasi ulang 2026-10-04, 16:45 dan 16:52 UTC)
 
