@@ -99,7 +99,8 @@ website-porto2/
 │   └── deploy/             # cloudrun.sh (penyaluran traffic Cloud Run)
 ├── .github/workflows/
 │   ├── ci.yml              # Gerbang: go, web, api — wajib hijau sebelum merge
-│   └── deploy.yml          # Build + deploy + verifikasi + rollback
+│   ├── deploy.yml          # Build + deploy + verifikasi + rollback
+│   └── watch.yml           # Pemantau harian: probe produksi, drift, tripwire (02:37 UTC)
 ├── DEPLOY.md               # Jalur deploy, postur IAM, mekanisme rollback
 └── TODO.md                 # Milestone M10 (gerbang) & M11 (produk), hasil terukur
 ```
