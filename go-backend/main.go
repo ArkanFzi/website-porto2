@@ -180,6 +180,19 @@ func main() {
 		c.JSON(http.StatusOK, exps)
 	})
 
+	api.GET("/health", func(c *gin.Context) {
+		sqlDB, err := DB.DB()
+		if err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "unavailable", "db": "error"})
+			return
+		}
+		if err := sqlDB.Ping(); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "unavailable", "db": "error"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "ok", "db": "ok"})
+	})
+
 	// --- Protected API Routes ---
 	protected := api.Group("/")
 	protected.Use(AuthMiddleware())
