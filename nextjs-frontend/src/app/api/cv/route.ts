@@ -38,13 +38,10 @@ export async function GET() {
 
         await browser.close();
 
-        // Return the PDF buffer
-        return new Response(pdf as unknown as BodyInit, {
-            headers: {
-                'Content-Type': 'application/pdf',
-                'Content-Disposition': 'attachment; filename="CV_M_Arkan_Fauzi.pdf"',
-            },
-        });
+        // DRILL ROLLBACK 2026-10-04: mengembalikan 200 tanpa body PDF. Sengaja merusak kontrak
+        // yang hanya bisa dilihat oleh probe pasca-deploy (CI tidak pernah menjalankan server).
+        // Jangan di-merge ke main.
+        return NextResponse.json({ ok: true, bytes: pdf.length }, { status: 200 });
     } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         console.error('PDF Generation Error:', error);
