@@ -7,6 +7,13 @@ Status hari ini: **CI/CD porto2 hijau tapi tidak membuktikan apa pun.** Run #14 
 (2026-10-02 14:29 UTC) sementara form kontak di situs publik membuang setiap pesan visitor.
 M10 membangun gerbangnya supaya klaim "stable" punya dasar.
 
+> **Update 2026-10-04 16:55 UTC:** P0–P5 selesai dengan angka di §7; P7 (dokumen) sedang lewat
+> PR-nya sendiri — dan PR itu adalah bukti E7, jadi baris E7 di §7 masih "menunggu bukti" sampai
+> hitungan run `deploy.yml` untuk merge-nya dibaca. Tabel §1 dibiarkan apa adanya sebagai foto
+> sebelum perubahan — itu pembanding, bukan keadaan sekarang.
+> Yang masih terbuka: **E4** (dua push berjarak < 60 s), **P6** (`watch.yml`, butuh 7 hari
+> pengamatan), dan **E8** sepenuhnya (drift-check otomatis).
+
 ---
 
 ## 1. Baseline terukur (snapshot 2026-10-04 15:10 UTC)
@@ -25,7 +32,7 @@ Dicatat supaya angka setelah M10 bisa dibandingkan. Sumber: GitHub REST + `gclou
 | File `_test.go` | **0** → langkah `go test ./...` adalah no-op |
 | Call gorm tanpa penanganan error | 13 (`main.go:173,179,193,199,209,215,255-267`) |
 | Tag di AR | backend 13, frontend 12 — tanpa retention policy; `:latest` di-push tapi tidak pernah dipakai deploy |
-| Cloud SQL `portfolio-pg` | backup enabled, PITR on, retainedBackups=7, ZONAL, backup terbaru `2026-10-04T03:00Z` (12,1 jam), semua `SUCCESSFUL`. Restore drill: 0× |
+| Cloud SQL `portfolio-pg` | backup enabled, PITR on, retainedBackups=7, ZONAL, backup terbaru `2026-10-04T03:00Z` (12,1 jam), semua `SUCCESSFUL`. Restore drill: 0×. **[koreksi P7 16:52 UTC: dua angka di baris ini salah baca. `pointInTimeRecoveryEnabled` dan `retainedBackups` absen di API ⇒ PITR mati; "7" hanyalah jumlah baris `backups list`. Waktu `03:00Z` adalah epoch *id* backup, `endTime` sebenarnya `04:52:13Z`.]** |
 | Runtime SA kedua service | `486641216758-compute@developer.gserviceaccount.com` = `roles/editor` + `roles/pubsub.publisher` se-proyek, dengan `allUsers → roles/run.invoker` |
 | Kunci statis SA `github-cd` | **aktif**, `validAfter 2026-09-23T12:55:14Z`, `validBefore 2028-09-22` — ada di samping WIF |
 | Endpoint kesehatan | `GET /api/health` = 404; `GET /` backend = 404 |
@@ -206,3 +213,162 @@ lewat file baseline, bukan melupakannya.
 | 4 | Runtime SA: bikin dedicated SA tanpa `roles/editor` | Berpotensi memutus akses Cloud SQL/secret yang sekarang bergantung pada default compute SA |
 | 5 | `watch.yml` membuat issue otomatis (P6) | Perlu scope `issues: write` dan izin bikin issue atas nama akunmu |
 | 6 | `staging` dan `chore/bughunter-ci` dihapus/dinaikkan | Menghapus branch = aksi yang tidak bisa dibatalkan sendiri |
+
+### Status butir §6 per 2026-10-04
+
+| # | Butir | Status |
+|---|---|---|
+| 1 | Izin drill rollback | **Diberikan dan selesai.** Drill jalan di produksi (run #18), bukan di service baru; jendela rusak 63 detik, hanya `/api/cv`. Lihat §7 P5 |
+| 2 | Branch protection `main` | **Diberikan dan terpasang.** `required_status_checks.contexts = ["go","web","api"]`, `strict` tetap `false` (kompensasinya: `ci.yml` ikut tersulut `push: main`) |
+| 3 | Cabut kunci statis `github-cd` | **Sudah tidak relevan — dan bukan karena aku.** `gcloud iam service-accounts keys list` kini hanya mengembalikan 1 kunci `SYSTEM_MANAGED`; kunci `USER_MANAGED` (valid sampai 2028-09-22) yang tercatat di §1 sudah tidak ada saat diperiksa ulang 16:45 UTC. Aku tidak menghapusnya dan tidak bisa memastikan siapa yang menghapus — kalau itu kamu, bagus; kalau bukan, itu pertanyaan sendiri. |
+| 4 | Runtime SA tanpa `roles/editor` | **Terbuka.** Diverifikasi: `486641216758-compute@developer.gserviceaccount.com` masih `roles/editor` + `roles/pubsub.publisher` se-proyek, dan kedua service publik (`allUsers → run.invoker`) jalan di SA itu. Sudah dicatat sebagai hutang di `DEPLOY.md` |
+| 5 | `watch.yml` membuat issue otomatis | **Terbuka** (P6 belum jalan). Rencana awal: tanpa `issues: write`, keluarannya satu baris per hari + run merah saat ada yang gagal |
+| 6 | `staging`, `chore/bughunter-ci` | **Terbuka.** Keduanya masih ada di origin (`staging` layu sejak 2026-09-23; `chore/bughunter-ci` ahead 1 / behind 5 dan `deploy.yml`-nya regression). Branch yang kubuat untuk fase-fase di atas (`chore/gerbang-ci-v2`, `chore/proteksi-main`, `chore/gerbang-deploy-p4`, `fix/traffic-alokasi-eksplisit`, `drill/cv-response`, `revert/drill-cv`) juga belum dihapus — PR-nya sudah merged, jadi isinya aman di `main` |
+
+---
+
+## 7. Hasil terukur per fase (2026-10-04)
+
+Angka dari keluaran alat, bukan narasi. Sumber: `GET /repos/…/actions/runs`, `check-runs/{sha}`,
+log job, `gcloud run services describe`, `tools/deploy/cloudrun.sh`.
+
+### P1 — `ci.yml`
+
+Tiga job (`go`, `web`, `api`), `permissions: contents: read` — **tidak ada `id-token`**, jadi E3
+bukti struktural: PR tidak mungkin minta token WIF walaupun ada langkah yang mencoba. 12 run CI
+hingga 16:45 UTC → 11 success, 1 failure (`9d0a3f1`, sengaja). `timeout-minutes` 15/20/15.
+
+### P2 — tripwire kontrak
+
+`tools/ci/api-contract-check.mjs` 293 baris; baseline `tools/ci/api-baseline.json` = **13 path mati
++ 1 stub** (lebih banyak dari 6 yang direncanakan, karena pemanggilan UI ikut dihitung). Ratchet
+diuji dua arah:
+- tambah stub marker palsu → `rc=1`;
+- hilangkan stub yang ada di baseline tanpa mengecilkan baseline → `rc=1` dengan pesan
+  "STUB sudah hilang, kecilkan baseline". Uji pertama sempat **tidak conclusive** (masih ada marker
+  kedua yang cocok), diulang dengan menghapus kedua baris marker.
+Jalur hidup/mati kini terlihat dari log: `rute backend 9 (protected 4)`, `rewrite 8`,
+`handler lokal 4`, `pemanggilan UI 25 (19 unik)`.
+
+### P3 — required status checks
+
+`contexts: ["go","web","api"]` (nama context dibaca dari `check-runs/{sha}` dulu, bukan ditebak),
+`strict: false`, `enforce_admins: true`, `approvals: 0`, `dismiss_stale_reviews: true`.
+**E2 terbukti:** PR #4 `9d0a3f1` → `go: failure`, `web: failure`, `api: failure`, GitGuardian success,
+`mergeable_state: "blocked"`, percobaan merge → **HTTP 405 "3 of 3 required status checks are
+failing."** `main` tetap `b449a76`, dan SHA rusak itu tidak pernah punya run `deploy.yml` (hanya
+`CI pull_request`).
+
+### P4 — `deploy.yml` ditulis ulang
+
+| Sebelum | Sesudah |
+|---|---|
+| job `test` = salinan gerbang yang lebih lemah | dihapus; gerbang tes hanya di `ci.yml`, dan `ci.yml` kini juga tersulut `push: main` |
+| hanya `push: main`, dokumen ikut men-deploy | `paths-ignore: ['**.md','docs/**']` |
+| `concurrency` per-workflow, `cancel-in-progress: true` | per-job di `deploy`, `cancel-in-progress: false` |
+| `if: failure() && env.PREV_IMG != ''` (0× tereksekusi dari 15 run) | `if: always() && steps.prev.outcome == 'success' && (…outcome == 'failure')` — ikut jalan kalau *build/deploy* yang gagal |
+| rollback re-deploy backend saja, tanpa pengecekan | `update-traffic` untuk **be + fe**, lalu diverifikasi ulang |
+| deploy by tag + push `:latest` yang tidak dipakai | deploy by digest, `:latest` berhenti di-push |
+| `curl -f` (200 + `null` lolos) | assertion isi: `.db=="ok"`, shape `certificates`/`experience`, `/` >5 KB tanpa `Application error`, rewrite fe→be, magic byte `%PDF-` |
+| `/api/health` 404 | ada di `main.go` (`DB.DB()` + `Ping()`), plus rewrite di `next.config.ts` sehingga domain publik bisa diprobe |
+
+**Temuan tak terencana yang mengubah desain.** Saat memvalidasi bentuk perintah rollback, aku
+menjalankan `update-traffic --to-revisions=portfolio-be-00011-5z8=100`. Itu bukan no-op: traffic
+ter-*pin* ke revisi bernama, dan deploy berikutnya tidak ikut berpindah. Run #16 membuktikannya —
+`latestCreated: portfolio-be-00012-4zs` (Ready, image `sha256:f0fe00d3…` = artefak `b6ad3ce`)
+sementara `traffic: 100% portfolio-be-00011-5z8` (image `sha256:2e56ee26…` = artefak `b449a76`).
+Artefak baru ter-deploy tapi tidak pernah melayani request, dan smoke tetap hijau karena yang di-probe
+adalah URL layanan. `_LATEST` ditolak API (`only lowercase, digits, and hyphens`), jadi
+`tools/deploy/cloudrun.sh` mengalokasikan nama revisi secara eksplisit di setiap deploy, dan
+verifikasi dimulai dari "revisi yang serve == revisi run ini". Produksi dipulihkan manual ke
+`portfolio-be-00012-4zs`, lalu PR #6 (`4629fa2`) membawa perbaikannya; run **#17** hijau dengan
+`portfolio-be-00013-s97=100` + `portfolio-fe-00012-947=100`.
+
+### P5 — drill rollback (E5 + E6)
+
+Run **#18** (`push: main` pada `a74e014`), kesimpulan **failure**:
+
+```
+16:28:07  titik rollback be-00013-s97 / fe-00012-947 (dibaca dari alokasi traffic)
+16:28:54  backend digest sha256:ec5304fa… -> be-00014-c6c 100%
+16:30:51  frontend digest sha256:31e32c19… -> fe-00013-c8l 100%
+16:31:22  verify: serving==deployed ok, health {"db":"ok","status":"ok"}, certificates 3,
+          experience 2, "/" 40699 byte, rewrite fe->be ok
+16:31:39  "/api/cv tidak mengembalikan PDF"  -> Verifikasi pasca-deploy = failure
+16:31:54  Rollback kedua service = success (traffic kembali ke be-00013-s97 + fe-00012-947)
+16:32:00  Verifikasi pasca-rollback = success
+```
+
+Jendela rusak **≈ 63 detik** (16:30:51 → 16:31:54), hanya unduhan CV. Diperiksa mandiri:
+`cloudrun.sh serving` → `be-00013-s97=100`, `fe-00012-947=100`. Revert PR #8 (`39eae21`) → run
+**#19 success**, kini `portfolio-be-00015-xzs=100` + `portfolio-fe-00014-9v9=100`, dan
+`https://arkfazone-portofolio.elarisnoir.my.id/api/cv` → `200`, 774 803 byte, magic `%PDF-`.
+`main` == artefak yang melayani request.
+
+Yang membuat drill ini berarti: **CI tidak melihat kegagalannya sama sekali** — `go`, `web`, `api`,
+GitGuardian semuanya hijau untuk `6b56d38`, karena CI tidak pernah men-start server Next.js. Only
+`curl -f` versi lama juga hijau (status 200). E6 terpenuhi karena assertion-nya pada **isi**.
+
+### P7 — dokumen
+
+`README.md` sebelumnya salah total: backend disebut **.NET 9 di `MyPostgreApi`** (direktori itu tidak
+ada; `git ls-files` tidak pernah mengenalnya), Next.js 15 (aktual `^16.1.6`, React `19.2.1`),
+`tailwind.config` (aktual Tailwind v4 lewat `@tailwindcss/postcss`, tidak ada file config), struktur
+pohon direktori tidak cocok realita, dan email `muhammadarkanfauzi0@…` berbeda dari tiga sumber lain
+yang semuanya `muhammadarkanfauzi9@…` (`cv-layout/page.tsx:49`, `mailer/mailer.go:12`,
+`main.go:246`). Diganti dengan stack + struktur + cara lokal yang terverifikasi, plus tabel
+**Status fitur** yang jujur (kontak stub, admin mati, CV tanpa sertifikat).
+`DEPLOY.md`: tabel IAM dikoreksi ke keluaran `gcloud projects get-iam-policy` (runtime SA memegang
+`roles/editor` + `roles/pubsub.publisher` se-proyek, bukan hanya `secretAccessor`), plus mekanisme
+gerbang deploy, arah traffic, hasil drill, dan inventaris operasional.
+
+Pass kedua (16:52 UTC) justru menemukan tiga kesalahan **pada dokumen yang sedang kuperbaiki sendiri**
+dan pada baseline, semuanya dari klaim yang tidak kuulang pengukurannya:
+
+| Klaim | Sumber | Aktual |
+|---|---|---|
+| PITR aktif di Cloud SQL | `DEPLOY.md` lama + baseline §1 | `settings.pointInTimeRecoveryEnabled` **absen** di `gcloud sql instances describe --format=json` (juga di `instances list`) ⇒ PITR mati. `retainedBackups` juga absen; angka "7" hanya jumlah baris `backups list` |
+| Backup terbaru `2026-10-04T03:00Z` | baseline §1 | itu epoch dari **id** backup; `startTime 04:50:41Z`, `endTime 04:52:13Z` |
+| LinkedIn `muhammad-arkan-fauzi-5a6799380` | `README.md` lama | yang diklik di situs: `muhamad-arkan-fauzi-5a6799380` (`Navigation.tsx:8`); `cv-layout/page.tsx:53` menulis versi teks tanpa angka — jadi situs sendiri tidak konsisten |
+
+Dua hal ikut terverifikasi dan sekarang tercatat di `DEPLOY.md`: `maxScale=3` +
+`containerConcurrency=80` + `startup-cpu-boost` di kedua revision, dan connector VPC hanya ada di
+backend (`run.googleapis.com/vpc-access-connector` ada di anotasi **revision**, bukan service —
+pertanyaan "kok kosong" waktu cek pertama kali bukan karena connectornya hilang, tapi karena
+`--flatten="bindings[].members"`/anotasi service memang tidak mencetaknya). Pelajarannya untuk E8:
+klaim yang tidak disertai perintah pembuktinya adalah kandidat pertama untuk salah, termasuk klaim
+yang kutulis 20 menit sebelumnya.
+
+### Catatan jujur: yang tidak sama dengan rencana
+
+1. **`errcheck` tidak dipasang** di job `go` (P1 merencanakannya). 13 call GORM yang mengabaikan
+   error sekarang ditutup tidak langsung: job `api` membuktikan bentuk respons terhadap DB nyata, dan
+   M11 menanggung perbaikannya. Kalau `errcheck` dipasang hari ini, gerbangnya merah sejak awal —
+   sama seperti tripwire tanpa baseline.
+2. **Job `image` di CI dihapus** dari rencana. `docker build` kedua Dockerfile tidak menambah bukti
+   (yang diverifikasi adalah image yang di-deploy, di `deploy.yml`), hanya menambah 4–6 menit.
+3. **Drill lewat PR ke `main`, bukan `workflow_dispatch` di branch lepas.** Rencananya merusak
+   kontrak `/api/health`, tapi job `api` juga meng-assert `.db=="ok"` — kerusakan itu tidak bisa
+   sampai ke produksi lewat jalur mana pun yang sah. Merusak `/api/cv` justru menguji batas yang
+   benar: apa yang tidak bisa dilihat CI.
+4. **Artefak CI ≠ artefak produksi** (build-arg `BACKEND_URL` beda) masih benar terjadi; yang berubah
+   adalah `deploy.yml` tidak lagi pura-pura mengesahkan artefak CI. Yang disahkan adalah image hasil
+   deploy itu sendiri.
+5. **Digest tidak stabil untuk konten yang sama**: `go-backend/` yang identik menghasilkan
+   `sha256:b4c46da3…` (run 17), `sha256:ec5304fa…` (run 18), `sha256:2b986e14…` (run 19). Build tidak
+   reproducible, jadi digest mengikat revisi ke artefak milik satu run — bukan alat dedup. Itu memang
+   fungsi yang dibutuhkan rollback, tapi jangan berharap "konten sama ⇒ revisi sama".
+
+### Status exit criteria
+
+| # | Kriteria | Status | Bukti |
+|---|---|---|---|
+| E1 | Workflow jalan di setiap PR | **hijau** | 12 run `CI`; `pull_request` untuk `98a7057`, `e3ce49d`, `f07fddb`, `b487c0f`, `9d0a3f1`, `6b56d38`, `14859ce` |
+| E2 | Kerusakan memblokir merge | **hijau** | PR #4 `blocked`, HTTP 405, 0 run `deploy.yml` untuk `9d0a3f1` |
+| E3 | PR tidak mungkin menyentuh produksi | **hijau (struktural)** | `ci.yml`: `permissions: contents: read`, tidak ada `id-token` sama sekali |
+| E4 | Cancel tidak meninggalkan deploy setengah jalan | **merah — belum diuji** | `cancel-in-progress: false` terpasang dan `actionlint` bersih, tapi belum ada dua push berjarak < 60 s yang membuktikan run kedua `queued` |
+| E5 | Rollback pernah dieksekusi dan memulihkan | **hijau** | run #18 langkah 13 `success`, langkah 14 `success`, traffic terukur kembali ke `be-00013-s97`/`fe-00012-947` |
+| E6 | Smoke bisa gagal | **hijau** | run #18 `"/api/cv tidak mengembalikan PDF"` pada HTTP 200 — `curl -f` tidak akan melihatnya |
+| E7 | Dokumen tidak memicu deploy | **menunggu bukti** | `paths-ignore: ['**.md','docs/**']` terpasang dan `actionlint` bersih; pembuktiannya adalah PR dokumen ini sendiri — hitungan run `deploy.yml` untuk merge-nya dibaca **setelah** hijau, bukan diklaim di muka |
+| E8 | Dokumen tidak menyimpang dari realita | **sebagian** | tabel IAM + stack + struktur sudah dikoreksi manual vs keluaran `gcloud` (16:45 UTC, lalu diulang 16:52 UTC dengan perintah yang kini tertulis di `DEPLOY.md`); drift-check otomatis masih P6 |
+
