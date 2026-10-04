@@ -1,11 +1,15 @@
 name: CI
 
-# Gerbang test-only untuk PR ke main. Sengaja TIDAK ada `paths:`/`paths-ignore`:
-# workflow ini dipakai sebagai required status check, dan check yang di-skip akan
-# membuat PR terkunci selamanya. Jalur deploy tetap hanya deploy.yml (push: main).
+# Gerbang test-only. Sengaja TIDAK ada `paths:`/`paths-ignore`: workflow ini dipakai sebagai
+# required status check, dan check yang di-skip akan membuat PR terkunci selamanya.
+# `push: main` ikut dipasang supaya merge commit (SHA yang sama sekali belum dites di PR,
+# karena branch protection berjalan dengan strict=false) tetap diverifikasi setelah masuk.
+# Jalur deploy tetap hanya deploy.yml.
 
 on:
   pull_request:
+    branches: [main]
+  push:
     branches: [main]
   workflow_dispatch:
 
