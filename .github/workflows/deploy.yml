@@ -1,8 +1,19 @@
-name: Build, Test and Deploy to Cloud Run
+name: Deploy to Cloud Run
+
+# Satu-satunya jalur ke produksi. Job `test` yang lama DIHAPUS dari workflow ini: gerbang yang
+# sebenarnya (go / web / api, termasuk tripwire kontrak dan tes DB nyata) tinggal di ci.yml, dan
+# memelihara salinan yang lebih lemah di sini persis sebabnya run #14 hijau sementara situs cacat.
+# Yang dibuktikan di workflow ini adalah artefak yang benar-benar di-serve: verifikasi pasca-deploy
+# dengan isi respons (E6), bukan `curl -f` yang lolos walau backend mengembalikan `null`.
 
 on:
   push:
     branches: [main]
+    # Merge dokumen tidak boleh membangun ulang dan mengganti produksi (E7). Tidak boleh ditambah
+    # ke ci.yml — di sana check-nya dibutuhkan untuk merge.
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
   workflow_dispatch:
 
 permissions:
@@ -17,57 +28,19 @@ env:
   SERVICE_ACCOUNT: github-cd@config-agentic-ubuntu.iam.gserviceaccount.com
   WIF_PROVIDER: projects/486641216758/locations/global/workloadIdentityPools/github-pool/providers/github-provider
   VPC_CONNECTOR: portfolio-connector
-
-concurrency:
-  group: deploy-${{ github.ref }}
-  cancel-in-progress: true
+  BE_SERVICE: portfolio-be
+  FE_SERVICE: portfolio-fe
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.3
-
-      - name: Setup Go
-        uses: actions/setup-go@0aaccfd150d50ccaeb58ebd88d36e91967a5f35b6 # v5.4.0
-        with:
-          go-version-file: go-backend/go.mod
-
-      - name: Go vet
-        working-directory: go-backend
-        run: go vet ./...
-
-      - name: Go build and test
-        working-directory: go-backend
-        run: |
-          go build ./...
-          go test ./...
-
-      - name: Setup Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: nextjs-frontend/package-lock.json
-
-      - name: Install frontend deps
-        working-directory: nextjs-frontend
-        run: npm ci
-
-      - name: Lint frontend
-        working-directory: nextjs-frontend
-        run: npm run lint
-
-      - name: Build frontend
-        working-directory: nextjs-frontend
-        env:
-          BACKEND_URL: http://localhost:8080
-        run: npm run build
-
   deploy:
     runs-on: ubuntu-latest
-    needs: test
+    timeout-minutes: 30
+    # Concurrency per-job, bukan per-workflow, dan cancel-in-progress: false (E4). Run #13 pernah
+    # dibatalkan tepat di batas deploy dan meninggalkan revisi setengah jalan. Deploy tidak boleh
+    # bisa dibunuh; push baru cukup mengantri.
+    concurrency:
+      group: deploy-production-main
+      cancel-in-progress: false
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.3
@@ -82,87 +55,171 @@ jobs:
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker $AR_REGISTRY --quiet
 
-      - name: Build and push backend image
+      - name: Catat revisi siap sebagai titik rollback
+        id: prev
+        run: |
+          be_rev=$(gcloud run services describe "$BE_SERVICE" --platform managed --region "$REGION" \
+            --format='value(status.latestReadyRevisionName)')
+          fe_rev=$(gcloud run services describe "$FE_SERVICE" --platform managed --region "$REGION" \
+            --format='value(status.latestReadyRevisionName)')
+          if [ -z "$be_rev" ] || [ -z "$fe_rev" ]; then
+            echo "Tidak ada revisi siap (be='$be_rev' fe='$fe_rev') — rollback tidak mungkin, batalkan deploy."
+            exit 1
+          fi
+          echo "Titik rollback: $BE_SERVICE=$be_rev  $FE_SERVICE=$fe_rev"
+          echo "be_rev=$be_rev" >> "$GITHUB_OUTPUT"
+          echo "fe_rev=$fe_rev" >> "$GITHUB_OUTPUT"
+
+      - name: Build dan push image backend
+        id: be_push
         run: |
           IMG=$AR_REGISTRY/$PROJECT_ID/$AR_REPO/backend
-          docker build -t $IMG:${{ github.sha }} -t $IMG:latest ./go-backend
-          docker push $IMG:${{ github.sha }}
-          docker push $IMG:latest
+          docker build -t "$IMG:${{ github.sha }}" ./go-backend
+          out=$(docker push "$IMG:${{ github.sha }}" 2>&1) || { echo "$out"; exit 1; }
+          echo "$out"
+          dig=$(printf '%s\n' "$out" | sed -n 's/.*digest: \(sha256:[0-9a-f]\{64\}\).*/\1/p' | head -1)
+          if [ -z "$dig" ]; then echo "digest tidak terbaca dari output docker push"; exit 1; fi
+          echo "ref=$IMG@$dig" >> "$GITHUB_OUTPUT"
+          echo "deploy -> $IMG@$dig"
 
-      - name: Deploy backend to Cloud Run
+      - name: Deploy backend ke Cloud Run
+        id: be_deploy
         run: |
-          IMG=$AR_REGISTRY/$PROJECT_ID/$AR_REPO/backend:${{ github.sha }}
-          PREV_IMG=$(gcloud run services describe portfolio-be --platform managed --region $REGION --format='value(spec.template.spec.containers[0].image)')
-          echo "PREV_IMG=$PREV_IMG" >> "$GITHUB_ENV"
-          gcloud run deploy portfolio-be \
-            --image "$IMG" \
+          gcloud run deploy "$BE_SERVICE" \
+            --image "${{ steps.be_push.outputs.ref }}" \
             --platform managed \
-            --region $REGION \
-            --vpc-connector $VPC_CONNECTOR \
+            --region "$REGION" \
+            --vpc-connector "$VPC_CONNECTOR" \
             --vpc-egress all-traffic \
             --allow-unauthenticated \
             --port 8080 \
             --set-env-vars ADMIN_USER=admin \
             --set-secrets DATABASE_URL=portfolio-database-url:latest,JWT_SECRET=portfolio-jwt-secret:latest,ADMIN_PASS=portfolio-admin-pass:latest,ADMIN_EMAIL=portfolio-admin-email:latest,CORS_ORIGINS=portfolio-cors-origins:latest
 
-      - name: Get backend URL
+      - name: Ambil URL backend
         id: be_url
         run: |
-          URL=$(gcloud run services describe portfolio-be --platform managed --region $REGION --format="value(status.url)")
-          echo "url=$URL" >> $GITHUB_OUTPUT
+          URL=$(gcloud run services describe "$BE_SERVICE" --platform managed --region "$REGION" \
+            --format='value(status.url)')
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "backend: $URL"
 
-      - name: Smoke test backend
-        run: |
-          for path in /api/certificates /api/experience; do
-            curl -fsS --max-time 30 "${{ steps.be_url.outputs.url }}$path" > /dev/null
-            echo "ok backend $path"
-          done
-
-      - name: Build and push frontend image
+      - name: Build dan push image frontend
+        id: fe_push
         run: |
           IMG=$AR_REGISTRY/$PROJECT_ID/$AR_REPO/frontend
           docker build --build-arg BACKEND_URL="${{ steps.be_url.outputs.url }}" \
-            -t $IMG:${{ github.sha }} -t $IMG:latest ./nextjs-frontend
-          docker push $IMG:${{ github.sha }}
-          docker push $IMG:latest
+            -t "$IMG:${{ github.sha }}" ./nextjs-frontend
+          out=$(docker push "$IMG:${{ github.sha }}" 2>&1) || { echo "$out"; exit 1; }
+          echo "$out"
+          dig=$(printf '%s\n' "$out" | sed -n 's/.*digest: \(sha256:[0-9a-f]\{64\}\).*/\1/p' | head -1)
+          if [ -z "$dig" ]; then echo "digest tidak terbaca dari output docker push"; exit 1; fi
+          echo "ref=$IMG@$dig" >> "$GITHUB_OUTPUT"
+          echo "deploy -> $IMG@$dig"
 
-      - name: Deploy frontend to Cloud Run
+      - name: Deploy frontend ke Cloud Run
+        id: fe_deploy
         run: |
-          IMG=$AR_REGISTRY/$PROJECT_ID/$AR_REPO/frontend:${{ github.sha }}
-          gcloud run deploy portfolio-fe \
-            --image $IMG \
+          gcloud run deploy "$FE_SERVICE" \
+            --image "${{ steps.fe_push.outputs.ref }}" \
             --platform managed \
-            --region $REGION \
+            --region "$REGION" \
             --allow-unauthenticated \
             --port 3000 \
             --memory 1Gi \
             --set-env-vars BACKEND_URL="${{ steps.be_url.outputs.url }}"
 
-      - name: Smoke test frontend
+      - name: Ringkas URL layanan
         run: |
-          FE=$(gcloud run services describe portfolio-fe --platform managed --region $REGION --format='value(status.url)')
-          curl -fsS --max-time 30 "$FE/" > /dev/null
-          echo "ok frontend /"
-          curl -fsS --max-time 30 "$FE/api/certificates" > /dev/null
-          echo "ok frontend /api/certificates (proxy ke backend)"
+          FE=$(gcloud run services describe "$FE_SERVICE" --platform managed --region "$REGION" \
+            --format='value(status.url)')
+          echo "Frontend: $FE"
+          echo "Backend:  ${{ steps.be_url.outputs.url }}"
 
-      - name: Output service URLs
+      - name: Verifikasi pasca-deploy
+        id: verify
         run: |
-          echo "Frontend: $(gcloud run services describe portfolio-fe --platform managed --region $REGION --format='value(status.url)')"
-          echo "Backend: ${{ steps.be_url.outputs.url }}"
+          BE="${{ steps.be_url.outputs.url }}"
+          FE=$(gcloud run services describe "$FE_SERVICE" --platform managed --region "$REGION" \
+            --format='value(status.url)')
 
-      - name: Rollback backend on failure
-        if: failure() && env.PREV_IMG != ''
+          # 1. DB benar-benar terpasang. Ini yang tidak bisa dibuktikan smoke test lama.
+          health=$(curl -fsS --max-time 30 "$BE/api/health")
+          echo "backend /api/health => $health"
+          echo "$health" | jq -e '.status=="ok" and .db=="ok"' > /dev/null
+
+          # 2. Bentuk payload: array berisi objek. main.go mengabaikan error gorm, jadi 200 + null
+          #    adalah kegagalan yang nyata, bukan success.
+          curl -fsS --max-time 30 "$BE/api/certificates" -o /tmp/certs.json
+          jq -e 'type=="array" and length>0
+                 and (.[0] | has("id") and has("title") and has("issuer") and has("date"))' /tmp/certs.json > /dev/null
+          echo "backend /api/certificates => $(jq 'length' /tmp/certs.json) baris"
+
+          curl -fsS --max-time 30 "$BE/api/experience" -o /tmp/exp.json
+          jq -e 'type=="array" and length>0
+                 and (.[0] | has("id") and has("role") and has("company") and has("period"))' /tmp/exp.json > /dev/null
+          echo "backend /api/experience => $(jq 'length' /tmp/exp.json) baris"
+
+          # 3. Frontend menyajikan halaman, bukan error page Next.js.
+          curl -fsS --max-time 60 -H 'Accept: text/html' "$FE/" -o /tmp/fe.html
+          bytes=$(wc -c < /tmp/fe.html)
+          echo "frontend / => $bytes byte"
+          if [ "$bytes" -lt 5000 ]; then
+            echo "frontend / terlalu kecil untuk jadi landing page utuh"; exit 1
+          fi
+          if grep -qi 'Application error' /tmp/fe.html; then
+            echo "frontend / menampilkan Next.js error page"; exit 1
+          fi
+
+          # 4. Rantai rewrite fe -> be hidup (dan domain publik ikut terbukti lewat jalur yang sama).
+          curl -fsS --max-time 30 "$FE/api/health" | jq -e '.status=="ok" and .db=="ok"' > /dev/null
+          echo "frontend /api/health => terproxy ke backend"
+          proxied=$(curl -fsS --max-time 30 "$FE/api/certificates" | jq 'type=="array" and length>0')
+          echo "frontend /api/certificates => array berisi data: $proxied"
+          [ "$proxied" = "true" ]
+
+          # 5. Jalur PDF (Puppeteer) hidup dan menghasilkan dokumen nyata.
+          curl -fsS --max-time 120 "$FE/api/cv" -o /tmp/cv.pdf
+          if [ "$(head -c 5 /tmp/cv.pdf)" != "%PDF-" ]; then
+            echo "/api/cv tidak mengembalikan PDF"; exit 1
+          fi
+          echo "/api/cv => $(wc -c < /tmp/cv.pdf) byte PDF"
+
+          echo "Verifikasi lulus: kedua layanan serve artefak SHA ${{ github.sha }} dengan isi yang benar."
+
+      # Rollback pakai update-traffic (bukan re-deploy): revisi sebelumnya masih ada dan sudah
+      # membawa env/secret-nya sendiri, jadi tidak ada kesempatan salah salin --set-secrets.
+      - name: Rollback kedua service
+        if: >-
+          always() && steps.prev.outcome == 'success' &&
+          (steps.verify.outcome == 'failure' || steps.be_push.outcome == 'failure' ||
+           steps.be_deploy.outcome == 'failure' || steps.fe_push.outcome == 'failure' ||
+           steps.fe_deploy.outcome == 'failure')
+        id: rollback
         run: |
-          echo "Deploy/smoke gagal; mengembalikan portfolio-be ke $PREV_IMG"
-          gcloud run deploy portfolio-be \
-            --image "$PREV_IMG" \
-            --platform managed \
-            --region $REGION \
-            --vpc-connector $VPC_CONNECTOR \
-            --vpc-egress all-traffic \
-            --allow-unauthenticated \
-            --port 8080 \
-            --set-env-vars ADMIN_USER=admin \
-            --set-secrets DATABASE_URL=portfolio-database-url:latest,JWT_SECRET=portfolio-jwt-secret:latest,ADMIN_PASS=portfolio-admin-pass:latest,ADMIN_EMAIL=portfolio-admin-email:latest,CORS_ORIGINS=portfolio-cors-origins:latest
-          exit 1
+          echo "Verifikasi/deploy gagal; kembalikan traffic ke revisi siap terakhir."
+          gcloud run services update-traffic "$BE_SERVICE" \
+            --to-revisions="${{ steps.prev.outputs.be_rev }}=100" \
+            --platform managed --region "$REGION"
+          gcloud run services update-traffic "$FE_SERVICE" \
+            --to-revisions="${{ steps.prev.outputs.fe_rev }}=100" \
+            --platform managed --region "$REGION"
+          echo "Traffic dikembalikan: $BE_SERVICE=${{ steps.prev.outputs.be_rev }}, $FE_SERVICE=${{ steps.prev.outputs.fe_rev }}"
+
+      - name: Verifikasi pasca-rollback
+        if: always() && steps.rollback.outcome == 'success'
+        run: |
+          BE=$(gcloud run services describe "$BE_SERVICE" --platform managed --region "$REGION" \
+            --format='value(status.url)')
+          FE=$(gcloud run services describe "$FE_SERVICE" --platform managed --region "$REGION" \
+            --format='value(status.url)')
+          health=$(curl -fsS --max-time 60 "$BE/api/health")
+          echo "health pasca-rollback => $health"
+          echo "$health" | jq -e '.status=="ok" and .db=="ok"' > /dev/null
+          curl -fsS --max-time 60 "$FE/api/certificates" | jq -e 'type=="array" and length>0' > /dev/null
+          be_rev=$(gcloud run services describe "$BE_SERVICE" --platform managed --region "$REGION" \
+            --format='value(status.latestReadyRevisionName)')
+          fe_rev=$(gcloud run services describe "$FE_SERVICE" --platform managed --region "$REGION" \
+            --format='value(status.latestReadyRevisionName)')
+          echo "Revisi aktif sekarang: $BE_SERVICE=$be_rev  $FE_SERVICE=$fe_rev"
+          echo "Rollback terverifikasi: traffic 100% pada revisi yang sehat."
