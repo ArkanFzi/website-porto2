@@ -95,7 +95,9 @@ jobs:
         env:
           POSTGRES_DB: portfolio_db
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: ci-only-password
+          # Port ini hanya dipublish ke localhost runner sementara. trust dipilih supaya
+          # tidak ada kredensial literal di repo (GitGuardian menolak yang itu).
+          POSTGRES_HOST_AUTH_METHOD: trust
         ports:
           - 5432:5432
         options: >-
@@ -112,6 +114,12 @@ jobs:
         with:
           go-version-file: go-backend/go.mod
 
+      - name: Nilai uji acak, tidak disimpan di repo
+        id: fixtures
+        run: |
+          echo "jwt=$(openssl rand -hex 16)" >> "$GITHUB_OUTPUT"
+          echo "adminpass=$(openssl rand -hex 12)" >> "$GITHUB_OUTPUT"
+
       - name: Build backend
         working-directory: go-backend
         run: go build -o /tmp/portfolio-be .
@@ -119,10 +127,10 @@ jobs:
       - name: Jalankan backend terhadap Postgres nyata
         working-directory: go-backend
         env:
-          DATABASE_URL: host=127.0.0.1 user=postgres password=ci-only-password dbname=portfolio_db port=5432 sslmode=disable TimeZone=UTC
-          JWT_SECRET: ci-only-jwt-secret
-          ADMIN_USER: admin
-          ADMIN_PASS: ci-only-admin-pass
+          DATABASE_URL: host=127.0.0.1 user=postgres dbname=portfolio_db port=5432 sslmode=disable TimeZone=UTC
+          JWT_SECRET: ${{ steps.fixtures.outputs.jwt }}
+          ADMIN_USER: portfolio-admin
+          ADMIN_PASS: ${{ steps.fixtures.outputs.adminpass }}
           ADMIN_EMAIL: ci@example.com
           CORS_ORIGINS: http://localhost:3000
         run: |
@@ -157,14 +165,18 @@ jobs:
           [ "$code" = "401" ]
 
       - name: Kontrak admin (login lalu tulis)
+        env:
+          ADMIN_USER: portfolio-admin
+          ADMIN_PASS: ${{ steps.fixtures.outputs.adminpass }}
         run: |
           token=$(curl -fsS -X POST -H 'Content-Type: application/json' \
-            -d '{"username":"admin","password":"ci-only-admin-pass"}' \
+            -d "{\"username\":\"$ADMIN_USER\",\"password\":\"$ADMIN_PASS\"}" \
             http://127.0.0.1:8080/api/login | jq -r .token)
           [ "$token" != "null" ] && [ -n "$token" ] || { echo "login tidak mengembalikan token"; exit 1; }
 
           bad=$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
-            -d '{"username":"admin","password":"salah"}' http://127.0.0.1:8080/api/login)
+            -d "{\"username\":\"$ADMIN_USER\",\"password\":\"salah-sengaja\"}" \
+            http://127.0.0.1:8080/api/login)
           echo "login salah password => $bad"
           [ "$bad" = "401" ]
 
@@ -190,7 +202,7 @@ jobs:
           echo "=== stdout/stderr backend ==="
           cat /tmp/be.log || true
           echo "=== tabel di DB ==="
-          psql "host=127.0.0.1 user=postgres password=ci-only-password dbname=portfolio_db" \
+          psql "host=127.0.0.1 user=postgres dbname=portfolio_db" \
             -c '\dt' -c 'select count(*) from certificates;' || true
 
       - name: Hentikan backend
