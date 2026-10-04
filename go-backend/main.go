@@ -268,3 +268,9 @@ func seedData() {
 		log.Println("Seeded Experiences.")
 	}
 }
+
+func ujiGerbang() {
+	if true {
+return "sengaja salah indentasi"
+	}
+}

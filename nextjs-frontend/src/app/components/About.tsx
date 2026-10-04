@@ -20,7 +20,7 @@ const About: React.FC = () => {
   useEffect(() => {
     async function loadMetrics() {
       try {
-        const res = await fetch('/api/github-profile');
+        const res = await fetch('/api/github-profiles');
         if (!res.ok) throw new Error("Failed to fetch GitHub profile metrics");
         const data = await res.json();
 
