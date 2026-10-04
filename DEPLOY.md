@@ -8,7 +8,7 @@ masing-masing membuktikan hal yang berbeda:
 |---|---|---|---|
 | `ci.yml` (nama: **CI**) | `pull_request: [main]`, `push: [main]`, `workflow_dispatch` | `go` (gofmt/vet/build/test), `web` (lint, `tsc --noEmit`, `next build`, tripwire kontrak), `api` (Postgres 15 service container + binary Go asli, assertion isi JSON + round-trip tulis/hapus dengan JWT) | **tidak ada** — `permissions: contents: read`, tanpa `id-token` |
 | `deploy.yml` (nama: **Deploy to Cloud Run**) | `push: [main]` dengan `paths-ignore`, `workflow_dispatch` | build + push by digest, deploy, alokasi traffic eksplisit, verifikasi isi respons, rollback | WIF ke `github-cd@…` (`contents: read`, `id-token: write`) |
-| `watch.yml` (nama: **Watch**) | `schedule` 02:37 UTC + `workflow_dispatch` | probe konten produksi (domain publik + run.app), cek drift `main` vs deploy terakhir, tripwire kontrak, branch layu; satu baris per hari | **tidak ada** — `contents: read` + `actions: read`, tanpa `id-token`. Lihat bagiannya di bawah |
+| `watch.yml` (nama: **Watch**) | `schedule` 02:37 UTC + `workflow_dispatch` | probe konten produksi (domain publik + run.app), cek drift `main` vs deploy terakhir, tripwire kontrak, branch layu; satu baris per hari | **tidak ada** — `contents: read` + `actions: read`, tanpa `id-token`. Satu-satunya kredensialnya `GITHUB_TOKEN` bawaan run (dijadikan `GH_TOKEN` supaya `gh` di runner mau jalan), scope-nya persis dua permission itu. Lihat bagiannya di bawah |
 
 Pembagian ini disengaja. `deploy.yml` dulu punya job `test` sendiri — salinan gerbang yang lebih
 lemah (tanpa `tsc`, tanpa tripwire, tanpa tes DB). Salinan itulah yang membuat run #14 hijau
@@ -147,6 +147,79 @@ berarti memberi akses cloud ke jalur tanpa ulasan PR; itu keputusan §6, bukan s
 sendiri.
 
 `issues: write` juga sengaja tidak dipasang. Alarmnya adalah run merah + notifikasi default GitHub.
+
+### Run pertama di runner (2026-10-04 17:27 UTC) — merah, dan merahnya bukan produksi
+
+`workflow_dispatch` hanya mungkin **setelah** file workflow ada di default branch (mencoba dispatch
+dari branch saja mengembalikan HTTP 404), jadi bukti pertama bahwa `watch.yml` hidup di runner adalah
+run manual #1 pasca-merge PR #10. Hasilnya `failure`, dan langkah gerbang mencetak `merah=1` dengan
+tepat satu vonis MERAH:
+
+```text
+drift|MERAH|daftar run deploy.yml kosong: gh: To use GitHub CLI in a GitHub Actions workflow, set
+the GH_TOKEN environment variable.
+```
+
+Kesalahannya milik workflow, bukan produksi: langkah gerbang melaporkan `merah=1` dan satu-satunya
+vonis MERAH adalah `drift` — tidak ada probe konten yang merah. Produksi diukur hijau dari luar pada
+jam yang sama (lihat tabel verifikasi di bawah). Penyebabnya: `gh` terpasang di runner
+`ubuntu-latest` tapi **menolak memakai kredensial bawaannya** kalau `GH_TOKEN` belum di-set. Reheksal
+lokal tidak bisa menangkap ini karena shim `gh` buatan saya memanggil `curl` dengan kredensial git dan
+karena itu selalu "berhasil".
+Yang menangkapnya adalah guard per-titik-gagal di langkah drift: alih-alih langkahnya abort diam-diam
+dan baris harian terpotong, guard menulis vonisnya lalu `exit 0` — kegagalan tetap terlihat,
+sisa probe tetap tercetak.
+
+Perbaikannya tiga, dan ketiganya punya bukti keluaran alat:
+
+| Perubahan | Kenapa |
+|---|---|
+| `env: GH_TOKEN: ${{ github.token }}` di job `watch` | token bawaan run, scope-nya persis `permissions:` workflow (`contents: read`, `actions: read`). Ini bukan kredensial cloud: tidak ada `id-token`, tidak ada WIF, dan token mati sendiri saat run selesai |
+| langkah drift memisahkan `rc != 0` dari "daftar run kosong" | pesan sebelumnya ("daftar run deploy.yml kosong") menuduh pemicu deploy hilang padahal yang gagal adalah `gh api`. Sekarang: `gh api gagal (rc=…): <stderr>` vs `tidak ada satu pun run deploy.yml dengan event=push` |
+| langkah *Branch layu* tidak lagi melaporkan `0 branch` saat `gh` gagal | ini false-clean yang paling berbahaya di antara ketiganya: stderr `gh` tercetak di log, tapi barisnya tetap `INFO|0 branch > 168 jam`. Sekarang daftar ref diambil lebih dulu; kalau rc != 0 atau kosong, barisnya `KUNING|daftar ref cabang tidak terbaca (rc=…)` — tetap tidak gerbang (langkah ini informasi saja), tapi tidak lagi mengaku bersih |
+
+Reheksal ulang keempat jalur, dengan `gh` shim yang benar-benar berfungsi:
+`drift|HIJAU|run #20 hijau untuk f5fdcf1, tidak ada deploy lain di atasnya` +
+`branch-layu|INFO|1 branch layu dari 12 cabang`; `GH_TOKEN` dikosongkan → `drift|MERAH|GH_TOKEN kosong:
+gh menolak jalan di runner`; `gh api` dibuat gagal → `drift|MERAH|gh api gagal (rc=1)` dan
+`branch-layu|KUNING|…rc=1`; `gh` dihapus dari PATH → `drift|MERAH|gh tidak ada di runner`. Keempatnya
+`exit 0` di langkahnya, jadi baris harian selalu lengkap.
+
+Perbaikan itu merge lewat PR #11 (`6b4ad9d`, deploy run #21 `success`), lalu Watch di-dispatch ulang:
+**run #2 = `success`** (run id 37221338121, dibuat 2026-10-04 17:39:24 UTC di head `6b4ad9d`).
+Yang tercetak di log-nya:
+
+```text
+expected (commit kode terakhir di main): 6b4ad9d
+deploy push terakhir  : run #21 @ 6b4ad9d = success
+run belum selesai     : 0
+branch lebih tua dari 168 jam: 1 dari 13 cabang (tidak ada yang dihapus)
+merah=0
+Semua probe hijau.
+```
+
+Satu kelemahan run #1 ikut dibenahi setelah itu: vonis harian hanya masuk ke *Step Summary*, dan
+Step Summary tidak bisa dibaca lewat API log — jadi klaim "sisanya hijau" waktu itu harus
+disimpulkan dari `merah=1`, bukan diukur. Sekarang langkah rangkuman mencetak `rows=N merah=M` plus
+seluruh `/tmp/hasil.tsv` ke stdout, jadi baris harian sebuah run bisa diverifikasi ulang orang lain
+tanpa membuka UI.
+
+Produksi pada commit yang sama, diukur dari luar tak lama setelah run #2 (bukan angka Watch, angka
+`gcloud`/`curl` langsung):
+
+| Yang diukur | Nilai |
+|---|---|
+| traffic `portfolio-be` / `portfolio-fe` | `portfolio-be-00017-8c8` 100% / `portfolio-fe-00016-t28` 100% |
+| `/api/health` di tiga origin | `{"db":"ok","status":"ok"}` di domain publik, run.app be, run.app fe |
+| `/api/certificates` / `/api/experience` | 3 baris / 2 baris, di ketiga origin |
+| `GET /` | 200, 40699 byte, 0.40 s, 0 kemunculan `Application error` |
+| `GET /api/cv` | 200, 774803 byte, 6.31 s, 5 byte pertama `%PDF-` |
+
+Pelajaran yang sama dengan P7, sekarang untuk jalur CI: **reheksal terhadap shim bukan reheksal
+terhadap runner.** Yang dites di shim adalah `curl` buatanku, bukan tool aslinya di lingkungan
+aslinya — `$PATH` runner dan aturan `gh` soal kredensial. Hanya run sungguhan di runner yang
+membuktikannya, dan itu sebabnya jendela observasi E8 dihitung dari run pertama di runner, bukan
+dari hari penulisannya.
 
 ## Postur IAM (diverifikasi ulang 2026-10-04, 16:45 dan 16:52 UTC)
 

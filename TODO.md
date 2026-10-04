@@ -13,6 +13,17 @@ M10 membangun gerbangnya supaya klaim "stable" punya dasar.
 > sebelum perubahan — itu pembanding, bukan keadaan sekarang.
 > Yang masih terbuka: **E4** (dua push berjarak < 60 s), **P6** (`watch.yml`, butuh 7 hari
 > pengamatan), dan **E8** sepenuhnya (drift-check otomatis).
+>
+> **Update 2026-10-04 17:45 UTC:** E7 **terbukti** (merge PR #9 = `f218564`, 0 run `deploy.yml`
+> untuk SHA itu, CI push run #14 hijau — lihat §7 P7). P7 selesai, termasuk tiga koreksi atas
+> klaimku sendiri. P6 **hidup dan hijau di runner**: `watch.yml` merge lewat PR #10 (`f5fdcf1`), run
+> manual pertamanya **merah** — bukan karena produksi, karena `gh` di `ubuntu-latest` menolak jalan
+> tanpa `GH_TOKEN`; perbaikannya merge lewat PR #11 (`6b4ad9d`, deploy run #21 `success`) dan Watch
+> run #2 (17:39:24 UTC) `success` dengan `merah=0`. Angka, causa, dan perbaikannya di §7 P6 +
+> `DEPLOY.md` § "Run pertama di runner".
+> Yang masih terbuka tinggal dua: **E4** (dua push berjarak < 60 s, sampai sekarang belum pernah
+> terjadi) dan **6 baris hijau harian berikutnya untuk E8** — baru 1 dari 7, jadi M10 belum bisa
+> dinyatakan selesai sebelum 2026-10-11.
 
 ---
 
@@ -155,6 +166,12 @@ image live dengan SHA HEAD `main` (drift), jalankan tripwire API, cek `chore/*` 
 satu baris per hari. Kalau gagal → buat issue (butuh izin + scope `issues: write`).
 Selesai: 1 baris tercatat per hari; minimal 7 hari berturut-turut sebelum M10 dinyatakan selesai.
 
+**Status 2026-10-04 17:39 UTC:** `watch.yml` hidup di runner, baris pertama tercatat (`merah=0`).
+Isinya lebih dari rencananya: tiga origin, assertion isi untuk `/` dan `/api/cv`, vonis drift
+berbasis `git log --first-parent` + daftar run `deploy.yml`. **Issue otomatis tidak dibuat** —
+`issues: write` sengaja tidak dipasang dan itu masih keputusanmu (§6 butir 5). Sisa exit criterion:
+6 baris hijau berikutnya, 02:37 UTC tiap hari, sampai 2026-10-11. Angka lengkap di §7 P6.
+
 ### P7 — Rekonsiliasi dokumen & beres-beres
 - Koreksi `DEPLOY.md:45-49`: tabel IAM tidak matches realita (runtime SA pegang `roles/editor`).
 - `README.md` salah total dan menyesatkan: menyebut backend `.NET 9` di `MyPostgreApi` (direktori itu
@@ -222,8 +239,8 @@ lewat file baseline, bukan melupakannya.
 | 2 | Branch protection `main` | **Diberikan dan terpasang.** `required_status_checks.contexts = ["go","web","api"]`, `strict` tetap `false` (kompensasinya: `ci.yml` ikut tersulut `push: main`) |
 | 3 | Cabut kunci statis `github-cd` | **Sudah tidak relevan — dan bukan karena aku.** `gcloud iam service-accounts keys list` kini hanya mengembalikan 1 kunci `SYSTEM_MANAGED`; kunci `USER_MANAGED` (valid sampai 2028-09-22) yang tercatat di §1 sudah tidak ada saat diperiksa ulang 16:45 UTC. Aku tidak menghapusnya dan tidak bisa memastikan siapa yang menghapus — kalau itu kamu, bagus; kalau bukan, itu pertanyaan sendiri. |
 | 4 | Runtime SA tanpa `roles/editor` | **Terbuka.** Diverifikasi: `486641216758-compute@developer.gserviceaccount.com` masih `roles/editor` + `roles/pubsub.publisher` se-proyek, dan kedua service publik (`allUsers → run.invoker`) jalan di SA itu. Sudah dicatat sebagai hutang di `DEPLOY.md` |
-| 5 | `watch.yml` membuat issue otomatis | **Terbuka** (P6 belum jalan). Rencana awal: tanpa `issues: write`, keluarannya satu baris per hari + run merah saat ada yang gagal |
-| 6 | `staging`, `chore/bughunter-ci` | **Terbuka.** Keduanya masih ada di origin (`staging` layu sejak 2026-09-23; `chore/bughunter-ci` ahead 1 / behind 5 dan `deploy.yml`-nya regression). Branch yang kubuat untuk fase-fase di atas (`chore/gerbang-ci-v2`, `chore/proteksi-main`, `chore/gerbang-deploy-p4`, `fix/traffic-alokasi-eksplisit`, `drill/cv-response`, `revert/drill-cv`) juga belum dihapus — PR-nya sudah merged, jadi isinya aman di `main` |
+| 5 | `watch.yml` membuat issue otomatis | **Terpasang seperti rencana awalnya.** `issues: write` **tidak** diberi, jadi Watch hanya menulis satu baris per hari + membuat run merah; alarmnya notifikasi default GitHub untuk workflow terjadwal yang gagal. Terbukti di runner: run #2 `success` (`merah=0`), run #1 `failure` dengan satu MERAH |
+| 6 | `staging`, `chore/bughunter-ci` | **Terbuka.** `origin` = 13 cabang (hitungan `GET /git/refs/heads`, 17:45 UTC). Angka lama di baris ini ("`chore/bughunter-ci` ahead 1 / behind 5") sudah basi: `git rev-list --left-right --count origin/main...origin/<b>` kini memberi **ahead 1 / behind 22** untuk `chore/bughunter-ci` (tip `bd38b93`, 97 jam) dan **ahead 0 / behind 30** untuk `staging` (tip `1f2486b`, 267 jam — satu-satunya yang dihitung *layu* oleh Watch). `deploy.yml` di kedua branch itu tetap regression. Branch yang kubuat untuk fase-fase di atas (`chore/gerbang-ci`, `chore/gerbang-ci-v2`, `chore/proteksi-main`, `chore/gerbang-deploy-p4`, `fix/traffic-alokasi-eksplisit`, `fix/watch-gh-token`, `drill/cv-response`, `revert/drill-cv`, `docs/rekonsiliasi-p7`, `chore/watch-p6`) juga belum dihapus — PR-nya sudah merged, jadi isinya aman di `main`. Watch tidak menghapus apa pun: langkah *Branch layu* hanya menghitung |
 
 ---
 
@@ -309,6 +326,51 @@ Yang membuat drill ini berarti: **CI tidak melihat kegagalannya sama sekali** �
 GitGuardian semuanya hijau untuk `6b56d38`, karena CI tidak pernah men-start server Next.js. Only
 `curl -f` versi lama juga hijau (status 200). E6 terpenuhi karena assertion-nya pada **isi**.
 
+### P6 — `watch.yml`: jendela observasi harian (bukan gerbang)
+
+Satu file baru, `.github/workflows/watch.yml` (id workflow **374751227**, `cron: 37 2 * * *` UTC +
+`workflow_dispatch`, `concurrency: watch-production` / `cancel-in-progress: false`,
+`permissions: contents: read` + `actions: read`, `timeout-minutes: 20`, tanpa `id-token` dan tanpa
+kredensial GCP). Isinya empat langkah yang menulis vonisnya ke `/tmp/hasil.tsv` + satu rangkuman +
+satu gerbang.
+
+Yang sudah terbukti dengan angka, berurutan waktu:
+
+| Waktu UTC | Peristiwa | Angka |
+|---|---|---|
+| 17:22:13 | PR #10 merge → `f5fdcf1` | CI push run #17 `success`; deploy run #20 `success` (17:22:16→17:25:53); traffic `be-00016-p5q`/`fe-00015-22j` @100% |
+| 17:27:14 | **Watch run #1 di runner** | `failure`, `merah=1`, satu-satunya MERAH = `drift` |
+| 17:34:57 | PR #11 merge → `6b4ad9d`, deploy run #21 | `success` (17:35:00→17:38:55); traffic `be-00017-8c8`/`fe-00016-t28` @100% |
+| 17:39:24 | **Watch run #2** | `success` — `expected 6b4ad9d`, `deploy push terakhir: run #21 @ 6b4ad9d = success`, `run belum selesai 0`, `merah=0`, `Semua probe hijau.` |
+| ≈17:42 | produksi diukur dari luar | `{"db":"ok","status":"ok"}` di 3 origin; certs 3 / exp 2; `/` 200 40699 b 0.40 s (0 `Application error`); `/api/cv` 200 774803 b 6.31 s `%PDF-` |
+
+Run #1 adalah bukti bahwa workflow-nya hidup **dan** bahwa reheksal lokal tidak setara runner:
+`gh` ada di `ubuntu-latest` tapi menolak jalan tanpa `GH_TOKEN`, sehingga `gh api` keluar lebih awal
+dan langkah drift menerima daftar run kosong. Guard per-titik-gagal (commit `bbb9f3f`) bekerja seperti
+dirancang — vonis tertulis, langkah `exit 0`, sisa probe tetap tercetak, gerbang yang memutuskan
+merah. Tanpa guard, run #1 akan menghasilkan baris harian terpotong tanpa alasan.
+
+Cakap yang sengaja tidak dipasang, dan apa yang hilang karenanya:
+
+- **`issues: write`** — §6 butir 5 masih keputusanmu; alarmnya run merah + notifikasi default GitHub.
+- **`id-token`/WIF** — Watch tidak membaca `status.traffic`. Kalau seseorang mem-pin traffic dengan
+  tangan (persis kegagalan run #16), produksi bisa melayani revisi lama sambil Watch hijau, karena
+  commit yang dilayani *memang* punya run deploy hijau. Yang menutup celah itu hanya
+  `cloudrun.sh serving` di dalam `deploy.yml`.
+- **Batas drift yang diketahui**: drift menjawab "commit kode terakhir di `main` sudah punya run
+  `deploy.yml` hijau?" — bukan "revisi yang sekarang melayani request cocok dengan `main`?".
+  Yang kedua butuh akses cloud ke jalur tanpa ulasan PR.
+
+`workflow_dispatch` **tidak mungkin sebelum merge**: `POST /actions/workflows/watch.yml/dispatches`
+dengan `ref=chore/watch-p6` mengembalikan HTTP 404, karena GitHub hanya mendaftarkan file workflow
+yang ada di default branch. Konsekuensinya dua: kalimat di deskripsi PR #10 ("di-dispatch manual dulu
+dari branch ini") salah dan sudah dikoreksi, dan satu-satunya cara membuktikan sebuah workflow baru
+di runner adalah me-*merge*-nya dulu — jadi workflow terjadwal yang belum diverifikasi selalu punya
+satu run "pertama kali" yang berisiko merah.
+
+**Sisa P6: 7 baris harian hijau berturut-turut (02:37 UTC), dihitung mulai run #2 = 2026-10-04
+17:39:24 UTC.** Baru 1 baris. E8 tidak bisa ditutup dari laptop.
+
 ### P7 — dokumen
 
 `README.md` sebelumnya salah total: backend disebut **.NET 9 di `MyPostgreApi`** (direktori itu tidak
@@ -358,17 +420,25 @@ yang kutulis 20 menit sebelumnya.
    `sha256:b4c46da3…` (run 17), `sha256:ec5304fa…` (run 18), `sha256:2b986e14…` (run 19). Build tidak
    reproducible, jadi digest mengikat revisi ke artefak milik satu run — bukan alat dedup. Itu memang
    fungsi yang dibutuhkan rollback, tapi jangan berharap "konten sama ⇒ revisi sama".
+6. **Reheksal lokal tidak bisa membuktikan workflow di runner.** Watch run #1 merah karena `gh` di
+   `ubuntu-latest` menolak jalan tanpa `GH_TOKEN` — shim `gh` di laptopku memanggil `curl` dengan
+   kredensial git, jadi selalu "berhasil", dan `actionlint` tentu tidak memeriksa isi langkah.
+   Satu-satunya alat yang bisa melihat kelas kegagalan ini adalah run sungguhan, dan run sungguhan
+   hanya mungkin **setelah** merge (dispatch dari branch mengembalikan HTTP 404). Konsekuensinya
+   untuk P6: workflow terjadwal baru selalu dibuka dengan satu run yang belum terverifikasi, jadi
+   guard per-titik-gagal + `if: always()` di rangkuman bukan kemewahan — itulah yang membuat run #1
+   menghasilkan satu vonis yang jelas alih-alih baris harian terpotong.
 
 ### Status exit criteria
 
 | # | Kriteria | Status | Bukti |
 |---|---|---|---|
-| E1 | Workflow jalan di setiap PR | **hijau** | 12 run `CI`; `pull_request` untuk `98a7057`, `e3ce49d`, `f07fddb`, `b487c0f`, `9d0a3f1`, `6b56d38`, `14859ce` |
+| E1 | Workflow jalan di setiap PR | **hijau** | 19 run `ci.yml` = 12 `pull_request` + 7 `push` (18 `success`, 1 `failure` = run #4 untuk `9d0a3f1`, yang memang kerusakan percobaan di E2). `pull_request` untuk `98a7057`, `e3ce49d`, `f07fddb`, `b487c0f`, `9d0a3f1`, `6b56d38`, `14859ce`, `4bcce94`, `ef804fc`, `16c2cfa`, `bbb9f3f`, `697e3a0` |
 | E2 | Kerusakan memblokir merge | **hijau** | PR #4 `blocked`, HTTP 405, 0 run `deploy.yml` untuk `9d0a3f1` |
 | E3 | PR tidak mungkin menyentuh produksi | **hijau (struktural)** | `ci.yml`: `permissions: contents: read`, tidak ada `id-token` sama sekali |
 | E4 | Cancel tidak meninggalkan deploy setengah jalan | **merah — belum diuji** | `cancel-in-progress: false` terpasang dan `actionlint` bersih, tapi belum ada dua push berjarak < 60 s yang membuktikan run kedua `queued` |
 | E5 | Rollback pernah dieksekusi dan memulihkan | **hijau** | run #18 langkah 13 `success`, langkah 14 `success`, traffic terukur kembali ke `be-00013-s97`/`fe-00012-947` |
 | E6 | Smoke bisa gagal | **hijau** | run #18 `"/api/cv tidak mengembalikan PDF"` pada HTTP 200 — `curl -f` tidak akan melihatnya |
-| E7 | Dokumen tidak memicu deploy | **menunggu bukti** | `paths-ignore: ['**.md','docs/**']` terpasang dan `actionlint` bersih; pembuktiannya adalah PR dokumen ini sendiri — hitungan run `deploy.yml` untuk merge-nya dibaca **setelah** hijau, bukan diklaim di muka |
-| E8 | Dokumen tidak menyimpang dari realita | **sebagian** | tabel IAM + stack + struktur sudah dikoreksi manual vs keluaran `gcloud` (16:45 UTC, lalu diulang 16:52 UTC dengan perintah yang kini tertulis di `DEPLOY.md`); drift-check otomatis masih P6 |
+| E7 | Dokumen tidak memicu deploy | **hijau** | merge PR #9 (`f218564`, hanya `README.md`/`DEPLOY.md`/`TODO.md`) → `deploy.yml` run count **0** untuk SHA itu, sementara `ci.yml` push run #14 `success`. Kontrasnya terukur di hari yang sama: PR #10/#11 yang menyentuh `.github/workflows/**` memicu deploy run #20 dan #21, keduanya `success`. `paths-ignore: ['**.md','docs/**']` + `actionlint` bersih |
+| E8 | Dokumen tidak menyimpang dari realita | **sebagian — 1 dari 7 baris** | koreksi manual pass 1 (16:45) dan pass 2 (16:52) vs keluaran `gcloud`, perintah pembuktinya kini tertulis di `DEPLOY.md`; drift-check **otomatis** hidup di runner: Watch run #2 (17:39:24 UTC) `success`, `expected 6b4ad9d` = head, `merah=0`. Exit criterion-nya menuntut 7 baris hijau berturut-turut, jadi statusnya belum bisa ditutup sebelum 2026-10-11 |
 
