@@ -201,10 +201,27 @@ Semua probe hijau.
 Satu kelemahan run #1 ikut dibenahi setelah itu: vonis harian hanya masuk ke *Step Summary*, dan
 Step Summary tidak bisa dibaca lewat API log — jadi klaim "sisanya hijau" waktu itu harus
 disimpulkan dari `merah=1`, bukan diukur. Sekarang langkah rangkuman mencetak `rows=N merah=M` plus
-seluruh `/tmp/hasil.tsv` ke stdout, jadi baris harian sebuah run bisa diverifikasi ulang orang lain
-tanpa membuka UI.
+seluruh `/tmp/hasil.tsv` ke stdout. Terbukti di run #3 (head `14fe90e`, dibuat 17:55:04 UTC,
+`success`) — tiga belas barisnya, apa adanya dari log:
 
-Produksi pada commit yang sama, diukur dari luar tak lama setelah run #2 (bukan angka Watch, angka
+```text
+baris harian: rows=13 merah=0
+health/domain|HIJAU|0.207307s {"db":"ok","status":"ok"}
+certificates/domain|HIJAU|3 baris, 0.103333s
+health/be-runapp|HIJAU|0.077960s {"db":"ok","status":"ok"}
+certificates/be-runapp|HIJAU|3 baris, 0.064747s
+health/fe-runapp|HIJAU|0.124148s {"db":"ok","status":"ok"}
+certificates/fe-runapp|HIJAU|3 baris, 0.090758s
+experience/domain|HIJAU|2 baris
+halaman-utama/domain|HIJAU|40699 byte, 0.080104s
+cv-pdf/domain|HIJAU|774803 byte PDF
+rewrite/domain|HIJAU|/api/health terproxy ke backend
+drift|HIJAU|run #22 hijau untuk 14fe90e, tidak ada deploy lain di atasnya
+tripwire|HIJAU|Kontrak sesuai baseline: 13 path mati, 1 stub, tidak ada regresi.
+branch-layu|INFO|1 branch layu dari 14 cabang
+```
+
+Produksi pada `6b4ad9d`, diukur dari luar tak lama setelah run #2 (bukan angka Watch, angka
 `gcloud`/`curl` langsung):
 
 | Yang diukur | Nilai |
@@ -214,6 +231,12 @@ Produksi pada commit yang sama, diukur dari luar tak lama setelah run #2 (bukan 
 | `/api/certificates` / `/api/experience` | 3 baris / 2 baris, di ketiga origin |
 | `GET /` | 200, 40699 byte, 0.40 s, 0 kemunculan `Application error` |
 | `GET /api/cv` | 200, 774803 byte, 6.31 s, 5 byte pertama `%PDF-` |
+
+Deploy run #22 (`14fe90e`, 17:50:12→17:54:26 UTC) memindahkan traffic ke `portfolio-be-00018-fsc` /
+`portfolio-fe-00017-wqb`, masing-masing 100%. Yang menarik dari perpindahan itu bukan revisinya tapi
+mekanismenya: kedua service sebelumnya di-pin ke satu named revision oleh manusia (run #16), dan
+`deploy.yml` sekarang menulis `--traffic` eksplisit setiap kali, jadi tidak ada lagi keadaan "image
+baru terpasang, traffic masih di revisi lama" yang lolos dari CI hijau.
 
 Pelajaran yang sama dengan P7, sekarang untuk jalur CI: **reheksal terhadap shim bukan reheksal
 terhadap runner.** Yang dites di shim adalah `curl` buatanku, bukan tool aslinya di lingkungan
