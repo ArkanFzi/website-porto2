@@ -1,0 +1,211 @@
+name: CI
+
+# Gerbang test-only untuk PR ke main. Sengaja TIDAK ada `paths:`/`paths-ignore`:
+# workflow ini dipakai sebagai required status check, dan check yang di-skip akan
+# membuat PR terkunci selamanya. Jalur deploy tetap hanya deploy.yml (push: main).
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: go
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.3
+
+      - name: Setup Go
+        uses: actions/setup-go@0aaccfd150d50ccaeb58ebd88d36e91967a5f35b6 # v5.4.0
+        with:
+          go-version-file: go-backend/go.mod
+
+      - name: gofmt
+        working-directory: go-backend
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "Perlu gofmt -w:"
+            echo "$unformatted"
+            exit 1
+          fi
+          echo "gofmt bersih"
+
+      - name: Vet, build, test
+        working-directory: go-backend
+        run: |
+          go vet ./...
+          go build ./...
+          go test ./...
+
+  web:
+    name: web
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.3
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: nextjs-frontend/package-lock.json
+
+      - name: Install deps
+        working-directory: nextjs-frontend
+        run: npm ci
+
+      - name: Lint
+        working-directory: nextjs-frontend
+        run: npm run lint
+
+      - name: Type-check
+        working-directory: nextjs-frontend
+        run: npx tsc --noEmit
+
+      - name: Build
+        working-directory: nextjs-frontend
+        env:
+          BACKEND_URL: https://backend.invalid
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: npm run build
+
+      - name: Kontrak API (tripwire)
+        run: node tools/ci/api-contract-check.mjs
+
+  api:
+    name: api
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      pg:
+        image: postgres:15
+        env:
+          POSTGRES_DB: portfolio_db
+          POSTGRES_USER: postgres
+          # Port ini hanya dipublish ke localhost runner sementara. trust dipilih supaya
+          # tidak ada kredensial literal di repo (GitGuardian menolak yang itu).
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.3
+
+      - name: Setup Go
+        uses: actions/setup-go@0aaccfd150d50ccaeb58ebd88d36e91967a5f35b6 # v5.4.0
+        with:
+          go-version-file: go-backend/go.mod
+
+      - name: Nilai uji acak, tidak disimpan di repo
+        id: fixtures
+        run: |
+          echo "jwt=$(openssl rand -hex 16)" >> "$GITHUB_OUTPUT"
+          echo "adminpass=$(openssl rand -hex 12)" >> "$GITHUB_OUTPUT"
+
+      - name: Build backend
+        working-directory: go-backend
+        run: go build -o /tmp/portfolio-be .
+
+      - name: Jalankan backend terhadap Postgres nyata
+        working-directory: go-backend
+        env:
+          DATABASE_URL: host=127.0.0.1 user=postgres dbname=portfolio_db port=5432 sslmode=disable TimeZone=UTC
+          JWT_SECRET: ${{ steps.fixtures.outputs.jwt }}
+          ADMIN_USER: portfolio-admin
+          ADMIN_PASS: ${{ steps.fixtures.outputs.adminpass }}
+          ADMIN_EMAIL: ci@example.com
+          CORS_ORIGINS: http://localhost:3000
+        run: |
+          /tmp/portfolio-be > /tmp/be.log 2>&1 &
+          echo $! > /tmp/be.pid
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:8080/api/health > /dev/null 2>&1; then
+              echo "backend siap setelah ${i} percobaan"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "backend tidak naik dalam 40s:"
+          cat /tmp/be.log
+          exit 1
+
+      - name: Kontrak publik (isi, bukan cuma status code)
+        run: |
+          health=$(curl -fsS http://127.0.0.1:8080/api/health)
+          echo "health=$health"
+          echo "$health" | jq -e '.status=="ok" and .db=="ok"' > /dev/null
+
+          certs=$(curl -fsS http://127.0.0.1:8080/api/certificates)
+          echo "$certs" | jq -e 'type=="array" and (length>0) and (.[0] | has("id") and has("title") and has("issuer") and has("date"))' > /dev/null
+
+          exps=$(curl -fsS http://127.0.0.1:8080/api/experience)
+          echo "$exps" | jq -e 'type=="array" and (length>0) and (.[0] | has("id") and has("role") and has("company") and has("period"))' > /dev/null
+
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
+            -d '{"title":"t","issuer":"i","date":"2026"}' http://127.0.0.1:8080/api/certificates)
+          echo "POST /api/certificates tanpa token => $code"
+          [ "$code" = "401" ]
+
+      - name: Kontrak admin (login lalu tulis)
+        env:
+          ADMIN_USER: portfolio-admin
+          ADMIN_PASS: ${{ steps.fixtures.outputs.adminpass }}
+        run: |
+          good=$(jq -nc --arg u "$ADMIN_USER" --arg p "$ADMIN_PASS" '{username:$u,password:$p}')
+          wrong=$(jq -nc --arg u "$ADMIN_USER" --arg p "$ADMIN_PASS-tidak-terdaftar" '{username:$u,password:$p}')
+
+          token=$(curl -fsS -X POST -H 'Content-Type: application/json' \
+            -d "$good" http://127.0.0.1:8080/api/login | jq -r .token)
+          [ "$token" != "null" ] && [ -n "$token" ] || { echo "login tidak mengembalikan token"; exit 1; }
+
+          bad=$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
+            -d "$wrong" http://127.0.0.1:8080/api/login)
+          echo "login dengan sandi salah => $bad"
+          [ "$bad" = "401" ]
+
+          created=$(curl -fsS -X POST -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer $token" \
+            -d '{"title":"kontrak-ci","issuer":"CI","date":"2026"}' \
+            http://127.0.0.1:8080/api/certificates)
+          id=$(echo "$created" | jq -r .id)
+          echo "cert dibuat id=$id"
+          [ "$id" != "null" ] && [ -n "$id" ]
+
+          after=$(curl -fsS http://127.0.0.1:8080/api/certificates | jq --arg id "$id" '[.[] | select(.id==$id)] | length')
+          [ "$after" = "1" ] || { echo "tulis tidak terbaca kembali: $after"; exit 1; }
+
+          curl -fsS -X DELETE -H "Authorization: Bearer $token" \
+            "http://127.0.0.1:8080/api/certificates/$id" > /dev/null
+          gone=$(curl -fsS http://127.0.0.1:8080/api/certificates | jq --arg id "$id" '[.[] | select(.id==$id)] | length')
+          [ "$gone" = "0" ] || { echo "hapus tidak berlaku: $gone"; exit 1; }
+
+      - name: Log backend saat gagal
+        if: failure()
+        run: |
+          echo "=== stdout/stderr backend ==="
+          cat /tmp/be.log || true
+          echo "=== tabel di DB ==="
+          psql "host=127.0.0.1 user=postgres dbname=portfolio_db" \
+            -c '\dt' -c 'select count(*) from certificates;' || true
+
+      - name: Hentikan backend
+        if: always()
+        run: kill "$(cat /tmp/be.pid)" 2>/dev/null || true
