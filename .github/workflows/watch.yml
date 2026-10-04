@@ -127,15 +127,33 @@ jobs:
       - name: Drift — main sudah punya deploy hijau?
         run: |
           [ -s /tmp/hasil.tsv ] || echo "komponen|status|detail" > /tmp/hasil.tsv
-          git fetch -q origin main
+          # Langkah ini punya banyak titik gagal yang bukan salah produksi (gh tidak ada, token
+          # ditolak, fetch gagal). Tanpa guard, kegagalan itu abort di tengah dan baris harian
+          # kehilangan komponennya tanpa alasan. Jadi setiap titik gagal menulis vonisnya sendiri.
+          set +e
+          vonis() { echo "$1|$2|$3" >> /tmp/hasil.tsv; }
+
+          git fetch -q origin main || { vonis drift MERAH "git fetch origin main gagal"; exit 0; }
           expected=$(git log -1 --format=%H --first-parent origin/main -- . ':(exclude)*.md' ':(exclude)docs/**')
           # --first-parent penting di sini. Tanpa itu, merge yang tree-nya sama dengan orangtuanya
           # disimplifikasi keluar dan filter menunjuk commit di dalamnya (14859ce), padahal yang
           # memicu push event adalah merge commit-nya (39eae21). Itu false-positive drift.
+          if [ -z "$expected" ]; then
+            vonis drift MERAH "tidak ada commit non-dokumen di main — filter path salah?"
+            exit 0
+          fi
           echo "expected (commit kode terakhir di main): ${expected:0:7}"
 
+          if ! command -v gh > /dev/null; then
+            vonis drift MERAH "gh tidak ada di runner"
+            exit 0
+          fi
           runs=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/deploy.yml/runs?event=push&per_page=20" \
-            --jq '.workflow_runs[] | select(.event=="push") | [.head_sha, .status, .conclusion // "-", .run_number] | @tsv')
+            --jq '.workflow_runs[] | select(.event=="push") | [.head_sha, .status, .conclusion // "-", .run_number] | @tsv' 2>/tmp/gh.err)
+          if [ -z "$runs" ]; then
+            vonis drift MERAH "daftar run deploy.yml kosong: $(head -c 160 /tmp/gh.err)"
+            exit 0
+          fi
 
           latest=$(echo "$runs" | awk -F'\t' '$2=="completed"' | head -1)
           latest_sha=$(echo "$latest" | cut -f1)
@@ -143,22 +161,21 @@ jobs:
           latest_no=$(echo "$latest" | cut -f4)
           ada_yang_jalan=$(echo "$runs" | awk -F'\t' '$2!="completed"' | wc -l)
 
-          echo "deploy hijau terakhir : run #${latest_no:-?} @ ${latest_sha:0:7} = $latest_conc"
+          echo "deploy push terakhir  : run #${latest_no:-?} @ ${latest_sha:0:7} = $latest_conc"
           echo "run belum selesai     : $ada_yang_jalan"
 
-          if [ "$latest_conc" = "success" ] && [ "$latest_sha" = "$expected" ]; then
-            echo "drift|HIJAU|run #${latest_no} hijau untuk ${expected:0:7}" >> /tmp/hasil.tsv
-          fi
-
           if [ "$latest_conc" != "success" ]; then
-            echo "drift|MERAH|deploy push terakhir (run #${latest_no:-?}) kesimpulannya $latest_conc" >> /tmp/hasil.tsv
+            vonis drift MERAH "deploy push terakhir (run #${latest_no:-?}) kesimpulannya ${latest_conc:-kosong}"
           elif [ "$latest_sha" != "$expected" ]; then
             if [ "$ada_yang_jalan" -gt 0 ]; then
-              echo "drift|KUNING|deploy untuk ${expected:0:7} masih berjalan" >> /tmp/hasil.tsv
+              vonis drift KUNING "deploy untuk ${expected:0:7} masih berjalan"
             else
-              echo "drift|MERAH|produksi di ${latest_sha:0:7}, main minta ${expected:0:7}" >> /tmp/hasil.tsv
+              vonis drift MERAH "produksi di ${latest_sha:0:7}, main minta ${expected:0:7}"
             fi
+          else
+            vonis drift HIJAU "run #${latest_no} hijau untuk ${expected:0:7}, tidak ada deploy lain di atasnya"
           fi
+          exit 0
 
       - name: Tripwire kontrak API
         run: |
