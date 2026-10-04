@@ -151,7 +151,10 @@ Selesai: E2 — satu PR rusak tidak bisa di-merge, dan `git push` langsung tetap
   `main.go:173` mengabaikan error gorm → 200 + `null` tetap lolos.
 - Selaraskan artefak: pakai `BACKEND_URL` asli di job `test` juga, atau hapus build-arg dari jalur
   tes dengan menyadari perbedaannya secara tertulis.
-Selesai: E4, E6, E7 hijau dengan log run sebagai bukti.
+Selesai: E4, E6, E7 hijau dengan log run sebagai bukti. → **Realitanya sebagian:** E6 dan E7
+terbukti (lihat §7 P4/P5/P7 + tabel status), **E4 belum** — `cancel-in-progress: false` terpasang dan
+`actionlint` bersih, tapi tidak pernah ada dua push berjarak < 60 s yang membuktikan run kedua
+`queued`. E4 tidak bisa dibuktikan dengan menulis ulang klaimnya; ia butuh kejadian.
 
 ### P5 — Drill rollback (butuh izinmu — menyentuh produksi)
 Satu siklus nyata: PR sengaja merusak response health → merge → deploy gagal di smoke → rollback
@@ -447,6 +450,6 @@ yang kutulis 20 menit sebelumnya.
 | E4 | Cancel tidak meninggalkan deploy setengah jalan | **merah — belum diuji** | `cancel-in-progress: false` terpasang dan `actionlint` bersih, tapi belum ada dua push berjarak < 60 s yang membuktikan run kedua `queued` |
 | E5 | Rollback pernah dieksekusi dan memulihkan | **hijau** | run #18 langkah 13 `success`, langkah 14 `success`, traffic terukur kembali ke `be-00013-s97`/`fe-00012-947` |
 | E6 | Smoke bisa gagal | **hijau** | run #18 `"/api/cv tidak mengembalikan PDF"` pada HTTP 200 — `curl -f` tidak akan melihatnya |
-| E7 | Dokumen tidak memicu deploy | **hijau** | merge PR #9 (`f218564`, hanya `README.md`/`DEPLOY.md`/`TODO.md`) → `deploy.yml` run count **0** untuk SHA itu, sementara `ci.yml` push run #14 `success`. Kontrasnya terukur di hari yang sama: PR #10/#11/#12 yang menyentuh `.github/workflows/**` memicu deploy run #20, #21, #22 — ketiganya `success`. `paths-ignore: ['**.md','docs/**']` + `actionlint` bersih |
+| E7 | Dokumen tidak memicu deploy | **hijau — dua pengukuran** | (1) merge PR #9 (`f218564`, hanya `README.md`/`DEPLOY.md`/`TODO.md`) → `deploy.yml` run count **0** untuk SHA itu, `ci.yml` push run #14 `success`. (2) merge PR #13 (`7d7217b`, juga dokumen saja) → `deploy.yml` **0 run**, `watch.yml` 0 run, `ci.yml` push run #23 `success`, dan `gcloud run services describe` tetap `portfolio-be-00018-fsc` / `portfolio-fe-00017-wqb` @100% — merge dokumen tidak mengubah apa pun yang melayani request. Kontrasnya terukur di hari yang sama: PR #10/#11/#12 yang menyentuh `.github/workflows/**` memicu deploy run #20, #21, #22 — ketiganya `success`. `paths-ignore: ['**.md','docs/**']` + `actionlint` bersih |
 | E8 | Dokumen tidak menyimpang dari realita | **sebagian — 0 dari 7 hari** | koreksi manual pass 1 (16:45) dan pass 2 (16:52) vs keluaran `gcloud`, perintah pembuktinya kini tertulis di `DEPLOY.md`; drift-check **otomatis** hidup di runner dan hijau: Watch #2 `merah=0`, Watch #3 `rows=13 merah=0` dengan `expected 14fe90e` = head. Tapi kedua run itu `workflow_dispatch` di tanggal yang sama — exit criterion-nya 7 **hari** `schedule` hijau berturut-turut, hari pertama sah 2026-10-05, jadi statusnya belum bisa ditutup sebelum 2026-10-11 |
 
