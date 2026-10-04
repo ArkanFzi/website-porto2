@@ -58,12 +58,26 @@ jobs:
       - name: Catat revisi siap sebagai titik rollback
         id: prev
         run: |
-          be_rev=$(gcloud run services describe "$BE_SERVICE" --platform managed --region "$REGION" \
-            --format='value(status.latestReadyRevisionName)')
-          fe_rev=$(gcloud run services describe "$FE_SERVICE" --platform managed --region "$REGION" \
-            --format='value(status.latestReadyRevisionName)')
+          # Titik rollback = revisi yang SEDANG melayani request, bukan latestReadyRevisionName:
+          # nama terakhir itu bisa tertinggal dari reality (run #16: 00012 dibuat, traffic 00011).
+          serving_rev() {
+            local svc=$1 alloc n
+            alloc=$(tools/deploy/cloudrun.sh serving "$svc")
+            n=$(printf '%s\n' "$alloc" | sed '/^$/d' | wc -l)
+            if [ "$n" != "1" ]; then
+              echo "$svc punya $n alokasi traffic; workflow ini mengasumsikan satu target 100%:" >&2
+              printf '%s\n' "$alloc" >&2
+              return 1
+            fi
+            case "$alloc" in
+              *=100) printf '%s\n' "${alloc%%=*}" ;;
+              *) echo "$svc alokasinya bukan 100%: $alloc" >&2; return 1 ;;
+            esac
+          }
+          be_rev=$(serving_rev "$BE_SERVICE") || exit 1
+          fe_rev=$(serving_rev "$FE_SERVICE") || exit 1
           if [ -z "$be_rev" ] || [ -z "$fe_rev" ]; then
-            echo "Tidak ada revisi siap (be='$be_rev' fe='$fe_rev') — rollback tidak mungkin, batalkan deploy."
+            echo "Tidak ada revisi yang melayani traffic (be='$be_rev' fe='$fe_rev') — rollback tidak mungkin, batalkan deploy."
             exit 1
           fi
           echo "Titik rollback: $BE_SERVICE=$be_rev  $FE_SERVICE=$fe_rev"
@@ -95,6 +109,9 @@ jobs:
             --port 8080 \
             --set-env-vars ADMIN_USER=admin \
             --set-secrets DATABASE_URL=portfolio-database-url:latest,JWT_SECRET=portfolio-jwt-secret:latest,ADMIN_PASS=portfolio-admin-pass:latest,ADMIN_EMAIL=portfolio-admin-email:latest,CORS_ORIGINS=portfolio-cors-origins:latest
+          rev=$(tools/deploy/cloudrun.sh allocate "$BE_SERVICE")
+          echo "rev=$rev" >> "$GITHUB_OUTPUT"
+          echo "$BE_SERVICE melayani traffic sebagai $rev"
 
       - name: Ambil URL backend
         id: be_url
@@ -128,6 +145,9 @@ jobs:
             --port 3000 \
             --memory 1Gi \
             --set-env-vars BACKEND_URL="${{ steps.be_url.outputs.url }}"
+          rev=$(tools/deploy/cloudrun.sh allocate "$FE_SERVICE")
+          echo "rev=$rev" >> "$GITHUB_OUTPUT"
+          echo "$FE_SERVICE melayani traffic sebagai $rev"
 
       - name: Ringkas URL layanan
         run: |
@@ -142,6 +162,17 @@ jobs:
           BE="${{ steps.be_url.outputs.url }}"
           FE=$(gcloud run services describe "$FE_SERVICE" --platform managed --region "$REGION" \
             --format='value(status.url)')
+
+          # 0. Pastikan yang di-probe di bawah memang artefak run ini. Tanpa langkah ini, hijau
+          #    bisa berarti "revisi lama masih serve" — kegagalan yang ditemukan di run #16.
+          be_serving=$(tools/deploy/cloudrun.sh serving "$BE_SERVICE")
+          fe_serving=$(tools/deploy/cloudrun.sh serving "$FE_SERVICE")
+          echo "$BE_SERVICE traffic: $be_serving"
+          echo "$FE_SERVICE traffic: $fe_serving"
+          [ "$be_serving" = "${{ steps.be_deploy.outputs.rev }}=100" ] || {
+            echo "backend tidak melayani revisi hasil run ini"; exit 1; }
+          [ "$fe_serving" = "${{ steps.fe_deploy.outputs.rev }}=100" ] || {
+            echo "frontend tidak melayani revisi hasil run ini"; exit 1; }
 
           # 1. DB benar-benar terpasang. Ini yang tidak bisa dibuktikan smoke test lama.
           health=$(curl -fsS --max-time 30 "$BE/api/health")
@@ -189,6 +220,9 @@ jobs:
 
       # Rollback pakai update-traffic (bukan re-deploy): revisi sebelumnya masih ada dan sudah
       # membawa env/secret-nya sendiri, jadi tidak ada kesempatan salah salin --set-secrets.
+      # Efek sampingnya diketahui dan sengaja: traffic lalu ter-pin ke revisi bernama, dan deploy
+      # berikutnya TIDAK otomatis ikut pindah — itu sebabnya setiap deploy di workflow ini
+      # memanggil `cloudrun.sh allocate` secara eksplisit.
       - name: Rollback kedua service
         if: >-
           always() && steps.prev.outcome == 'success' &&
@@ -213,13 +247,19 @@ jobs:
             --format='value(status.url)')
           FE=$(gcloud run services describe "$FE_SERVICE" --platform managed --region "$REGION" \
             --format='value(status.url)')
+
+          # Yang dibandingkan adalah alokasi traffic, bukan latestReadyRevisionName — nama itu
+          # bisa tertinggal dari revisi yang benar-benar melayani request.
+          be_serving=$(tools/deploy/cloudrun.sh serving "$BE_SERVICE")
+          fe_serving=$(tools/deploy/cloudrun.sh serving "$FE_SERVICE")
+          echo "$BE_SERVICE=$be_serving  $FE_SERVICE=$fe_serving"
+          [ "$be_serving" = "${{ steps.prev.outputs.be_rev }}=100" ] || {
+            echo "rollback backend tidak menempatkan traffic di revisi sebelumnya"; exit 1; }
+          [ "$fe_serving" = "${{ steps.prev.outputs.fe_rev }}=100" ] || {
+            echo "rollback frontend tidak menempatkan traffic di revisi sebelumnya"; exit 1; }
+
           health=$(curl -fsS --max-time 60 "$BE/api/health")
           echo "health pasca-rollback => $health"
           echo "$health" | jq -e '.status=="ok" and .db=="ok"' > /dev/null
           curl -fsS --max-time 60 "$FE/api/certificates" | jq -e 'type=="array" and length>0' > /dev/null
-          be_rev=$(gcloud run services describe "$BE_SERVICE" --platform managed --region "$REGION" \
-            --format='value(status.latestReadyRevisionName)')
-          fe_rev=$(gcloud run services describe "$FE_SERVICE" --platform managed --region "$REGION" \
-            --format='value(status.latestReadyRevisionName)')
-          echo "Revisi aktif sekarang: $BE_SERVICE=$be_rev  $FE_SERVICE=$fe_rev"
-          echo "Rollback terverifikasi: traffic 100% pada revisi yang sehat."
+          echo "Rollback terverifikasi: traffic 100% pada revisi siap sebelumnya dan keduanya menjawab benar."
