@@ -29,7 +29,7 @@ env:
   # SA yang memproses request produksi. Dibuat least-privilege (F4) lalu dipakai di sini (F5),
   # supaya `roles/editor` se-proyek pada default compute SA bisa dicabut (F6). Reader AR-nya
   # dipasang di level repo portfolio-app, logWriter/metricWriter di level projek, secretAccessor
-  # per-secret pada 5 secret portfolio-* — tidak ada lagi editor kebetulan di dalam runtime.
+  # per-secret pada 7 secret portfolio-* — tidak ada lagi editor kebetulan di dalam runtime.
   RUNTIME_SA: portfolio-runtime@config-agentic-ubuntu.iam.gserviceaccount.com
   WIF_PROVIDER: projects/486641216758/locations/global/workloadIdentityPools/github-pool/providers/github-provider
   VPC_CONNECTOR: portfolio-connector
@@ -114,7 +114,7 @@ jobs:
             --allow-unauthenticated \
             --port 8080 \
             --set-env-vars ADMIN_USER=admin \
-            --set-secrets DATABASE_URL=portfolio-database-url:latest,JWT_SECRET=portfolio-jwt-secret:latest,ADMIN_PASS=portfolio-admin-pass:latest,ADMIN_EMAIL=portfolio-admin-email:latest,CORS_ORIGINS=portfolio-cors-origins:latest
+            --set-secrets DATABASE_URL=portfolio-database-url:latest,JWT_SECRET=portfolio-jwt-secret:latest,ADMIN_PASS=portfolio-admin-pass:latest,ADMIN_EMAIL=portfolio-admin-email:latest,CORS_ORIGINS=portfolio-cors-origins:latest,EMAIL_USER=portfolio-email-user:latest,EMAIL_PASS=portfolio-email-pass:latest
           rev=$(tools/deploy/cloudrun.sh allocate "$BE_SERVICE")
           echo "rev=$rev" >> "$GITHUB_OUTPUT"
           echo "$BE_SERVICE melayani traffic sebagai $rev"
