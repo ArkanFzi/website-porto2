@@ -541,4 +541,3 @@ memakai alat yang baru valid setelah F8.
 pada SA compute (pemakainya belum terukur); build image yang tidak reproducible (§7 "Catatan jujur" #5 —
 digest berbeda untuk konten identik); artefak CI ≠ artefak produksi (masih benar, dan `deploy.yml` tidak
 pura-pura mengesahkannya); `allUsers → roles/run.invoker` (memang publik by design).
-
