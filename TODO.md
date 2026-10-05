@@ -272,7 +272,7 @@ lewat file baseline, bukan melupakannya.
 | 1 | Izin drill rollback | **Diberikan dan selesai.** Drill jalan di produksi (run #18), bukan di service baru; jendela rusak 63 detik, hanya `/api/cv`. Lihat §7 P5 |
 | 2 | Branch protection `main` | **Diberikan dan terpasang.** `required_status_checks.contexts = ["go","web","api"]`, `strict` tetap `false` (kompensasinya: `ci.yml` ikut tersulut `push: main`) |
 | 3 | Cabut kunci statis `github-cd` | **Sudah tidak relevan — dan bukan karena aku.** `gcloud iam service-accounts keys list` kini hanya mengembalikan 1 kunci `SYSTEM_MANAGED`; kunci `USER_MANAGED` (valid sampai 2028-09-22) yang tercatat di §1 sudah tidak ada saat diperiksa ulang 16:45 UTC. Aku tidak menghapusnya dan tidak bisa memastikan siapa yang menghapus — kalau itu kamu, bagus; kalau bukan, itu pertanyaan sendiri. |
-| 4 | Runtime SA tanpa `roles/editor` | **F4 + F5 selesai; F6 kublokir sendiri, dan itu pilihan.** Terukur 2026-10-05 02:46 UTC: `spec.template.spec.serviceAccountName` kedua service = `portfolio-runtime@…` — bukan cuma dari `gcloud`, tapi juga dicetak sendiri oleh assertion baru di dalam `deploy.yml` (log run #26, baris 1058–1060, termasuk `vpc-access-connector=portfolio-connector`). `/` sehat, `/api/cv` 774.803 byte `%PDF-`, `logWriter` terbukti. Yang tersisa cuma `roles/editor` pada `486641216758-compute@…`, dan yang memakainya sekarang **dua VM yang berjalan** dengan risiko tidak setara (`agentic-watchdog-vm`: 1 scope `cloud-platform` → `editor` = kuasa nyata; `hermes-openclaw-vm`: 7 scope sempit → praktis inert). Angka + tiga opsi di §8 "F6 — diblokir" |
+| 4 | Runtime SA tanpa `roles/editor` | **Selesai (F4 + F5 + F6).** F5: `spec.template.spec.serviceAccountName` kedua service = `portfolio-runtime@…`, terukur 02:46 UTC lewat assertion `deploy.yml` (log run #26) dan lewat `gcloud`. F6 (opsi B, 04:04 – 04:13 UTC): dua SA khusus VM dipasang (`agentic-watchdog@`, `hermes-openclaw@`) dengan 12 binding — 21 pasangan (SA, binding) — yang semuanya datang dari pengukuran — termasuk satu yang menyelamatkan pipa alert: `agentic-alerts-sub` **tidak punya binding apa pun** dan `consume` hari itu hanya datang dari `editor`. `roles/editor` se-proyek kini **1 pemegang**: `486641216758@cloudservices.gserviceaccount.com`. Downtime swap terukur 79 s dan 40 s (audit `instances.stop`→`start` selesai), cabut `editor` 04:07:56.5 UTC; sesudahnya `/api/health` 200 `{"db":"ok","status":"ok"}`, beranda 40.699 byte (0 `Application error`), `/api/cv` 774.803 byte `%PDF-1.4`, Watch run #6 `success` `rows=17 merah=0`, heartbeat watchdog `pubsubSubscriber=True` 30 s setelah `start` selesai. Yang tersisa di SA compute: `roles/pubsub.publisher` project-level, **dua binding storage tingkat resource** (`objectAdmin` pada `gs://pickertime-pb-backups`, `objectViewer` pada `gs://pickertime-pb-deploys`) dan **`roles/secretmanager.secretAccessor` pada 6 secret** — temuan terakhir ini justru keluar *setelah* cabut, dan itu salahku yang ketahuan (vestigial juga: 0 kunci `USER_MANAGED` di ke-6 SA) — angka lengkap + tiga pembacaan salah yang kukoreksi di §8 bagian F6 |
 | 5 | `watch.yml` membuat issue otomatis | **Hold atas keputusanmu (4a), sampai 8 hari baris `schedule` terkumpul.** `issues: write` tetap tidak diberi. Perubahan 2026-10-05: Watch sekarang **bisa** membaca state cloud lewat identitas `github-watch@…` yang cuma memegang `roles/run.viewer` (F8) dan sudah membuktikannya dari runner — Watch #4 `rows=17 merah=0`, Watch #5 `rows=19 merah=0`. Status terukur 02:59:50 UTC: `state=active`, **`next_run_at=null`**, `event=schedule` di repo masih **0**, 2 jam 23 menit lewat cron. Dua penyebab umum kubuang dengan pengukuran: repo `public` dan plan `pro`. Re-check paling cepat 2026-10-12 |
 | 6 | `staging`, `chore/bughunter-ci` | **Selesai (F1).** `git ls-remote --heads origin` **16 → 2**: 13 branch yang sudah jadi ancestor `main` (termasuk `staging` `1f2486b`) dihapus bersama `chore/bughunter-ci` `bd38b93` yang isinya dibuang. Sebelum hapus: `porto2-branch-backup-2026-10-05.bundle` (6.768.151 byte, `sha256:85677cee…`) dan pemulihan dites di repo sementara — `staging` kembali ke `1f2486b`, `chore/bughunter-ci` ke `bd38b93`. Yang **kutahan** atas nama keputusanmu: `chore/gerbang-ci` `e3ce49d`, ahead 2 commit (PR #1, isinya sudah tersuperseded oleh PR #2 — 7 file yang disentuhnya semua ADA di `main`, `ci.yml` beda 20 baris). Hitungan "10 cabang" yang kupakai kemarin salah, angka yang benar 13 + 2 |
 
@@ -555,16 +555,20 @@ memakai alat yang baru valid setelah F8.
 2. **`chore/gerbang-ci`** — hapus atau simpan (ukurannya sudah di F1b).
 3. **"ya" terakhir untuk F7** (create + delete clone berbayar) dan, kalau kau mau bukti negatif E11,
    **untuk drill pin-traffic** di F8 — itu menyentuh traffic produksi kelasnya dengan P5 yang sudah kamu izinkan.
-4. **F6 — satu huruf.** Cabut `roles/editor` dari SA compute sekarang cuma affects dua VM (angkanya di
-   §8 "F6 — sengaja belum dikerjakan"): **(A)** berhenti di sini — runtime situs sudah bersih, `editor`
-   di SA compute dicatat sebagai hutang dan tidak disentuh; **(B)** pasang SA khusus per VM lebih dulu
-   (least-privilege sesuai yang dipakai watchdog/openclaw), baru cabut `editor`; **(C)** pre-grant
-   pengganti (`logWriter`, `metricWriter`, `storage.objectViewer`, `pubsub.publisher` + secret yang
-   memang dipakai) ke SA kedua VM, lalu cabut `editor` dalam satu langkah. Rekomendasiku **(B)** untuk
-   `agentic-watchdog-vm` karena satu-satunya yang ber-scope `cloud-platform`, dan **(A)** untuk
-   `hermes-openclaw-vm` sampai ada bukti ia memanggil API yang butuh `editor`. Aku tidak bisa memutuskan
-   ini sendiri karena yang terancam bukan porto2: dua VM itu dan dua secret non-portofolio di projek yang
-   sama.
+4. **F6 — sudah jalan (opsi B), tinggal tiga keputusan yang bukan aku yang harus ambil.**
+   **(a)** Prune: grant pubsub kupasang ke kedua SA VM karena konsumennya tidak terattribusi; salah
+   satunya hampir pasti mati. Melepas yang inert butuh seminggu pengamatan (audit + heartbeat), dan
+   melepas yang salah = mematikan jalur alert — jadi aku perlu katamu: tunggu seminggu, atau kamu tahu
+   VM mana yang menyedot `agentic-alerts-sub` dan aku prune sekarang? **(b)** `roles/pubsub.publisher`
+   project-level pada SA compute sekarang vestigial (0 kunci `USER_MANAGED`, tidak ada VM yang memakainya);
+   cabut sekalian, atau biarkan sebagai jaring VM baru yang lupa `--service-account`?
+   **(c)** Yang paling berat dan baru keluar setelah cabut: SA compute itu masih memegang
+   **`roles/secretmanager.secretAccessor` pada 6 secret** (di antaranya `portfolio-database-url`,
+   `portfolio-admin-pass`, `gog-keyring-password`) **plus 2 binding storage**. Aku sengaja **tidak**
+   memindahkan dan **tidak** mencabutnya: tidak dipindahkan karena tidak ada bukti ada skrip VM yang
+   masih membacanya, tidak dicabut karena kegagalannya senyap (Data Access logging mati). Kalau kamu
+   bilang cabut, aku jalankan dan ukur; kalau kamu bilang amankan dulu, satu-satunya jalan yang jujur
+   adalah menghidupkan logging pembacaan secret selama seminggu.
 
 ### Hasil terukur F1–F4 (2026-10-05, 01:55 – 02:12 UTC)
 
@@ -652,6 +656,9 @@ dan **tanpa** volume `cloudsql` — terukur dari `run services describe`.
 
 ### Hasil terukur F5 + F8, dan satu fase yang kublokir sendiri (2026-10-05, 02:26 – 03:00 UTC)
 
+("Fase yang kublokir sendiri" = F6. Fase itu akhirnya jalan 04:04 – 04:13 UTC sebagai opsi B; angkanya
+di bagian F6 di bawah, bukan di sini.)
+
 **F5 — E9a hijau.** PR #17 (`2731cd2`) → `ci.yml` `pull_request` run #30 `success` (go/web/api di
 bawah `strict: true`) → merge `382f0e4` → **deploy run #25 `success`**. Lalu merge F8 (`3a88e25`)
 menyulut deploy run #26 `success`, dan log run #26 adalah bukti bahwa assertion yang kutambah di F5
@@ -716,26 +723,206 @@ Dua penyebab umum dibuang dengan pengukuran, bukan asumsi: `visibility=public` d
 `pro`. E8 (7 baris `schedule` hijau berturut) jadi masih 0 dari 7, dan Watch #1–#5 tidak dihitung —
 persis disiplin yang sama dengan E4.
 
-### F6 — sengaja belum dikerjakan, dan ini bukan kemalasan
+### F6 — opsi B dieksekusi: SA khusus per VM, lalu `editor` dicabut (2026-10-05, 03:55 – 04:13 UTC)
 
-Rencana: cabut `roles/editor` dari `486641216758-compute@developer.gserviceaccount.com`. Setelah F5,
-Cloud Run tidak lagi memakai SA itu; yang tersisa dua VM yang **sedang berjalan** (terukur 02:47 UTC),
-dan risiko di antara keduanya tidak setara:
+Keputusanmu: **(B)** — SA khusus per VM lebih dulu, `editor` belakangan. Fase ini sempat kutahan
+karena belum ada katamu; angkanya sudah ada di bawah, dan satu di antaranya mengubah rencana
+sebelum satu VM pun kusentuh.
 
-| VM | status | access scopes | arti `editor` di dalam VM |
-|---|---|---|---|
-| `agentic-watchdog-vm` | RUNNING | `cloud-platform` (1 scope) | **kuasa nyata** — scope penuh membuat peran project-level berlaku penuh dari dalam |
-| `hermes-openclaw-vm` | RUNNING | 7 scope sempit: devstorage.read_only, logging.write, monitoring.write, pubsub, service.management.readonly, servicecontrol, trace.append | sebagian besar **inert** — tanpa `cloud-platform`, API yang butuh scope lain tidak terjangkau |
+**Temuan yang mengubah rencana.** Sebelum mencabut apa pun, kuukur dulu apa yang *sebenarnya*
+diizinkan `editor` kepada kedua VM:
 
-Yang juga ikut tercabut: akses ke 2 secret **non-portofolio** di projek yang sama
-(`agentic-laptop-backup-passphrase`, `gog-keyring-password`) dan apa pun yang watchdog ber-scope penuh
-itu lakukan di dalam VM. F5 sudah menghilangkan alasan struktural untuk buru-buru (runtime situs
-sudah bersih); yang tinggal adalah memutuskan nasib dua VM yang bukan bagian porto2. Karena itu
-fase ini menunggu satu huruf darimu, bukan kujalankan senyap.
+| Yang diukur | Angka |
+|---|---|
+| Binding pada `agentic-alerts-sub` sebelum F6 | **0** (policy-nya kosong) |
+| `pubsub.subscriptions.consume` di `roles/editor` | **ada** (salah satu dari 12.154 permission) |
+| `pubsub.subscriptions.consume` di `roles/pubsub.subscriber` | **ada** (jadi penggantinya setara, bukan lebih longgar) |
+| `secretmanager.versions.access` di `roles/editor` | **0** — `editor` bisa `secrets.get/list/update/delete` dan `versions.add/destroy/disable` (18 permission secretmanager), tapi **tidak bisa membaca nilai secret** |
+| Entri audit SA compute 14 hari terakhir (termasuk yang ditolak) | **0** |
+| Project lain dengan Compute API aktif | **0** dari 5 project lain yang terlihat |
+| Instance template / MIG | **0** / **0** |
+
+Konsekuensinya: konsumen `agentic-alerts-sub` — rantai `agentic-alerts-sink` (`severity>=ERROR`) →
+topic `agentic-alerts` → langganan → bot — berdiri **hanya** di atas `editor` project-level. Cabut
+`editor` tanpa pengganti membunuh jalur alert itu, dan kegagalan itu **tidak akan pernah muncul di
+audit log**: `consume` itu data-plane, dan Data Access logging projek ini mati (sudah terukur di F8).
+Jadi temuan ini bukan dari log, tapi dari `get-iam-policy` langganan + isi heartbeat VM. Catatan
+koreksi sekalian: kalimat lama di §5/DEPLOY.md yang menyiratkan `editor` membuka **nilai** secret
+itu terlalu jauh — angkanya `0` untuk `versions.access`; yang nyata ada di tangan `editor` adalah
+metadata dan kemampuan merusak (`secrets.delete`, `versions.destroy`), bukan membaca.
+
+**Grant yang dipasang, dan dari angka mana dia datang.** Jumlahnya **12 binding berbeda**, yang bersama-sama
+menutupi **21 pasangan (SA, binding)** — bedanya penting, karena satu binding bisa memegang kedua SA sekaligus,
+jadi angka "20" yang pertama kutulis di sini sebenarnya **entri mutasi IAM** di activity log
+(jendela 04:02:58.5 – 04:03:59.0, ditambah satu `storage.setIamPermissions` 04:22:58.3), bukan jumlah grant.
+Angka yang kubaca sekarang datang dari policy-nya sendiri (`/tmp/f6-count.out`), bukan dari hitungan perintahku,
+dan semuanya hasil pengukuran — bukan tebakan defensif:
+
+| Grant | Ke siapa | Alasannya terukur |
+|---|---|---|
+| `roles/logging.logWriter` (project) | `agentic-watchdog@`, `hermes-openclaw@` | kedua VM menulis log lewat token metadata: `watchdog-heartbeat` 794 baris/7 hari, `GCEGuestAgent` 04:07:17 (watchdog) & 04:06:27 (openclaw) |
+| `roles/monitoring.metricWriter` (project) | kedua SA | editor memegang `monitoring.timeSeries.create`; filter `agent.googleapis.com*` pada kedua instance mengembalikan **lebih dari satu metrik** → ada agen yang menulis metrik |
+| `roles/pubsub.subscriber` | kedua SA pada `agentic-alerts-sub`, `pickertime-pb-deploy-to-vm`, `pickertime-pb-backups-to-gcs` | dua yang terakhir **sudah** ber-binding ke SA compute; `agentic-alerts-sub` tidak punya binding sama sekali (jalur editor di atas) |
+| `roles/pubsub.publisher` | kedua SA pada `pickertime-pb-deploy-results`, `pickertime-pb-backups` | binding topic-level ke SA compute memang ada di sana (terukur 04:00 UTC) |
+| `roles/storage.objectAdmin` + `roles/storage.objectViewer` | `agentic-watchdog@` pada `gs://config-agentic-ubuntu-backups`, `gs://pickertime-pb-backups` | akses tulis hari ini datang dari `projectEditor:config-agentic-ubuntu` di policy bucket; objek terbaru 2026-10-02T09:32:56Z → pipa ini hidup |
+| `roles/storage.objectViewer` | `hermes-openclaw@` pada `gs://pickertime-pb-deploys`, `gs://config-agentic-ubuntu-backups` | 7 scope-nya **tidak** memuat `devstorage.read_write`, jadi memberi objectAdmin ke VM itu hanya akan jadi privilege mati; dia hanya butuh baca |
+| `roles/storage.objectViewer` (terakhir, 04:22:58.3) | `agentic-watchdog@` pada `gs://pickertime-pb-deploys` | **bukan** dari rencana awal — ini keluar dari sweep ulang setelah cabut: SA compute ternyata sudah memegang `objectViewer` di bucket itu, dan grant itu tidak kupindahkan bersamanya. Penyebabnya ada di blok "Temuan terbesar justru keluar *setelah* cabut" di bawah |
+
+**Satu kompromi yang kubiarkan terbuka, sengaja.** Aku tidak bisa membuktikan **VM mana** menyedot
+langganan mana: `bot.elarisnoir.my.id` ada di belakang Cloudflare, `hermes-openclaw-vm` tidak punya
+IP eksternal, openclaw tidak menulis log aplikasi apa pun, dan Data Access logging mati. Jadi grant
+pubsub kupasang ke **kedua** SA, bukan dikarang satu alamat. Harganya: satu binding inert di suatu
+tempat. Yang membuktikan bahwa keduanya benar-benar masih hidup bukan ujiku, tapi mesinnya sendiri:
+04:07:21.3 watchdog menulis heartbeat dengan token identitas barunya (`uptimeSec=17`,
+`pubsubSubscriber=True`, `queueLength=0`) — 30 s setelah `start` selesai — dan 04:06:27 openclaw menulis
+`GCEGuestAgent` juga dari token baru. Prune binding yang inert butuh seminggu pengamatan, dan itu
+pekerjaan sendiri — bukan bagian keputusan B.
+
+**Mekanikanya, dikukuhkan dulu sebelum menyentuh VM yang jalan.** `gcloud compute instances
+set-service-account --help` tidak bilang apa-apa soal stop/start, jadi kutanya ke API-nya dengan
+menjawab `n`: keluarannya `The instance must be stopped before the service account can be changed.`
+(rc=1, instance tidak tersentuh, status tetap `RUNNING`). Artinya ada downtime nyata; ini yang kamu
+setujui bersama opsi B. Angka jamnya dari `cloudaudit/activity`, bukan dari ingatanku — tiap operasi tercatat **dua kali**
+(dimulai & selesai), dan justru itu yang membuat hitungan pertamaku terlalu optimis:
+
+| VM | `instances.stop` mulai | `setServiceAccount` | `start` selesai | **mati selama** | scope sesudah |
+|---|---|---|---|---|---|
+| `hermes-openclaw-vm` | 04:04:38.6 | 04:05:28.9 | 04:05:58.0 | **79 s** | 7 scope lama, utuh |
+| `agentic-watchdog-vm` | 04:06:11.6 | 04:06:36.5 | 04:06:51.7 | **40 s** | `cloud-platform`, utuh |
+
+Yang pertama kutulis di tabel ini (34 s dan 45 s) adalah selisih *setelah* `stop` returns sampai `start`
+returns — ukuran yang lebih sempit dan lebih kecil dari downtime yang dirasakan, karena penghentian guest
+agent dan flush filesystem sudah termasuk mati. SA-nya sendiri dibuat 04:02:38.2 (`agentic-watchdog@`) dan
+04:02:40.5 (`hermes-openclaw@`), grant-nya 04:02:58.5 – 04:03:41.8, semuanya tercatat di activity log.
+
+IP eksternal watchdog (`34.30.105.255`) tidak berubah; `gog-gmail-watch-push` backlog `0` di **setiap**
+menit 04:03–04:12, jadi tidak ada pesan yang menggantung selama kedua VM mati.
+
+**Cabut `editor` dan E9b.** Cabutnya satu perintah, dan sebelum eksekusi kuukur bahwa anggota
+`roles/editor` masih persis dua seperti snapshot `/tmp/iam-sebelum-f6.json` (`etag BwZdDrGa6uI=`) —
+tidak ada perubahan pihak ketiga di tengah. Setelah cabut:
+
+| Kriteria E9b | Angka (cabut 04:07:56.5 UTC, diukur sampai 04:13 UTC) |
+|---|---|
+| Pemegang `roles/editor` se-proyek | **1**: `486641216758@cloudservices.gserviceaccount.com` (SA milik Google) |
+| Sisa peran project-level pada `…-compute@developer` | **`roles/pubsub.publisher` saja** — dan itu *hanya* project-level; binding di tingkat resource masih menempel padanya, angkanya di bawah |
+| `spec.template.spec.serviceAccountName` kedua service | tetap `portfolio-runtime@…`, traffic `00022-w7f`=100 dan `00021-hmv`=100 |
+| `/api/health` | `http=200` `{"db":"ok","status":"ok"}` (1,007 s) |
+| Beranda | `http=200` **40.699 byte**, `Application error` **0** |
+| `/api/cv` | `http=200` **774.803 byte**, `%PDF-1.4` |
+| Konektor | `portfolio-connector` `READY`, `10.10.0.0/28` |
+| Watch run #6 (`workflow_dispatch`, `main` `75b2f3f`) | `success`, `rows=17 merah=0`, `cloud-sa/portfolio-be|HIJAU`, `cloud-sa/portfolio-fe|HIJAU`, `cloud-traffic/*|HIJAU|100% di …` |
+| Heartbeat watchdog pasca-identitas baru | 04:07:21.3 `pubsubSubscriber=True` `uptimeSec=17` (**30 s** setelah `start` selesai 04:06:51.7), lalu 04:12:21 `whatsappConnected=True` `queueLength=0` |
+
+Rollback kalau ini salah: `gcloud projects add-iam-policy-binding config-agentic-ubuntu
+--member=serviceAccount:486641216758-compute@developer.gserviceaccount.com --role=roles/editor`
+satu baris; mengembalikan identitas VM menuntut stop/start lagi.
+
+**Temuan terbesar justru keluar *setelah* cabut — dan itu salahku yang ketahuan.** Setelah `editor`
+dicabut aku jalankan blok verifikasi yang kubebereskan di DEPLOY.md apa adanya (`bash /tmp/f6repro.sh`,
+diekstrak verbatim dari file itu). Keluarannya berkata hal yang tidak bisa kuklaim di §6: SA compute
+yang "sudah tidak dipakai" itu **masih memegang binding di tingkat resource**, dan salah satunya
+bukan sekadar metadata — **`roles/secretmanager.secretAccessor` pada 6 secret**, termasuk
+`portfolio-database-url`, `portfolio-admin-pass` dan `gog-keyring-password`. Ini jauh lebih besar dari
+sisa `pubsub.publisher` yang kutulis sebagai "yang tersisa". Hasil sweep penuh, tiap kelas resource diukur
+dengan `get-iam-policy`-nya sendiri (nama secret saja, **tidak ada nilai** yang kubaca — `versions access`
+tidak pernah kujalankan):
+
+| Kelas resource yang kunumerasi | Binding yang masih menempel pada `486641216758-compute@developer` |
+|---|---|
+| Project-level | **1**: `roles/pubsub.publisher` |
+| Bucket — 4 ditelusuri | **2**: `roles/storage.objectAdmin` pada `gs://pickertime-pb-backups`, `roles/storage.objectViewer` pada `gs://pickertime-pb-deploys`; `gs://config-agentic-ubuntu-backups` dan `gs://ai-agent-triage-batch-1790307337`: **0** |
+| Topic — 6 ditelusuri | **2**: `roles/pubsub.publisher` pada `pickertime-pb-deploy-results` dan `pickertime-pb-backups`; `agentic-alerts`, `gog-gmail-watch`, `gog-gmail-dead-letter`, `pickertime-pb-deploy`: **0** |
+| Langganan — 6 ditelusuri | **2**: `roles/pubsub.subscriber` pada `pickertime-pb-deploy-to-vm` dan `pickertime-pb-backups-to-gcs`; `agentic-alerts-sub`, `gog-gmail-watch-push`, `gog-gmail-dead-letter-sub`, `pickertime-pb-deploy-results-to-gha`: **0** |
+| Cloud Run — 2 service | **0** — `spec.template.spec.serviceAccountName` keduanya `portfolio-runtime@…` |
+| Secret — 7 ditelusuri | **6**: `roles/secretmanager.secretAccessor` — `gog-keyring-password`, `portfolio-admin-email`, `portfolio-admin-pass`, `portfolio-cors-origins`, `portfolio-database-url`, `portfolio-jwt-secret`; `agentic-laptop-backup-passphrase`: **0**. Lima dari enam itu **juga** dipegang `portfolio-runtime@` (itu grant F4 yang memang dibutuhkan service), jadi yang *khusus* SA compute hanyalah `gog-keyring-password` + salinan lima lainnya |
+| Cloud SQL | **tidak terukur** — `gcloud sql instances get-iam-policy` tidak ada di versi gcloud ini (`Invalid choice: 'get-iam-policy'`), jadi kelas ini **di luar** daftar yang bisa kujamin, bukan "bersih" |
+
+Penyebabnya sepele dan pantas dicatat, karena dia hampir lolos ke dokumen: dump bucket pertamaku
+kupotong dengan `cut -c1-400` supaya muat di terminal — dan binding yang terpotong itu **tidak muncul
+sama sekali**, jadi bacaanku "tidak ada apa-apa lagi di luar editor". Hari ini ada kegagalan kedua yang
+sekerabat: `gcloud storage buckets list --format='value(url)'` mengembalikan **4 baris kosong** (rc=0,
+field `url` tidak ada), sehingga `for b in $(...)` **nol iterasi** dan setiap bucket tercetak `(kosong)`.
+Loop yang tidak pernah jalan tidak bisa dibedakan dari policy yang kosong — dan keduanya menghasilkan
+kalimat yang sama salahnya. Sejak itu jumlah grant F6 kukutip dari policy yang dibaca ulang
+(`/tmp/f6-count.out`), bukan dari apa yang kuperintahkan. Blok DEPLOY.md yang sudah kukoreksi hari ini
+kuulang apa adanya (`bash /tmp/deployblock.sh`, 53 baris, **rc=0**): keluarannya sekarang cocok dengan
+tabel ini, dan itu yang membuat klaim "bisa diulang orang lain" di file itu masih layak ditulis — termasuk
+satu koreksi lagi di dalamnya, `keys list` pada SA compute yang di gcloud rc=1 dan baru terjawab lewat REST.
+
+**Yang kulakukan dengan temuan ini, dan yang tidak.** Storage: `objectViewer` pada
+`gs://pickertime-pb-deploys` untuk `agentic-watchdog@` kutambahkan (04:22:58.3) karena itu satu-satunya
+kuasa yang hilang tanpa pengganti dan pipa deploy memakainya. Secret: **tidak kuklaim, tidak kupindahkan,
+tidak kucabut.** `secretAccessor` itu hari ini **inert** — 0 kunci `USER_MANAGED` di ke-6 SA dan tidak ada
+beban kerja yang memegang token itu, jadi tidak ada yang bisa menukarnya; tapi mencabutnya adalah keputusan
+sendiri, karena sebuah skrip di dalam VM bisa saja membaca `gog-keyring-password` dan kegagalannya akan
+senyap (Data Access logging mati — `versions.access` tidak meninggalkan jejak). Itu **di luar** yang kamu izinkan
+untuk opsi B, jadi dia masuk daftar keputusan, bukan kubereskan diam-diam. Yang nyata-nyata perlu kamu
+jawab: cabut 6 binding `secretAccessor` itu, atau biarkan sampai ada bukti pemakaian?
+Sesudah grant 04:22:58 itu situs kuprobe ulang (04:48 UTC): `/api/health` `http=200` 25 byte
+`{"db":"ok","status":"ok"}` (1,08 s), beranda `http=200` **40.699 byte** `Application error` **0**,
+`/api/cv` `http=200` **774.803 byte** `%PDF-1.4` — angka yang sama seperti tabel E9b di atas, jadi satu
+binding tambahan itu tidak menggerakkan apa pun di sisi pengguna.
+
+**Enam pembacaan yang salah dan sudah kukoreksi di tengah fase ini.** (1) Aku sempat menulis "kedua VM
+internal-only": projection-ku memakai `accessConfig[0].natIP` padahal field-nya `accessConfigs[0]` —
+watchdog punya IP eksternal, dan itu kulihat baru setelah start. (2) `gcloud logging read --limit=0`
+**mengembalikan nol baris**, bukan "semua baris"; dari situlah pembacaan "SA compute tidak menulis log
+apa pun" yang pertama kali muncul. (3) Percobaan bukti kandang lewat `--impersonate-service-account`
+gagal di langkah **token** (`iam.serviceAccounts.getAccessToken` denied for me), bukan di otorisasi —
+dan kegagalan itu tidak meninggalkan entri `code=7` sama sekali (terukur 0 pada jendela 04:04–04:12).
+Jadi kandang F6 tidak kubuktikan dengan uji sintetis seperti F8, tapi struktural: identitas kedua VM
+sudah bukan SA itu lagi, dan pipeline-nya sendiri yang menulis bahwa dia masih hidup. (4) dan (5) baru
+keluar **setelah** cabut dan keduanya satu keluarga dengan (2): `cut -c1-400` pada dump bucket (binding yang
+terpotong hilang tanpa suara) dan `--format='value(url)'` yang tidak punya field itu, jadi loop-nya nol
+iterasi dan tiap bucket tercetak `(kosong)`. (6) juga satu keluarga: `--format='json(keys[])'` pada
+`iam service-accounts keys list` mengembalikan `[null]` (keluaran perintah itu **sudah** array, jadi
+selector-nya tidak menemukan apa-apa), dan itulah yang membuat loop kunci di blok DEPLOY.md tercetak
+kosong sebelum kutukar jadi `--format=json`. Lima dari enam kesalahanku di fase ini bentuknya sama:
+**keluaran kosong yang kubaca sebagai fakta kosong.** Yang (4)+(5) itu yang hampir lolos ke dokumen sebagai
+klaim "SA compute sudah bersih", dan tabel sweep di atas adalah harganya.
+
+**Sisa yang tidak kubebereskan.** `gs://ai-agent-triage-batch-1790307337` (terakhir ditulis
+2026-09-25T03:42:38Z) **tidak** kuberi grant ke SA mana pun — kalau pipa triage itu bangun, dia akan
+`PERMISSION_DENIED`, dan tambalannya satu baris
+(`gcloud storage buckets add-iam-policy-binding gs://ai-agent-triage-batch-1790307337 --member=serviceAccount:agentic-watchdog@config-agentic-ubuntu.iam.gserviceaccount.com --role=roles/storage.objectAdmin`).
+`metricWriter` kupasang karena `editor` memegang `monitoring.timeSeries.create` tapi **belum terbukti
+berfungsi**: empat nama metrik kukira (`agent.googleapis.com/cpu/time` dkk) semuanya `no-series`, dan
+`metricDescriptors` 404 di kedua jalur URL — sama jujurnya dengan catatan `metricWriter` di F5.
+`roles/pubsub.publisher` project-level pada SA compute kubiarkan (di luar yang kamu izinkan), meski
+sekarang jelas **vestigial**: tidak ada beban kerja yang memakai identitas itu, dan itu bukan asumsi —
+`keys list` pada ke-6 SA (`…-compute@developer`, `agentic-watchdog@`, `hermes-openclaw@`,
+`portfolio-runtime@`, `github-watch@`, `github-cd@`) mengembalikan **hanya** `SYSTEM_MANAGED`,
+**0** `USER_MANAGED` — dengan satu catatan yang sempat bikin klaim ini kelihatan lebih kuat dari
+buktinya: untuk `…-compute@developer` perintah gcloud-nya **rc=1** (`INVALID_ARGUMENT: Unknown error`)
+meskipun `service-accounts describe` atas email yang sama berhasil, jadi angka SA itu datang dari REST
+(`iam.googleapis.com/v1/projects/…/serviceAccounts/…/keys` → 1 kunci, `SYSTEM_MANAGED`), bukan dari gcloud.
+Yang 5 lagi terukur langsung. Jadi tidak ada skrip di luar GCP yang bisa menukarnya dengan token. Yang tinggal
+adalah kemungkinan masa depan: VM baru tanpa `--service-account` akan mendapatkan SA default ini lagi.
+Mencabutnya tinggal satu perintah atas katamu. Dan **yang paling berat di sisa ini bukan `publisher`**,
+melainkan **6 binding `roles/secretmanager.secretAccessor`** yang masih menempel pada SA compute itu
+(rinciannya di tabel sweep di atas) — inert hari ini karena tidak ada yang memegang token itu, tapi
+dia menguasakan **nilai** secret, bukan cuma metadata, dan akan ikut aktif lagi begitu ada VM baru tanpa
+`--service-account`. Cloud SQL **tidak** kunumerasi: `gcloud sql instances get-iam-policy` tidak ada
+di gcloud versi ini (`Invalid choice`), jadi klaim "bersih" untuk kelas itu belum bisa kubuat — yang bisa
+kulakukan hanya menyebutnya "belum diukur".
 
 ### Yang tidak kubebereskan di M12 (biar tidak kelihatan lupa)
 
 `roles/editor` pada `…@cloudservices.gserviceaccount.com` (SA milik Google, bukan kita); `roles/pubsub.publisher`
-pada SA compute (pemakainya belum terukur); build image yang tidak reproducible (§7 "Catatan jujur" #5 —
+project-level pada SA compute — yang terukur hanya penerbit pada 2 topic (`pickertime-pb-deploy-results`,
+`pickertime-pb-backups`) dan keduanya sudah punya binding topic-level, jadi peran project-level itu
+**kemungkinan besar** tinggal menutupi publish ke 4 topic lain yang tidak ada binding-nya (`agentic-alerts`,
+`gog-gmail-watch`, `gog-gmail-dead-letter`, `pickertime-pb-deploy` — sensus topic lengkap 6, terukur hari ini);
+tidak kuhapus karena
+di luar yang kamu izinkan; grant pubsub yang
+sama terpasang di **kedua** SA VM padahal salah satunya hampir pasti inert (konsumennya tidak
+terattribusi); `gs://ai-agent-triage-batch-1790307337` tanpa grant; **6 binding
+`roles/secretmanager.secretAccessor` pada SA compute** (`portfolio-database-url`, `portfolio-admin-pass`,
+`portfolio-admin-email`, `portfolio-cors-origins`, `portfolio-jwt-secret`, `gog-keyring-password`) — inert
+hari ini, tapi itu satu-satunya sisa M12 yang menguasakan **nilai**, dan perlu katamu untuk dicabut;
+2 binding storage pada SA compute yang sama (`objectAdmin`/`objectViewer`, lihat tabel F6); Cloud SQL yang
+**belum kunumerasi** (perintahnya tidak ada di gcloud ini); `metricWriter` terpasang tapi
+buktinya belum dapat; build image yang tidak reproducible (§7 "Catatan jujur" #5 —
 digest berbeda untuk konten identik); artefak CI ≠ artefak produksi (masih benar, dan `deploy.yml` tidak
 pura-pura mengesahkannya); `allUsers → roles/run.invoker` (memang publik by design).
