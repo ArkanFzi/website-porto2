@@ -479,7 +479,7 @@ yang kutulis 20 menit sebelumnya.
 | E4 | Cancel tidak meninggalkan deploy setengah jalan | **hijau (mekanisme: `workflow_dispatch` ×2, bukan `push` ×2 — lihat §8 F3)** | 02:00 UTC: dua dispatch berjarak **27 s** pada `main` `b45c298`. Run #23 job `02:00:28→02:04:24` `success`; run #24 `created 02:00:51` tapi **`pending` 215 s** lalu job `02:04:26→02:07:41` `success` — mulai **2 s** sesudah #23 selesai, `cancelled=false` pada keduanya. Artefak live sesudahnya `portfolio-be-00020-vqd=100` / `portfolio-fe-00019-npr=100`, satu revisi baru per run per service, health `{"db":"ok","status":"ok"}` dari domain publik dan `run.app`, `/` 40.699 byte tanpa `Application error`. Varian "dua push dengan konten berbeda" masih belum ter-exercise (kedua run sama SHA) |
 | E5 | Rollback pernah dieksekusi dan memulihkan | **hijau** | run #18 langkah 13 `success`, langkah 14 `success`, traffic terukur kembali ke `be-00013-s97`/`fe-00012-947` |
 | E6 | Smoke bisa gagal | **hijau** | run #18 `"/api/cv tidak mengembalikan PDF"` pada HTTP 200 — `curl -f` tidak akan melihatnya |
-| E7 | Dokumen tidak memicu deploy | **hijau — dua pengukuran** | (1) merge PR #9 (`f218564`, hanya `README.md`/`DEPLOY.md`/`TODO.md`) → `deploy.yml` run count **0** untuk SHA itu, `ci.yml` push run #14 `success`. (2) merge PR #13 (`7d7217b`, juga dokumen saja) → `deploy.yml` **0 run**, `watch.yml` 0 run, `ci.yml` push run #23 `success`, dan `gcloud run services describe` tetap `portfolio-be-00018-fsc` / `portfolio-fe-00017-wqb` @100% — merge dokumen tidak mengubah apa pun yang melayani request. Kontrasnya terukur di hari yang sama: PR #10/#11/#12 yang menyentuh `.github/workflows/**` memicu deploy run #20, #21, #22 — ketiganya `success`. `paths-ignore: ['**.md','docs/**']` + `actionlint` bersih |
+| E7 | Dokumen tidak memicu deploy | **hijau — dua pengukuran** | (1) merge PR #9 (`f218564`, hanya `README.md`/`DEPLOY.md`/`TODO.md`) → `deploy.yml` run count **0** untuk SHA itu, `ci.yml` push run #14 `success`. (2) merge PR #13 (`7d7217b`, juga dokumen saja) → `deploy.yml` **0 run**, `watch.yml` 0 run, `ci.yml` push run #23 `success`, dan `gcloud run services describe` tetap `portfolio-be-00018-fsc` / `portfolio-fe-00017-wqb` @100% — merge dokumen tidak mengubah apa pun yang melayani request. Kontrasnya terukur di hari yang sama: PR #10/#11/#12 yang menyentuh `.github/workflows/**` memicu deploy run #20, #21, #22 — ketiganya `success`. `paths-ignore: ['**.md','docs/**']` + `actionlint` bersih. **(3)–(6) diukur hari ini bersama F6:** merge PR #15 (`b45c298`), #16 (`dfb9147`), #19 (`75b2f3f`) dan #20 (`6281b7f`) — keempatnya dokumen saja — **0 run `Deploy to Cloud Run`** masing-masing (yang jalan hanya `CI`, dan di #19/#18 ada `Watch`). Kontrasnya diukur pada jendela yang sama: `382f0e4` (PR #17) dan `3a88e25` (PR #18) masing-masing **1 run deploy**. Query-nya, supaya bisa diulang: `actions/runs?per_page=100` lalu `select(.head_sha==<SHA merge>) \| select(.name\|test("deploy";"i")) \| length` |
 | E8 | Dokumen tidak menyimpang dari realita | **sebagian — 0 dari 7 hari** | koreksi manual pass 1 (16:45) dan pass 2 (16:52) vs keluaran `gcloud`, perintah pembuktinya kini tertulis di `DEPLOY.md`; drift-check **otomatis** hidup di runner dan hijau: Watch #2 `merah=0`, Watch #3 `rows=13 merah=0` dengan `expected 14fe90e` = head. Tapi kedua run itu `workflow_dispatch` di tanggal yang sama — exit criterion-nya 7 **hari** `schedule` hijau berturut-turut, hari pertama sah 2026-10-05, jadi statusnya belum bisa ditutup sebelum 2026-10-11 |
 
 ---
@@ -811,7 +811,7 @@ tidak ada perubahan pihak ketiga di tengah. Setelah cabut:
 | Beranda | `http=200` **40.699 byte**, `Application error` **0** |
 | `/api/cv` | `http=200` **774.803 byte**, `%PDF-1.4` |
 | Konektor | `portfolio-connector` `READY`, `10.10.0.0/28` |
-| Watch run #6 (`workflow_dispatch`, `main` `75b2f3f`) | `success`, `rows=17 merah=0`, `cloud-sa/portfolio-be|HIJAU`, `cloud-sa/portfolio-fe|HIJAU`, `cloud-traffic/*|HIJAU|100% di …` |
+| Watch run #6 (`workflow_dispatch`, `main` `75b2f3f`) | `success`, `rows=17 merah=0`, `cloud-sa/portfolio-be\|HIJAU`, `cloud-sa/portfolio-fe\|HIJAU`, `cloud-traffic/*\|HIJAU\|100% di …` |
 | Heartbeat watchdog pasca-identitas baru | 04:07:21.3 `pubsubSubscriber=True` `uptimeSec=17` (**30 s** setelah `start` selesai 04:06:51.7), lalu 04:12:21 `whatsappConnected=True` `queueLength=0` |
 
 Rollback kalau ini salah: `gcloud projects add-iam-policy-binding config-agentic-ubuntu
@@ -906,6 +906,12 @@ dia menguasakan **nilai** secret, bukan cuma metadata, dan akan ikut aktif lagi 
 `--service-account`. Cloud SQL **tidak** kunumerasi: `gcloud sql instances get-iam-policy` tidak ada
 di gcloud versi ini (`Invalid choice`), jadi klaim "bersih" untuk kelas itu belum bisa kubuat — yang bisa
 kulakukan hanya menyebutnya "belum diukur".
+
+**Cara fase ini mendarat.** PR #20 (`6ee9a3b`, dokumen saja) → CI run #36 `pull_request` `success`
+(`go`/`web`/`api` + GitGuardian, selesai 04:50 UTC) → merge `6281b7f` 04:51 UTC → CI run #37 `push`
+`success`, dan **0 run `Deploy to Cloud Run`** untuk SHA merge itu. Tidak ada satu pun langkah F6 yang
+menyentuh repositori aplikasi: seluruhnya IAM + Compute, dan memang begitu seharusnya — gerbang CI tidak
+punya alasan untuk deploy ulang situs karena angkanya berubah di `TODO.md`.
 
 ### Yang tidak kubebereskan di M12 (biar tidak kelihatan lupa)
 
