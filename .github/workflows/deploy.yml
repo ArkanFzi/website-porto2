@@ -26,6 +26,11 @@ env:
   AR_REPO: portfolio-app
   AR_REGISTRY: us-central1-docker.pkg.dev
   SERVICE_ACCOUNT: github-cd@config-agentic-ubuntu.iam.gserviceaccount.com
+  # SA yang memproses request produksi. Dibuat least-privilege (F4) lalu dipakai di sini (F5),
+  # supaya `roles/editor` se-proyek pada default compute SA bisa dicabut (F6). Reader AR-nya
+  # dipasang di level repo portfolio-app, logWriter/metricWriter di level projek, secretAccessor
+  # per-secret pada 5 secret portfolio-* — tidak ada lagi editor kebetulan di dalam runtime.
+  RUNTIME_SA: portfolio-runtime@config-agentic-ubuntu.iam.gserviceaccount.com
   WIF_PROVIDER: projects/486641216758/locations/global/workloadIdentityPools/github-pool/providers/github-provider
   VPC_CONNECTOR: portfolio-connector
   BE_SERVICE: portfolio-be
@@ -103,6 +108,7 @@ jobs:
             --image "${{ steps.be_push.outputs.ref }}" \
             --platform managed \
             --region "$REGION" \
+            --service-account "$RUNTIME_SA" \
             --vpc-connector "$VPC_CONNECTOR" \
             --vpc-egress all-traffic \
             --allow-unauthenticated \
@@ -141,6 +147,7 @@ jobs:
             --image "${{ steps.fe_push.outputs.ref }}" \
             --platform managed \
             --region "$REGION" \
+            --service-account "$RUNTIME_SA" \
             --allow-unauthenticated \
             --port 3000 \
             --memory 1Gi \
@@ -173,6 +180,24 @@ jobs:
             echo "backend tidak melayani revisi hasil run ini"; exit 1; }
           [ "$fe_serving" = "${{ steps.fe_deploy.outputs.rev }}=100" ] || {
             echo "frontend tidak melayani revisi hasil run ini"; exit 1; }
+
+          # 0b. Yang melayani request harus SA least-privilege ini. Kalau field itu diam-diam
+          #     kembali ke default compute SA, deploy tetap "berhasil" tapi F6 jadi berbahaya:
+          #     editor dicabut, service yang ternyata masih butuh editor langsung mati.
+          for svc in "$BE_SERVICE" "$FE_SERVICE"; do
+            sa=$(gcloud run services describe "$svc" --platform managed --region "$REGION" \
+              --format='value(spec.template.spec.serviceAccountName)')
+            echo "$svc serviceAccountName=$sa"
+            [ "$sa" = "$RUNTIME_SA" ] || {
+              echo "$svc tidak berjalan di $RUNTIME_SA (dapat: ${sa:-kosong})"; exit 1; }
+          done
+
+          # 0c. Connector harus masih terpasang di backend — ini yang membawa DB private IP.
+          conn=$(gcloud run services describe "$BE_SERVICE" --platform managed --region "$REGION" \
+            --format='value(spec.template.metadata.annotations."run.googleapis.com/vpc-access-connector")')
+          echo "$BE_SERVICE vpc-access-connector=$conn"
+          [ "$conn" = "$VPC_CONNECTOR" ] || {
+            echo "connector backend hilang/berubah: '$conn' (diharapkan '$VPC_CONNECTOR')"; exit 1; }
 
           # 1. DB benar-benar terpasang. Ini yang tidak bisa dibuktikan smoke test lama.
           health=$(curl -fsS --max-time 30 "$BE/api/health")
