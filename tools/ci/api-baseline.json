@@ -15,7 +15,5 @@
     "POST /api/experience",
     "PUT /api/admin/projects/:p"
   ],
-  "stub_handlers": [
-    "api/contact/route.ts"
-  ]
+  "stub_handlers": []
 }

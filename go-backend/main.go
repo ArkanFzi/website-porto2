@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/mail"
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/arkanFzi/website-porto2/go-backend/mailer"
 	"github.com/gin-contrib/cors"
@@ -84,6 +86,16 @@ type Experience struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
+type ContactMessage struct {
+	ID        string    `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	Name      string    `gorm:"size:200;not null" json:"name"`
+	Email     string    `gorm:"size:320;not null" json:"email"`
+	Subject   string    `gorm:"size:500" json:"subject"`
+	Body      string    `gorm:"not null" json:"body"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
 var DB *gorm.DB
 
 func initDB() {
@@ -102,7 +114,7 @@ func initDB() {
 	}
 
 	// Migrate the schema
-	err = DB.AutoMigrate(&Certificate{}, &Experience{})
+	err = DB.AutoMigrate(&Certificate{}, &Experience{}, &ContactMessage{})
 	if err != nil {
 		log.Fatalf("Failed to migrate database: %v", err)
 	}
@@ -243,18 +255,47 @@ func main() {
 			return
 		}
 
-		adminEmail := getEnv("ADMIN_EMAIL", "muhammadarkanfauzi9@gmail.com")
+		row := ContactMessage{
+			Name:    strings.TrimSpace(msg.Name),
+			Email:   strings.ToLower(strings.TrimSpace(msg.Email)),
+			Subject: strings.TrimSpace(msg.Subject),
+			Body:    strings.TrimSpace(msg.Body),
+		}
 
-		fullBody := fmt.Sprintf("Pesan dari: %s (%s)\n\nIsi Pesan:\n%s", msg.Name, msg.Email, msg.Body)
+		if row.Name == "" || row.Email == "" || row.Body == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Nama, email, dan pesan wajib diisi"})
+			return
+		}
+		if _, err := mail.ParseAddress(row.Email); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Format email tidak valid"})
+			return
+		}
+		if utf8.RuneCountInString(row.Name) > 200 ||
+			utf8.RuneCountInString(row.Email) > 320 ||
+			utf8.RuneCountInString(row.Subject) > 500 ||
+			utf8.RuneCountInString(row.Body) > 20000 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Isian terlalu panjang"})
+			return
+		}
+
+		if err := DB.Create(&row).Error; err != nil {
+			log.Printf("contact: gagal menyimpan pesan: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Pesan gagal tersimpan, coba lagi"})
+			return
+		}
+
+		adminEmail := getEnv("ADMIN_EMAIL", "muhammadarkanfauzi9@gmail.com")
+		fullBody := fmt.Sprintf("Pesan dari: %s (%s)\n\nIsi Pesan:\n%s", row.Name, row.Email, row.Body)
 
 		go func() {
-			err := mailer.SendEmail(adminEmail, "Contact Form: "+msg.Subject, fullBody)
-			if err != nil {
-				fmt.Printf("Gagal kirim email: %v\n", err)
+			if err := mailer.SendEmail(adminEmail, "Contact Form: "+row.Subject, fullBody); err != nil {
+				log.Printf("contact: gagal kirim email: %v", err)
 			}
 		}()
-		c.JSON(http.StatusOK, gin.H{
-			"message": "Pesan kamu sedang dikirim, terima kasih!",
+
+		c.JSON(http.StatusCreated, gin.H{
+			"id":      row.ID,
+			"message": "Pesan kamu tersimpan, terima kasih!",
 		})
 	})
 

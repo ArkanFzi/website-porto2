@@ -201,6 +201,45 @@ jobs:
           gone=$(curl -fsS http://127.0.0.1:8080/api/certificates | jq --arg id "$id" '[.[] | select(.id==$id)] | length')
           [ "$gone" = "0" ] || { echo "hapus tidak berlaku: $gone"; exit 1; }
 
+      - name: Kontrak kontak (form publik benar-benar menulis)
+        run: |
+          q() { psql "host=127.0.0.1 user=postgres dbname=portfolio_db" -tAc "$1"; }
+
+          before=$(q 'select count(*) from contact_messages;')
+
+          # payload persis yang dikirim Contact.tsx: name, email, subject, body
+          contact=$(jq -nc '{name:"Kontrak CI",email:"  Kontrak-CI@Example.TEST  ",subject:"Visionary Project : Kontrak CI",body:"pesan uji kontrak"}')
+          created=$(curl -fsS -X POST -H 'Content-Type: application/json' \
+            -d "$contact" http://127.0.0.1:8080/api/contact)
+          id=$(echo "$created" | jq -r .id)
+          echo "POST /api/contact => id=$id"
+          [ "$id" != "null" ] && [ -n "$id" ] || { echo "tidak ada id dari DB: $created"; exit 1; }
+
+          after=$(q 'select count(*) from contact_messages;')
+          echo "jumlah baris: $before -> $after"
+          [ "$after" = "$((before + 1))" ] || { echo "tulis tidak terbaca sebagai baris baru"; exit 1; }
+
+          saved=$(q "select email from contact_messages where body='pesan uji kontrak'")
+          echo "email tersimpan: '$saved'"
+          [ "$saved" = "kontrak-ci@example.test" ] || { echo "email tidak dinormalisasi: '$saved'"; exit 1; }
+
+          # bentuk {message} yang dulu dijawab handler stub dengan 200 palsu
+          lying=$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
+            -d '{"name":"a","email":"a@example.test","message":"halo"}' http://127.0.0.1:8080/api/contact)
+          echo "POST /api/contact bentuk {message} => $lying"
+          [ "$lying" = "400" ] || { echo "masih menerima payload yang tidak disimpan"; exit 1; }
+
+          for cacat in '{"name":"","email":"a@example.test","body":"x"}' \
+                       '{"name":"a","email":"bukan-email","body":"x"}' \
+                       '{"name":"a","email":"a@example.test","body":""}'; do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
+              -d "$cacat" http://127.0.0.1:8080/api/contact)
+            [ "$code" = "400" ] || { echo "input cacat diterima dengan $code: $cacat"; exit 1; }
+          done
+
+          final=$(q 'select count(*) from contact_messages;')
+          [ "$final" = "$after" ] || { echo "input cacat ikut tersimpan: $after -> $final"; exit 1; }
+
       - name: Log backend saat gagal
         if: failure()
         run: |
@@ -208,7 +247,7 @@ jobs:
           cat /tmp/be.log || true
           echo "=== tabel di DB ==="
           psql "host=127.0.0.1 user=postgres dbname=portfolio_db" \
-            -c '\dt' -c 'select count(*) from certificates;' || true
+            -c '\dt' -c 'select count(*) from certificates;' -c 'select count(*) from contact_messages;' || true
 
       - name: Hentikan backend
         if: always()

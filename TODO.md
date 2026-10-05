@@ -250,7 +250,9 @@ di 13 titik. M10 sengaja dibuat **mendukung** M11: baseline ratchet §1 menyusut
 
 Urutan yang kuambil: gerbang dulu (permintaanmu), produk setelah — dengan konsekuensi jujur bahwa
 situs tetap kehilangan pesan kontak sampai M11 jalan, dan mulai sekarang CI akan **mengingat** itu
-lewat file baseline, bukan melupakannya.
+lewat file baseline, bukan melupakannya. Konsekuensi itu **berlaku sampai F9 langkah (1) mendarat**
+(lihat bloknya di §8): sejak itu pesan visitors masuk ke `contact_messages`, tapi masih belum bisa
+dibaca kembali dari situs — rute admin-nya baru ada di langkah (3).
 
 ---
 
@@ -912,6 +914,59 @@ kulakukan hanya menyebutnya "belum diukur".
 `success`, dan **0 run `Deploy to Cloud Run`** untuk SHA merge itu. Tidak ada satu pun langkah F6 yang
 menyentuh repositori aplikasi: seluruhnya IAM + Compute, dan memang begitu seharusnya — gerbang CI tidak
 punya alasan untuk deploy ulang situs karena angkanya berubah di `TODO.md`.
+
+### F9 langkah (1) — form kontak berhenti berbohong dan mulai menulis (2026-10-05, 05:36 – 05:44 UTC)
+
+**Klaim "form kontak rusak" kubuktikan lebih dulu, bukan diasumsikan.** Di produksi, sebelum perubahan ini,
+dengan dua bentuk body yang berbeda:
+
+| body yang dikirim | http | byte | waktu |
+|---|---|---|---|
+| name + email + subject + body — persis yang dikirim `Contact.tsx:29` | **400** | 35 | 0,35 s |
+| name + email + message — satu-satunya bentuk yang diterima handler stub | **200** | 54 | **1,36 s** |
+
+Baris kedua yang mengubah fase ini dari "fitur baru" menjadi "bug fix yang sedang berjalan di internet":
+situs menjawab `{"success":true,"message":"Message sent successfully"}` sambil mengerjakan satu-satunya
+statement di dalamnya, yaitu `await new Promise(resolve => setTimeout(resolve, 1000))`. Selisih 1,36 − 0,35
+≈ sleep 1000 ms-nya, dan tidak ada satu pun pesan pengunjung yang pernah mendarat di tempat yang bisa dibuka.
+
+**Yang berubah.** Model `ContactMessage` (uuid PK `gen_random_uuid()`, pola sama dengan `Certificate` dan
+`Experience`), satu entri di `AutoMigrate`, handler `POST /api/contact` ditulis ulang: validasi →
+`DB.Create` dengan `if err :=` → **hanya setelah insert sukses** email dilempar ke goroutine. Handler
+`src/app/api/contact/route.ts` dihapus — dialah yang selama ini memotong rewrite lebih dulu, karena route
+handler menang atas `rewrites()`; `next.config.ts` konsekuensinya dapat `source: "/api/contact"`.
+
+**Angka lokal.** postgres:15 + backend di container, host port 55432 dan 8099, karena 5432 dan 8080 di host
+sudah ditempati `local_postgres` dan `local_adminer` — keduanya tidak kusentuh:
+
+| uji | hasil |
+|---|---|
+| payload persis situs | **201**, `id=162802bb-27fb-…`, `count(*) contact_messages` **0 → 1** |
+| normalisasi | input `" ARKAN@Example.COM "` tersimpan `arkan@example.com` |
+| bentuk message (yang dulu 200 palsu) | **400** |
+| name kosong, email cacat, body kosong, JSON tanpa body | **400** untuk keempatnya |
+| body 20001 rune | **400**; name 200 rune beraksen → **201** (batas dihitung rune, bukan byte, supaya cocok dengan `varchar(200)` Postgres) |
+| **Postgres dimatikan lalu POST** | **500** dan di log: `contact: gagal menyimpan pesan: failed to connect to user=postgres database=portfolio_db: hostname resolving error`. Jumlah baris tetap 2 — tidak ada tulis hantu, tidak ada 200 |
+
+**Tripwire bergerak, tapi bukan pada sumbu yang diramal E13.** `api-contract-check.mjs` menolak dua kali
+sebelum aku sadar: pertama karena stub-nya memang hilang (`STUB sudah hilang, kecilkan baseline`), dan itu
+kubawa lewat `--emit-baseline` secara sadar. Hitungannya sekarang **13 path mati (tetap 13) dan 0 stub
+(turun dari 1)** dengan `rc=0`. E13 baru terpenuhi separuh: "turun dari 13" terjadi di sub-langkah (3),
+karena `GET /api/contact`, `DELETE /api/contact/:p` dan `POST /api/auth/login` masih menunggu rute admin —
+yang berubah cuma alasannya (`rewrite ada, tapi backend tidak punya GET /api/contact`, sebelumnya "tidak ada
+handler lokal, tidak ada rewrite, tidak ada rute backend"). Aku tulis ini supaya "13" tidak kelihatan sudah
+turun padahal belum.
+
+**Koreksi rencana F9: langkah (2) bukan "email via gomail".** `mailer/mailer.go` sudah gomail dan sudah
+membaca `EMAIL_USER`/`EMAIL_PASS` dari env sejak lama. Yang keluar di log backend tadi:
+`gomail: could not send email 1: 530 "5.7.0 Authentication Required" … gsmtp`. Jalurnya jadi terbukti sampai
+ke server Google dan yang kurang cuma kredensial. (2) menyusut jadi satu baris di sisi kamu: app password
+Gmail masuk Secret Manager; tidak ada kode yang perlu kutulis untuk itu, dan aku tetap tidak menulis nilainya.
+
+**Yang sengaja tidak kututup di PR ini.** `POST /api/contact` sekarang adalah **tulis DB tanpa autentikasi
+dan tanpa rate limit** — permukaan baru untuk spam yang membayangi Cloud SQL. Itu bukan kelalaian senyap:
+ia tercatat di bawah, dan kuncinya harus dibikin sadar (batasan per IP di middleware, atau honeypot di form),
+bukan diterima sebagai harga yang harus dibayar tanpa dihitung.
 
 ### Yang tidak kubebereskan di M12 (biar tidak kelihatan lupa)
 
