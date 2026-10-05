@@ -203,13 +203,21 @@ func main() {
 	// Public GET routes
 	api.GET("/certificates", func(c *gin.Context) {
 		var certs []Certificate
-		DB.Order("created_at desc").Find(&certs)
+		if err := DB.Order("created_at desc").Find(&certs).Error; err != nil {
+			log.Printf("GET /api/certificates: gagal membaca: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal membaca sertifikat"})
+			return
+		}
 		c.JSON(http.StatusOK, certs)
 	})
 
 	api.GET("/experience", func(c *gin.Context) {
 		var exps []Experience
-		DB.Order("created_at desc").Find(&exps)
+		if err := DB.Order("created_at desc").Find(&exps).Error; err != nil {
+			log.Printf("GET /api/experience: gagal membaca: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal membaca pengalaman"})
+			return
+		}
 		c.JSON(http.StatusOK, exps)
 	})
 
@@ -236,14 +244,31 @@ func main() {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		DB.Create(&cert)
+		if err := DB.Create(&cert).Error; err != nil {
+			log.Printf("POST /api/certificates: gagal menyimpan: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menyimpan sertifikat"})
+			return
+		}
 		c.JSON(http.StatusCreated, cert)
 	})
 
 	protected.DELETE("/certificates/:id", func(c *gin.Context) {
 		id := c.Param("id")
-		DB.Delete(&Certificate{}, "id = ?", id)
-		c.JSON(http.StatusOK, gin.H{"message": "deleted"})
+		if !uuidRe.MatchString(id) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Format id tidak valid"})
+			return
+		}
+		res := DB.Delete(&Certificate{}, "id = ?", id)
+		if res.Error != nil {
+			log.Printf("DELETE /api/certificates/%s: gagal menghapus: %v", id, res.Error)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menghapus sertifikat"})
+			return
+		}
+		if res.RowsAffected == 0 {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Sertifikat tidak ditemukan"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"deleted": res.RowsAffected})
 	})
 
 	protected.POST("/experience", func(c *gin.Context) {
@@ -252,14 +277,31 @@ func main() {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		DB.Create(&exp)
+		if err := DB.Create(&exp).Error; err != nil {
+			log.Printf("POST /api/experience: gagal menyimpan: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menyimpan pengalaman"})
+			return
+		}
 		c.JSON(http.StatusCreated, exp)
 	})
 
 	protected.DELETE("/experience/:id", func(c *gin.Context) {
 		id := c.Param("id")
-		DB.Delete(&Experience{}, "id = ?", id)
-		c.JSON(http.StatusOK, gin.H{"message": "deleted"})
+		if !uuidRe.MatchString(id) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Format id tidak valid"})
+			return
+		}
+		res := DB.Delete(&Experience{}, "id = ?", id)
+		if res.Error != nil {
+			log.Printf("DELETE /api/experience/%s: gagal menghapus: %v", id, res.Error)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menghapus pengalaman"})
+			return
+		}
+		if res.RowsAffected == 0 {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Pengalaman tidak ditemukan"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"deleted": res.RowsAffected})
 	})
 
 	// --- Rute admin: inbox pesan kontak ---
@@ -354,7 +396,11 @@ func main() {
 	})
 
 	log.Println("Server running on port 8080")
-	r.Run(":8080")
+	// gin mengembalikan error bind, dan membuangnya berarti "address already in use"
+	// keluar dengan rc=0 — container yang tidak pernah mendengarkan terlihat sehat.
+	if err := r.Run(":8080"); err != nil {
+		log.Fatalf("server: gagal listen di :8080: %v", err)
+	}
 
 }
 
