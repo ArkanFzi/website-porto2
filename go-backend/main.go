@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -384,8 +385,14 @@ func main() {
 		fullBody := fmt.Sprintf("Pesan dari: %s (%s)\n\nIsi Pesan:\n%s", row.Name, row.Email, row.Body)
 
 		go func() {
-			if err := mailer.SendEmail(adminEmail, "Contact Form: "+row.Subject, fullBody); err != nil {
-				log.Printf("contact: gagal kirim email: %v", err)
+			err := mailer.SendEmail(adminEmail, "Contact Form: "+row.Subject, fullBody)
+			switch {
+			case err == nil:
+				log.Printf("contact %s: email terkirim ke %s", row.ID, adminEmail)
+			case errors.Is(err, mailer.ErrNotConfigured):
+				log.Printf("contact %s: email dilewati, %v", row.ID, err)
+			default:
+				log.Printf("contact %s: gagal kirim email: %v", row.ID, err)
 			}
 		}()
 
