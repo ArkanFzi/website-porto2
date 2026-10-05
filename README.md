@@ -36,16 +36,17 @@ Yang masih mati persis seperti tertulis: lima rute `/api/admin/projects` dan emp
 | `GET /api/health` — cek koneksi ke Postgres | jalan |
 | `/api/cv` — PDF dari halaman `/cv-layout` lewat Puppeteer | jalan, tapi **tanpa daftar sertifikat** |
 | `/api/github-repos`, `/api/github-profile` | jalan |
-| Form kontak | **stub** — `src/app/api/contact/route.ts` menahan POST, menunda 1 s lalu menjawab `success: true`; tidak ada rewrite untuk `/api/contact` di `next.config.ts`, jadi `POST /api/contact` + `mailer` di Go tidak pernah menerima trafik |
-| Halaman admin (`/admin`, `/admin/projects`, `/admin/dashboard`) | **mati** — `/admin/login` memanggil `POST /api/auth/login` yang tidak ada di backend, jadi token tidak pernah terbit; `/admin/projects` + `/admin/dashboard` memanggil `/api/admin/*` dan `GET/DELETE /api/contact/:id` yang juga tidak ada; `/admin/page.tsx` menulis dengan `fetch` biasa tanpa header `Authorization` |
-| Login admin (`POST /api/login` + JWT) | ada di backend, belum dipakai jalur yang hidup |
+| Form kontak | **jalan** — `Contact.tsx` mengirim ke `POST /api/contact` di Go, pesan masuk ke `contact_messages` dan dijawab `201 {id}`; stub lama `src/app/api/contact/route.ts` (menahan 1 s lalu menjawab `success: true` tanpa menulis apa pun) sudah dihapus. Notifikasi email: **dilewati** selama `EMAIL_USER`/`EMAIL_PASS` belum ada — dan sejak #31 melewatnya itu dicatat sebagai `email dilewati`, bukan disamarkan jadi kegagalan Gmail |
+| Halaman admin (`/admin`, `/admin/projects`, `/admin/dashboard`) | **sebagian hidup** — `POST /api/auth/login` sekarang ada di backend (token terbit) dan `/admin/dashboard` membaca + menghapus kotak masuk lewat `GET`/`DELETE /api/admin/contact` yang ber-JWT (401 untuk siapa pun tanpa token, terukur di produksi); yang tetap mati: lima rute `/api/admin/projects` dan empat tulis `/api/certificates` + `/api/experience` dari `/admin/page.tsx` (fetch polos tanpa `Authorization`) |
+| Login admin (`POST /api/auth/login` + JWT) | **dipakai** — `/admin/login` memanggilnya; `POST /api/login` yang lama masih terdaftar dan menunjuk handler yang sama, jadi keduanya menerbitkan token yang sama |
 
 `/api/cv` dulu kosong daftar sertifikatnya karena `src/app/cv-layout/page.tsx` memanggil
 `http://localhost:8080` secara hardcoded — origin itu tidak ada di dalam container frontend.
 Perbaikan produk (kontak, admin, CV, `seedData()` yang ikut jalan di produksi, `AutoMigrate` saat
 container start) dijadwalkan sebagai **M11** — kontak, inbox admin, CV dan jalur start sudah mendarat
-(PR #22, #24, #25, #27, #29); yang tersisa cuma email, dan itu menunggu kredensial `EMAIL_USER`/
-`EMAIL_PASS`. Termasuk di dalamnya: **13 error gorm yang dibuang itu sekarang nol**, diukur oleh
+(PR #22, #24, #25, #27, #29, dan #31 untuk jalur email yang tidak butuh kredensial); yang tersisa cuma
+**mengirim** sungguhan, dan itu menunggu `EMAIL_USER`/`EMAIL_PASS` dibuat sebagai secret berversi.
+Termasuk di dalamnya: **13 error gorm yang dibuang itu sekarang nol**, diukur oleh
 `go-backend/cmd/audit-ignored` (13 → 6 → 0 pada `c78cb19` / `0204b70` / `bf11c2d`) dan dikunci jadi langkah
 CI yang bisa merah, bersama satu `r.Run` yang dulu keluar dengan `rc=0` walaupun portnya sudah dipakai.
 Akibat yang bisa dirasakan: `GET /api/certificates`, `GET /api/experience`, kedua `POST`/`DELETE`-nya dan
@@ -72,10 +73,13 @@ inbox admin menjawab **500** kalau DB gagal — sebelum PR #29 yang sama itu men
 - **Go 1.25**, **Gin** (HTTP), **GORM** + `gorm.io/driver/postgres`
 - **JWT** (`golang-jwt/v5`, HS256, kedaluwarsa 24 jam) untuk rute `/api/certificates` dan
   `/api/experience` yang protected
-- **`gomail`** untuk SMTP — kode-nya ada, tapi belum tersambung ke form kontak dan secret SMTP
-  (`EMAIL_USER`/`EMAIL_PASS`) belum terpasang di produksi
-- Rute: `POST /api/login`, `GET /api/certificates`, `GET /api/experience`, `GET /api/health`
-  (publik) + `POST`/`DELETE` untuk kedua koleksi (butuh Bearer token)
+- **`gomail`** untuk SMTP — tersambung ke form kontak, tapi secret `EMAIL_USER`/`EMAIL_PASS` belum terpasang
+  di produksi: tanpa keduanya `SendEmail` mengembalikan `ErrNotConfigured` **sebelum** ada socket, dan
+  `main.go` mencatatnya sebagai `email dilewati` ber-id pesan. `From` selalu = akun yang diautentikasi
+  (Gmail menolak `From` yang bukan pengirimnya); dulu nilai ini dibakar sebagai literal alamat pribadi
+- Rute: `POST /api/login`, `POST /api/auth/login`, `GET /api/certificates`, `GET /api/experience`,
+  `GET /api/health`, `POST /api/contact` (publik) + `GET /api/admin/contact`,
+  `DELETE /api/admin/contact/:id`, `POST`/`DELETE` untuk kedua koleksi (butuh Bearer token)
 
 ### Infrastruktur
 
@@ -173,6 +177,7 @@ BACKEND_URL=http://localhost:8080 npm run dev
 cd nextjs-frontend && npm run lint && npx tsc --noEmit
 node tools/ci/api-contract-check.mjs          # ratchet kontrak API (harus sesuai baseline)
 cd go-backend && gofmt -l . && go vet ./...   # gofmt harus kosong
+go test ./...                                 # sekarang ada isinya: paket mailer
 go run ./cmd/audit-ignored .                  # rc=0: nol error gorm / r.Run yang dibuang
 ```
 
