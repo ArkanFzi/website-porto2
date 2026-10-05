@@ -71,7 +71,7 @@ Dicatat supaya angka setelah M10 bisa dibandingkan. Sumber: GitHub REST + `gclou
 | Step `Rollback backend on failure` | **0× tereksekusi** dari 14 run; satu-satunya observasi `skipped` |
 | Branch protection `main` | `required_approving_review_count=0`, `required_status_checks=null`, `enforce_admins=true`, force-push & delete=false |
 | File `_test.go` | **0** → langkah `go test ./...` adalah no-op |
-| Call gorm tanpa penanganan error | 13 (`main.go:173,179,193,199,209,215,255-267`) |
+| Call gorm tanpa penanganan error | 13 (`main.go:173,179,193,199,209,215,255-267`) — **[status 2026-10-05 08:36 UTC: jadi 0 lewat PR #29. Baris ini kukukur ulang dengan `cmd/audit-ignored` pada `230eff0`, tip `main` saat snapshot ini diambil: `silent_gorm=13` dengan daftar baris yang sama persis, plus `silent_listen=1` di `main.go:249` yang tidak tercatat di baseline — itu yang kemudian jadi rc=0 palsu, lihat §8 langkah (6)]** |
 | Tag di AR | backend 13, frontend 12 — tanpa retention policy; `:latest` di-push tapi tidak pernah dipakai deploy |
 | Cloud SQL `portfolio-pg` | backup enabled, PITR on, retainedBackups=7, ZONAL, backup terbaru `2026-10-04T03:00Z` (12,1 jam), semua `SUCCESSFUL`. Restore drill: 0×. **[koreksi P7 16:52 UTC: dua angka di baris ini salah baca. `pointInTimeRecoveryEnabled` dan `retainedBackups` absen di API ⇒ PITR mati; "7" hanyalah jumlah baris `backups list`. Waktu `03:00Z` adalah epoch *id* backup, `endTime` sebenarnya `04:52:13Z`.]** |
 | Runtime SA kedua service | `486641216758-compute@developer.gserviceaccount.com` = `roles/editor` + `roles/pubsub.publisher` se-proyek, dengan `allUsers → roles/run.invoker` |
@@ -248,15 +248,20 @@ admin; menghapus `seedData()` (`main.go:121,253-270`) dari jalur start produksi 
 `AutoMigrate` (`main.go:105`) dengan migration yang berversi *(status: `seedData()` dan otomatisme start
 hilang lewat PR #27, tapi "berversi" belum — `-migrate` masih memanggil `AutoMigrate`, bukan migration
 file bernomor)*; mengembalikan error gorm yang diabaikan
-di 13 titik. M10 sengaja dibuat **mendukung** M11: baseline ratchet §1 menyusut tiap perbaikan.
+di 13 titik *(status: **tertutup lewat PR #29** — `cmd/audit-ignored` mengukur 13 → 6 → 0 di `c78cb19` /
+`0204b70` / `bf11c2d`, dan `rc=0`-nya sekarang alat, bukan ingatan)*. M10 sengaja dibuat **mendukung** M11:
+baseline ratchet §1 menyusut tiap perbaikan.
 
 Urutan yang kuambil: gerbang dulu (permintaanmu), produk setelah — dengan konsekuensi jujur bahwa
 situs tetap kehilangan pesan kontak sampai M11 jalan, dan mulai sekarang CI akan **mengingat** itu
 lewat file baseline, bukan melupakannya. Konsekuensi itu **berlaku sampai F9 langkah (1) mendarat**
 (lihat bloknya di §8): sejak itu pesan pengunjung masuk ke `contact_messages`, dan sejak langkah (3) pesan itu
 bisa **dibaca dan dihapus kembali** lewat `GET`/`DELETE /api/admin/contact` ber-JWT — 401 untuk siapa pun tanpa
-token, terukur di produksi. Yang masih terbuka: tidak ada yang dikirim ke inbox email (langkah 2, menunggu
-kredensial) dan skema masih dibuat saat start (langkah 5).
+token, terukur di produksi. Yang masih terbuka tinggal tiga: tidak ada satu pun yang dikirim ke inbox email
+(langkah 2 — menunggu kredensial `EMAIL_USER`/`EMAIL_PASS`, dan fire-and-forget-nya belum berhenti), lima dead
+path admin, dan `AutoMigrate` yang belum jadi migration berversi. Dua hal yang tadi di daftar ini sudah
+tertutup dan tidak perlu ditebak lagi: **skema tidak lagi dibuat saat start** (PR #27) dan **tidak ada lagi
+error gorm atau `r.Run` yang dibuang** (PR #29).
 
 ---
 
@@ -522,12 +527,13 @@ lepas), dan tidak ada nilai secret yang kubaca atau kucetak.
 | Watch | workflow id `374751227`, 3 run: `#1 failure`, `#2 success`, `#3 success` — semuanya `workflow_dispatch`. Run `event=schedule` di repo = **0**. Jam pengukuran 01:47 UTC, cron `37 2 * * *` → hari pertama E8 **belum jatuh tempo** (±50 menit lagi), bukan rusak |
 | Deploy | run #19–#22 `success`, semua `event=push` |
 
-### K — Dua klaimku sendiri yang gagal diukur ulang
+### K — Tiga klaimku sendiri yang gagal diukur ulang
 
 | # | Klaim lama | Realita 2026-10-05 | Sebab |
 |---|---|---|---|
 | **K1** | "PITR **mati**; `pointInTimeRecoveryEnabled` absent" (dicatat 2026-10-04, jadi bahan keputusan 2a) | PITR **aktif penuh** | Aku membaca path JSON yang salah: `.settings.backupConfiguration.settings.pointInTimeRecoveryEnabled` (tidak ada) → keluaran `"absent"`. Path benar `.settings.backupConfiguration.pointInTimeRecoveryEnabled` → `true`. Bukti dua-duanya dijalankan berdampingan hari ini dan hanya bedanya `settings` di tengah. Kesalahan klasnya sama dengan yang kutulis di §7 "Catatan jujur" #6: **alat yang kupakai bukan verifikasi** |
 | **K2** | "`spec.template.spec.serviceAccountName` **kosong** → default compute SA" (`DEPLOY.md` §Postur IAM) | Field itu **diisi eksplisit** dengan `486641216758-compute@developer.gserviceaccount.com` di kedua service | Kalimat itu kutulis sendiri kemarin tanpa `jq` pada field tersebut. Kabar baiknya: F5 tinggal mengganti satu field bernama, bukan menambang default |
+| **K3** | "(1) tabel `contact_messages` … **sekaligus menutup `main.go:173` yang membuang error gorm**" (baris F9, ditulis 01:47 UTC) | Di `c78cb19` baris 173 adalah `DB.Order("created_at desc").Find(&certs)` — punyanya `/api/certificates`. Stub kontak lama (`main.go:233-248`) tidak punya satu panggilan DB pun: bind, lalu `go func()` pengirim email. Yang ditutup (1) dari 13 titik itu: **0**; yang di 173 baru tertutup di (6) lewat #29 | Kutulis angka baris dari berkas yang sudah bergerak, tanpa `git show` ke commit baseline. Sekarang `cmd/audit-ignored` yang memegang hitungan, dan dia tidak bisa salah tempel karena dia membaca AST pada commit yang kusebut — angka 13 itu keluar dari `git archive c78cb19` hari ini, bukan dari ingatanku |
 
 Konsekuensi keputusan: **2a sudah jadi keadaan dunia**, jadi yang benar-benar tertagih bukan "aktifkan
 PITR" tapi **"pemulihan belum pernah terbukti"** — 0× restore drill. Itu pindah menjadi F7.
@@ -550,7 +556,7 @@ memakai alat yang baru valid setelah F8.
 | **F6** (1a langkah 3) | Cabut `roles/editor` dari `486641216758-compute@developer.gserviceaccount.com`. **`pubsub.publisher` dibiarkan** (belum terukur siapa penerbitnya — dicatat sebagai hutang, bukan dihapus diam-diam) | **E9b**: `get-iam-policy` → member `roles/editor` hanya `…@cloudservices.gserviceaccount.com` (milik Google); 0 service Cloud Run di projek yang masih memakai SA compute (diukur `run services list --format=value(name,spec.template.spec.serviceAccountName)`); `connector state=READY`; `/api/health` tetap `.db=="ok"`; baris Watch besok hijau | Yang paling lebar di M12. Reversible dalam 1 perintah (`add-iam-policy-binding`), dan itu memang rencananya kalau connector atau logging merah. Jangan digabung dengan F5 dalam satu PR — kalau keduanya merah, tidak terbaca mana yang bersalah |
 | **F7** (2a, hasil K1) | **Drill pemulihan**: clone `portfolio-pg` ke titik waktu (`gcloud sql instances clone --restore-from-timestamp=…`, nama flag dikukuhkan dari `--help` dulu, tidak ditebak), ukur, lalu hapus clone-nya | **E10**: clone `state=RUNNABLE` + tier + `ipAddresses` tercatat; **RTO** = delta menit antara perintah dan `RUNNABLE` diukur; clone dihapus (`instances list` kembali 1 baris). Yang **tidak** dibuktikan, kutulis apa adanya: isi row tidak bisa dibaca dari laptop (DB hanya `PRIVATE 10.112.0.2`), jadi "data-nya kembali benar" masih 0× sampai ada jalur baca sementara di dalam VPC | Resource berbayar baru (±`db-f1-micro`) yang hidup beberapa menit lalu kuhapus. **Butuh "ya" terakhirmu** karena create + delete resource, meski 2a sudah kamu setujui dalam bentuk lain |
 | **F8** (keputusan 3a) | Bikin `github-watch@…`, grant **hanya** `roles/run.viewer`; binding `iam.workloadIdentityUser` di SA itu dengan `principalSet://…/attribute.repository/ArkanFzi/website-porto2` (satu-satunya granularitas yang tersedia — provider tidak memetakan `sub`/`environment`). Di `watch.yml`: `id-token: write`, `auth@v2` ke SA itu, lalu invariant traffic: **100% pada revisi `Ready` terbaru; kalau tidak → MERAH dengan nama revisi yang ter-pin; kalau kredensial/cloud tidak terbaca → KUNING** (bukan diam-diam bersih) | **E11**: satu run ber-`event=schedule` yang baris hariannya memuat `traffic\|HIJAU\|be-00018-fsc=100 / fe-00017-wqb=100` dan **log-nya membuktikan ia membaca state cloud** (bukan hanya repo). Negatifnya (opsional, lihat daftar butuh-izin): pin traffic ke revisi lama ±2 menit → Watch harus MERAH sendiri keesokan harinya, lalu lepas | Yang bocor kalau salah: **read-only** (`run.viewer`) — dan granularitasnya persis sama dengan binding `github-cd` yang sudah ada hari ini, jadi permukaan baru yang ditambahkan nyaris nol: menambah identitas *lebih kecil* di bentuk yang sudah dipakai identitas *lebih besar*. Hutang yang sengaja ditinggalkan: memperketat ke `attribute.environment` menuntut edit `attributeMapping` pada provider yang dipakai CD produksi — tidak kulakukan di fase ini |
-| **F9** (6b + 7) | M11 urutanku: (1) tabel `contact_messages` + POST `/api/contact` menulis (sekaligus menutup `main.go:173` yang membuang error gorm); (2) email via gomail; (3) rute admin `POST /api/auth/login`, `GET/DELETE /api/admin/contact` ber-JWT; (4) buang hardcode `http://localhost:8080` di `cv-layout`; (5) hapus `seedData()` + `AutoMigrate` saat start; (6) tutup 13 error gorm yang diabaikan. Satu sub-langkah = satu PR | **E13**: jumlah path mati di `tools/ci/api-baseline.json` **turun dari 13** dan `api-contract-check.mjs` tetap `rc=0`; 1 POST dari situs publik → **terhitung** lewat `GET /api/admin/contact` (count +1, dan **401 tanpa JWT**); email: 1 log run membuktikan SMTP menerima (hanya setelah kredensial ada); `go vet`+gofmt bersih; endpoint admin tidak menambah secret yang terbaca CI | Semua lewat gerbang yang sudah terbukti. (2) **terblokir padamu** (lihat di bawah). Rute admin = permukaan baru di internet: tanpa JWT tidak ada satu pun rute admin yang boleh 200, dan itu kukunci di job `api`, bukan di narasi. **Status 2026-10-05:** (1) #22, (3) #24, (4) #25, (5) #27 sudah mendarat — path mati 13 → 9 (tidak bergerak di (5), karena (5) tidak menyentuh frontend); (2) terblokir kredensial; (6) belum |
+| **F9** (6b + 7) | M11 urutanku: (1) tabel `contact_messages` + POST `/api/contact` menulis (sekaligus menutup `main.go:173` yang membuang error gorm); (2) email via gomail; (3) rute admin `POST /api/auth/login`, `GET/DELETE /api/admin/contact` ber-JWT; (4) buang hardcode `http://localhost:8080` di `cv-layout`; (5) hapus `seedData()` + `AutoMigrate` saat start; (6) tutup 13 error gorm yang diabaikan. Satu sub-langkah = satu PR *(catatan (6): yang kucocok di jalur itu 6 `Find`/`Create`/`Delete` + 1 `r.Run`; tujuh lainnya sudah lenyap di (5) — dan lenyapnya karena `seedData()` dihapus, bukan karena errornya ditutup)* | **E13**: jumlah path mati di `tools/ci/api-baseline.json` **turun dari 13** dan `api-contract-check.mjs` tetap `rc=0`; 1 POST dari situs publik → **terhitung** lewat `GET /api/admin/contact` (count +1, dan **401 tanpa JWT**); email: 1 log run membuktikan SMTP menerima (hanya setelah kredensial ada); `go vet`+gofmt bersih; endpoint admin tidak menambah secret yang terbaca CI | Semua lewat gerbang yang sudah terbukti. (2) **terblokir padamu** (lihat di bawah). Rute admin = permukaan baru di internet: tanpa JWT tidak ada satu pun rute admin yang boleh 200, dan itu kukunci di job `api`, bukan di narasi. **Status 2026-10-05, 08:36 UTC:** (1) #22, (3) #24, (4) #25, (5) #27, (6) #29 sudah mendarat — path mati tetap **9** (`(5)` dan `(6)` tidak menyentuh frontend), error gorm yang dibuang **13 → 6 → 0** dan `r.Run` **1 → 0** diukur `cmd/audit-ignored` di `c78cb19`/`0204b70`/`bf11c2d`; job `api` 12 → **14** langkah; (2) masih terblokir kredensial. **Koreksi pada rencanaku sendiri di baris ini:** yang kutulis "(1) sekaligus menutup `main.go:173` yang membuang error gorm" itu salah tempel. Di `c78cb19` baris 173 adalah `DB.Order("created_at desc").Find(&certs)` milik `/api/certificates`, sedangkan stub kontak lama (`main.go:233-248`) sama sekali tidak menyentuh DB — bind, lalu `go func()` pengirim email. Jadi (1) tidak menutup apa pun dari 13 itu, dan `Find` di 173 baru tertutup di (6) lewat #29 |
 | **F10** (4a) | *Hold* — `issues: write` **tidak** dipasang. Tidak ada kerja; hanya dicatat supaya tidak membusuk jadi keputusan yang tidak pernah diambil | Re-check paling cepat **2026-10-12 02:37 UTC**, syaratnya ≥8 baris `event=schedule` dan 0 MERAH. Kalau ada MERAH sebelumnya, hold menang dan alarm tetap run merah | nol |
 
 ### Yang masih butuh darimu
@@ -585,7 +591,7 @@ sebelumnya endpoint ini *tidak bisa* ditumpahi spam karena dia tidak menulis apa
 Nomor ini kutaruh di sini, bukan di dalam daftar di atas, karena tidak ada satu pun butir 1–4 yang berubah
 olehnya.
 
-**Empat butir yang keluar setelah F9 langkah (3), (4) dan (5) mendarat.** **(a)** Klausa E13 "count +1 lewat
+**Lima butir yang keluar setelah F9 langkah (3), (4), (5) dan (6) mendarat.** **(a)** Klausa E13 "count +1 lewat
 `GET /api/admin/contact`" sudah hijau di CI dengan Postgres nyata tapi belum kukur di produksi, dan satu-satunya
 yang menghalangi adalah kredensial admin produksi: nilainya ada di Secret Manager, yang tidak pernah kubaca, dan
 Cloud SQL-nya `PRIVATE` tanpa IP publik (`portfolio-pg`, `10.112.0.2`) sehingga tidak ada jalur sah dari laptop.
@@ -601,7 +607,13 @@ lima baris fiktif warisan `seedData()` — tiga sertifikat ("AWS Solutions Archi
 Patterns", "Full-Stack Design") dan dua pengalaman ("TechNova Solutions", "Digital Artisan"), semuanya
 ber-`createdAt` pada detik yang sama dengan sebaran **41 ms**. Langkah (5) menutup jalan masuknya, tidak
 menghapus isinya; yang menghapus tinggal kamu, lewat dua `DELETE` admin (butuh token login-mu) atau lewat
-Cloud SQL.
+Cloud SQL. **(e)** Keluar dari (6), dan ini keputusan bentuk jawaban, bukan bentuk bug: `GET
+/api/certificates` dan `/api/experience` sekarang **boleh** menjawab 500, dan frontend menerjemahkannya jadi
+daftar kosong (`r.ok ? r.json() : []`, terukur 5 dari 5 rantai fetch di tiga berkas pemakai). Sebelum (6) yang
+dapat pengunjung adalah 200 dengan `null` — jadi pilihan hari ini bukan "rusak vs utuh", tapi **kosong tanpa
+petunjuk vs kosong dengan petunjuk**. Menambah banner "data sedang tidak tersedia" itu pekerjaan frontend dan
+bukan bagian F9; yang kuperlukan darimu cuma keputusannya: biarkan diam, atau minta tandai. Aku tidak akan
+mengetahuinya lewat uji — satu-satunya cara memicunya adalah mematikan DB produksi, dan itu tidak kulakukan.
 
 ### Hasil terukur F1–F4 (2026-10-05, 01:55 – 02:12 UTC)
 
@@ -1348,6 +1360,169 @@ DB di `deploy.yml` yang hari ini tidak kuanggap pantas untuk workflow itu. Dan *
 sepenuhnya**: yang dijanjikan di sana "mengganti `AutoMigrate` dengan migration yang berversi" — yang
 terhapus adalah *otomatisme saat start*, isinya masih `AutoMigrate`, belum migration file bernomor. Aku
 tidak menyebut butir itu beres cuma karena separuhnya sudah.
+
+### F9 langkah (6) — enam yang tersisa, dan satu `rc=0` yang paling berbahaya (2026-10-05, 08:05 – 08:36 UTC)
+
+**Klaim §5 "error gorm yang diabaikan di 13 titik" sekarang punya alat, bukan cuma angka yang dikutip.**
+`go-backend/cmd/audit-ignored` (146 baris, `go/parser` AST, hanya berkas top-level modul) menandai setiap
+`ExprStmt` yang rantai pemanggilannya berakar ke `DB`/`sqlDB` atau ke `r.Run`/`r.RunTLS` tanpa mengambil
+hasilnya. Alat yang sama kukuhkan ke tiga titik riwayat — sumber lama lewat `git archive`, alatnya selalu dari
+HEAD, supaya yang berbeda cuma kodenya:
+
+| commit | keadaan | `silent_gorm` | `silent_listen` | rc alat |
+|---|---|---|---|---|
+| `230eff0` | tip `main` waktu baseline §1 diambil (2026-10-04 15:10 UTC) | **13** | 1 (`main.go:249`) | 1 |
+| `c78cb19` | sebelum F9 sama sekali | **13** | 1 | 1 |
+| `0204b70` | sesudah (1)(3)(4)(5) | **6** | 1 | 1 |
+| `bf11c2d` | sesudah (6) | **0** | **0** | 0 |
+
+Baris pertama itu bukan hiasan: dia mengukuhkan angka baseline §1 — 13 gorm dengan daftar baris yang sama
+persis (`173,179,193,199,209,215` + tujuh `seedData()` 255-267) — sekaligus mencatat apa yang **lewat** dari
+baseline itu: satu `r.Run` di `main.go:249`. Angka 13 yang kutulis pada 2026-10-04 dapat direproduksi dari
+commit-nya sendiri, dan satu error yang berbahaya justru tidak termasuk di dalamnya.
+
+Rincian yang tidak boleh kabur oleh angka bulat: **13 → 6 seluruhnya kerja langkah (5)**, dan tujuh baris itu
+(`main.go:268,270-272,277,279-280` di `c78cb19`) hilang karena `seedData()` dihapus, bukan karena errornya
+ditutup. Yang kututup di (6) cuma **6** — dua `Find`, dua `Create`, dua `Delete` — ditambah satu `r.Run`.
+Kedua `DELETE` sekaligus berubah bentuk mengikuti pola langkah (3): `uuidRe` → 400, `res.Error` → 500,
+`RowsAffected == 0` → 404, sukses → `{"deleted":N}`. Sebelum ini keduanya selalu menjawab
+`{"message":"deleted"}` dengan 200, termasuk untuk id yang tidak ada dan untuk id yang gagal dihapus.
+
+**Dua kontrol, satu per klaim — karena aku tidak mau memasang gerbang yang belum terbukti bisa merah.**
+
+*Kontrol 1: biner lama dan biner baru di DB yang sama, sepuluh probe identik.* Kubangun `0204b70` dan
+`bf11c2d` sebagai biner `CGO_ENABLED=0` di container (`Postgres 15` di network khusus, backend dipublik ke
+`127.0.0.1:8099` karena host 5432/8080 masih ditempati `local_postgres`/`local_adminer`), skema dibuat oleh
+`-migrate`, lalu kontainer DB kurematikan sementara prosesnya masih hidup:
+
+| probe saat DB mati | biner lama `0204b70` | biner baru `bf11c2d` |
+|---|---|---|
+| `GET /api/certificates` | **200** `null` | 500 `Gagal membaca sertifikat` |
+| `GET /api/experience` | **200** `null` | 500 `Gagal membaca pengalaman` |
+| `POST /api/certificates` | **201** `{"id":"", "createdAt":"0001-01-01T00:00:00Z", …}` | 500 `Gagal menyimpan sertifikat` |
+| `POST /api/experience` | **201** `{"id":"", …}` | 500 `Gagal menyimpan pengalaman` |
+| `DELETE /api/certificates/:id` | **200** `{"message":"deleted"}` | 500 `Gagal menghapus sertifikat` |
+| `DELETE /api/experience/:id` | **200** `{"message":"deleted"}` | 500 `Gagal menghapus pengalaman` |
+| `POST /api/contact` | 500 `Pesan gagal tersimpan, coba lagi` | 500 (sama) |
+| `GET /api/admin/contact` | 500 `Gagal membaca pesan` | 500 (sama) |
+| `GET /api/health` | 503 `{"db":"error","status":"unavailable"}` | 503 (sama) |
+| `DELETE /api/certificates/bukan-uuid` | 400 `Format id tidak valid` | 400 (sama) |
+| **jumlah klaim yang SALAH** | **6** | **0** |
+
+Angka **6** di kolom kiri bukan kebetulan: dia persis sebanyak `silent_gorm` yang dilaporkan alat pada commit
+yang sama — jadi alat itu dan gerbangnya mengukur hal yang nyata. Empat baris "sama" juga penting untuk
+kejujuran arah sebaliknya: `contact`, inbox admin, `health` dan validasi id **sudah** jujur sejak (1)/(3), jadi
+(6) tidak mengklaim apa pun di sana. Bentuk paling jahat dari yang lama adalah `POST` → **201** dengan
+`id=""` dan `createdAt 0001-01-01`: klien melihat objek yang tersimpan, padahal tidak ada satu baris pun yang
+masuk DB.
+
+*Kontrol 2: `r.Run` yang dibuang ternyata keluar dengan rc=0.* `gin` **mengembalikan** error bind —
+`r.Run(":8080")` sendirian berarti "port sudah dipakai" diselesaikan sebagai shutdown normal. Kuhidupkan dua
+proses di namespace jaringan yang sama supaya 8080 benar-benar sudah ditempati:
+
+```
+biner LAMA (0204b70) => EXIT=0            (tanpa satu pun pesan sebab)
+biner BARU (bf11c2d) => EXIT=1
+  2026-10-05 08:36:14 Server running on port 8080
+  2026-10-05 08:36:14 server: gagal listen di :8080: listen tcp :8080: bind: address already in use
+```
+
+Batas dampak yang kutarik dengan jujur: di Cloud Run proses yang mati tetap ketahuan (container tidak pernah
+siap), jadi `rc=0` ini **tidak** pernah membocorkan revisi cacat ke produksi. Bahayanya di gerbang dan
+supervisor lokal, tempat "keluar dengan 0" dibaca sebagai berhasil — dan di CI lama memang tidak ada satu pun
+langkah yang menyentuh bind.
+
+**Satu jebakan mekanis yang baru keluar saat mengulang kontrol ini.** Percobaan pertamaku mati untuk sebab yang
+salah: `failed to connect … lookup f9-pg2 … server misbehaving`, `rc=1` sebelum sempat menyentuh `r.Run`.
+`openDB()`+`verifySchema()` jalan **lebih dulu** daripada listen, jadi kontrol bind menuntut DB yang hidup.
+Runner tidak kena masalah ini karena langkah 12 menjalankan instance kedua sebelum `docker stop` — urutannya
+sudah benar, dan itu ketahuan justru karena kukontrol ulang di luar CI.
+
+**Dua langkah masuk `ci.yml`; job `api` 12 → 14 langkah.** `Audit — tidak ada error gorm atau listen yang
+dibuang` jadi langkah 5 (sesudah Build, sebelum apa pun menyentuh DB) dan `DB mati menjawab 500, bind gagal
+tidak keluar nol` jadi langkah 12 (sesudah keempat langkah kontrak, supaya yang dimatikan adalah DB yang sudah
+dipakai). Runner mencetak angka yang sama denganku; kutipan di bawah dari log **`37283637314`** (CI #56, `push` ke `main`) supaya yang dikutip adalah run yang artefaknya memang melayani produksi:
+
+```
+silent_gorm=0 silent_listen=0
+audit rc=0: nol panggilan yang membuangnya *gorm.DB / r.Run
+instance kedua, port 8080 sudah dipakai => rc=1
+2026-10-05 08:27:22 server: gagal listen di :8080: listen tcp :8080: bind: address already in use
+postgres dimatikan (2f4cd85388c6)
+GET /api/certificates => 500 :: {"error":"Gagal membaca sertifikat"}
+…
+semua jalur menjawab kegagalan DB dengan 500/503, tidak ada 200 palsu
+```
+
+Langkah itu memakai `JWT_SECRET`/`ADMIN_PASS` yang sama dengan langkah lain di run yang sama: **random
+per-run** dari langkah 3 (`openssl rand -hex 16` / `-hex 12`), bukan kredensial produksi — dan memang itu yang
+membuat nilainya boleh muncul di log. Klausa E13 "endpoint admin tidak menambah secret yang terbaca CI" tetap
+utuh: `git diff --numstat 5ffdd44 b85ab09` = **3 berkas**: `ci.yml` +74/−0, `go-backend/main.go` +55/−9, alat baru +146/−0. Tanpa
+`deploy.yml`, tanpa frontend.
+
+**Cara langkah ini mendarat.** PR #29 (`b85ab09`, commit 08:23:46 UTC) → CI #55 (`pull_request`, id
+37283447338) `success` 08:24:36 → 08:25:50; merge 08:26:21 → **`bf11c2d`**; CI #56 (`push`, id 37283637314)
+`success` 08:27:33 dan **Deploy #31 (id 37283637204) `success`** 08:30:21. Titik rollback yang dicatat
+`deploy.yml` sebelum menyalakan traffic: `portfolio-be-00026-wl5` + `portfolio-fe-00025-dm4`; yang melayani
+sesudahnya: **`portfolio-be-00027-wb2`** + **`portfolio-fe-00026-rc2`**. Verifikasinya sendiri: `health
+{"db":"ok","status":"ok"}`, `certificates 3 baris`, `experience 2 baris`, `/ 40699 byte`, `/api/cv 783896
+byte PDF`, `Verifikasi lulus … artefak SHA bf11c2dac9e759…`. Revisi bertumpuk naik satu: be 24 → **25**, fe
+25 → **26** (tetap tidak dipangkas — itu memang target rollback).
+
+**Probeku sendiri di produksi, 08:33 UTC, terpisah dari verifikasi workflow.** `health` 200;
+`GET /api/certificates` → 200 **3 baris**; `GET /api/experience` → 200 **2 baris**; **enam rute tulis/hapus
+tanpa JWT → 401** (`POST`/`DELETE /api/certificates/:id`, `POST`/`DELETE /api/experience/:id`,
+`GET`/`DELETE /api/admin/contact`); `/` 200 **40699 byte** dengan jejak `Application error` **0**; `/api/cv`
+**783896 byte** — identik dengan langkah (4) dan (5), dan memang seharusnya: (6) tidak menyentuh frontend,
+baseline tripwire tidak bergerak di **9 path mati / 0 stub** (`rc=0`).
+
+Satu angka yang tidak mau kubiarkan jadi klaim di kemudian hari: probe `GET /api/admin/contact` **pertama**
+keluar sebagai `curl: (92) HTTP/2 stream 1 was not closed cleanly: INTERNAL_ERROR` dengan kode `000`. Kucoba pemantikannya lagi dan dia
+**tidak keluar ulang** — 8 request berikutnya ke rute yang sama semuanya menjawab normal: **5/5 percobaan HTTP/2 dan 3/3 HTTP/1.1 memberi
+`401 {"error":"Unauthorized"}`** (24 byte). Jadi: reset stream pada request pertama ke kontainer dingin, bukan
+rute yang bocor dan bukan 200 palsu — `000` berarti "tidak ada respons yang terbaca", dan itu sebabnya
+persediaanku untuk menyebutnya apa adanya adalah lima pengulangan, bukan satu.
+
+**Yang berubah untuk pengunjung, dan yang tidak.** Aku membaca ketiga pemakai publik sebelum menulis klaim ini:
+`dossier/certificates/page.tsx:28`, `components/Dossier/DataCards.tsx:240`, `cv-layout/page.tsx:18`. Di tiga
+berkas itu terukur **5 rantai `fetch`, 5 di antaranya bergerbang `r.ok ? r.json() : []`, dan 5 punya `.catch`**
+(`grep -c` per berkas: 1/1/1, 3/3/3, 1/1/1). Artinya untuk pertama kali mereka bisa menerima non-2xx dari
+backend, dan jawabannya **daftar kosong** — bukan render yang pecah oleh `null`. Aku **tidak** mengukurnya di
+browser: satu-satunya cara memicunya adalah mematikan DB produksi, dan itu bukan sesuatu yang kulakukan untuk
+melihat tampilan. Rute tulis/hapus tidak berubah bagi siapa pun yang bukan admin, karena mereka 401 sebelum
+sempat menyentuh DB.
+
+**`npx tsc --noEmit` merah di laptop, hijau di runner — dan sebabnya artifact, bukan regresi.** Satu-satunya
+error: `.next/types/validator.ts:143 → Cannot find module '../../src/app/api/contact/route.js'`, yaitu berkas
+stub yang kuhapus di langkah (1). `.next/` di-gitignore (`nextjs-frontend/.gitignore:17` = `/.next/`;
+`git ls-files nextjs-frontend/.next` = **0** berkas) dan hari ini dimiliki `root`, bekas build docker
+2026-10-02 09:17 — **tidak kuhapus**, karena itu direktori kerja punya siapa pun yang menjalankan `next build`
+di mesin ini, dan menghapusnya bukan bagian tugas. Pembedanya kukunci dua arah: (a) `tsc --noEmit` dengan
+`include` yang sama **minus** dua entri `.next/**` → `rc=0`, `0 error TS` (konfig sementara, kubuang lagi);
+(b) job `web` pada run 37283637314: `Install deps`, `Lint`, `Type-check`, `Build` = **success** semuanya, dan
+di runner langkah 5 (`Type-check`) memang jalan **sebelum** langkah 6 (`Build`), jadi tidak ada `.next/types`
+yang bisa ikut diperiksa. Artefak lama yang menunjuk berkas mati — itu saja, dan aku menulisnya supaya angka
+`rc=1` lokal tidak berubah jadi klaim "tipe rusak".
+
+**Gerbang lain, terukur di `bf11c2d`:** `gofmt -l .` kosong, `go vet ./...` rc=0, `go run ./cmd/audit-ignored .`
+rc=0 (`silent_gorm=0 silent_listen=0`), `api-contract-check.mjs` rc=0.
+
+**Dua dokumen yang masih menulis 13 itu sebagai keadaan sekarang, dikoreksi di PR ini.** `README.md` (baris sisa
+M11) dan `DEPLOY.md` §Verifikasi pasca-deploy (alasan cek isi: "karena `main.go` mengabaikan error GORM di 13
+titik"). Yang pertama sekarang menunjuk alatnya; yang kedua tetap mempertahankan ceknya dengan alasan yang
+berbeda — `cmd/audit-ignored` menjaga **kode**, bukan menjaga Postgres produksi, jadi kegagalan DB setelah
+image dibangun tetap hanya kelihatan di respons. README §"Cek yang sama dengan CI" dapat satu baris
+(`go run ./cmd/audit-ignored .`), dan **kelima baris blok itu kukerjakan apa adanya** di mesin ini:
+`npm run lint rc=0`, `npx tsc --noEmit rc=1` (artifact di atas), `api-contract-check rc=0`, `gofmt -l` kosong +
+`go vet rc=0`, `audit rc=0`.
+
+### Batas langkah (6) — sisa §5 yang belum tertutup
+
+Dari empat butir §5, (6) menutup satu secara penuh. Yang masih terbuka, dengan nama aslinya: **`EMAIL_USER`/
+`EMAIL_PASS`** (langkah 2, terblokir padamu) dan pola fire-and-forget yang menyertainya; **5 dead path admin**
+di `admin/projects/page.tsx` (+ 4 yang menuntut token); dan **"migration yang berversi"** — `-migrate` masih
+berisi `AutoMigrate`, bukan migration file bernomor. Yang terakhir ini tetap kutulis ulang di setiap blok
+supaya "langkah 5 sudah mendarat" tidak pernah terbaca sebagai "skema sudah berversi".
 
 ### Yang tidak kubebereskan di M12 (biar tidak kelihatan lupa)
 
