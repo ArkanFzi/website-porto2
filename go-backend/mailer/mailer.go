@@ -1,27 +1,39 @@
 package mailer
 
 import (
-	"gopkg.in/gomail.v2"
+	"errors"
 	"os"
+
+	"gopkg.in/gomail.v2"
 )
 
+// ErrNotConfigured membedakan "kredensial memang belum terpasang" dari SMTP yang
+// menolak. Tanpa pembeda ini setiap pesan membuka koneksi ke Gmail untuk sesuatu
+// yang pasti gagal, dan log-nya menyebut itu "gagal kirim".
+var ErrNotConfigured = errors.New("EMAIL_USER/EMAIL_PASS belum terpasang")
+
 func SendEmail(to string, subject string, body string) error {
-	// Create a new message
-	m := gomail.NewMessage()
-
-	m.SetHeader("From", "muhammadarkanfauzi9@gmail.com")
-	m.SetHeader("To", to)
-	m.SetHeader("Subject", subject)
-
-	m.SetBody("text/plain", body)
-
 	user := os.Getenv("EMAIL_USER")
 	pass := os.Getenv("EMAIL_PASS")
-	// Send the email
-	d := gomail.NewDialer("smtp.gmail.com", 587, user, pass)
-
-	if err := d.DialAndSend(m); err != nil {
-		return err
+	if user == "" || pass == "" {
+		return ErrNotConfigured
 	}
-	return nil
+
+	d := gomail.NewDialer("smtp.gmail.com", 587, user, pass)
+	return d.DialAndSend(newMessage(user, to, subject, body))
+}
+
+// newMessage memisahkan pembentukan pesan dari pengiriman supaya aturan Gmail bisa
+// diuji tanpa menyentuh jaringan.
+func newMessage(from string, to string, subject string, body string) *gomail.Message {
+	m := gomail.NewMessage()
+
+	// Gmail menolak From yang bukan akun yang diautentikasi; dari dulu nilai ini
+	// dibakar sebagai literal, jadi pengirim non-Gmail akan selalu ditolak.
+	m.SetHeader("From", from)
+	m.SetHeader("To", to)
+	m.SetHeader("Subject", subject)
+	m.SetBody("text/plain", body)
+
+	return m
 }

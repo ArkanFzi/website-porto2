@@ -275,6 +275,29 @@ jobs:
           echo "POST /api/contact bentuk {message} => $lying"
           [ "$lying" = "400" ] || { echo "masih menerima payload yang tidak disimpan"; exit 1; }
 
+          # Email: CI tidak memegang kredensial SMTP, jadi jalur kirim harus DILEWATI secara
+          # terbuka, bukan disapa lalu gagal diam-diam. Sebelum perubahan ini setiap POST membuka
+          # koneksi ke smtp.gmail.com:587 dengan user/pass kosong (gomail smtp.go:61).
+          # Batas tunggunya 15s, bukan 1s: dial gomail baru gagal setelah timeout 10s, jadi
+          # menunggu lebih pendek akan menyalahkan baris "dilewati" untuk kegagalan yang
+          # sebenarnya bernama "gagal kirim email". Jalur bahagia tidak menunggu (baris
+          # "dilewati" sudah ada sebelum loop selesai).
+          for i in $(seq 1 15); do
+            if grep -q "contact $id: email dilewati" /tmp/be.log; then break; fi
+            sleep 1
+          done
+          if grep -q 'gagal kirim email' /tmp/be.log; then
+            echo "SMTP tetap disapa padahal EMAIL_USER/EMAIL_PASS tidak ada:"
+            grep -a email /tmp/be.log
+            exit 1
+          fi
+          grep -q "contact $id: email dilewati" /tmp/be.log || {
+            echo "jalur email tidak tercatat sebagai dilewati untuk id=$id"
+            cat /tmp/be.log
+            exit 1
+          }
+          echo "email tanpa kredensial => dilewati, tercatat dengan id pesan, socket SMTP tidak dibuka"
+
           for cacat in '{"name":"","email":"a@example.test","body":"x"}' \
                        '{"name":"a","email":"bukan-email","body":"x"}' \
                        '{"name":"a","email":"a@example.test","body":""}'; do
