@@ -9,15 +9,27 @@ name: Watch
 # (TODO.md §6 butir 5) dan workflow ini berjalan tanpa ulasan manusia, jadi setiap issue yang
 # dihasilkannya adalah efek samping yang tidak bisa dibatalkan sebelum terjadi.
 #
-# Sengaja TIDAK ada kredensial GCP. Cek drift di bawah menjawab "apakah setiap commit kode di
-# main sudah punya run deploy hijau" — ia TIDAK bisa mendeteksi seseorang yang mem-pin traffic
-# dengan tangan setelah deploy sukses. Yang itu hanya bisa dibuktikan dari `status.traffic`, dan
-# membacanya dari workflow terjadwal berarti memberi akses cloud ke jalur tanpa gerbang PR.
-# Perbandingan jujur: deploy.yml sudah memeriksa `cloudrun.sh serving` di dalam run-nya sendiri.
+# Kredensial cloud yang dipegang workflow ini hanya satu, dan hanya baca: identitas WIF
+# `github-watch@…` yang perannya `roles/run.viewer` di projek ini saja — tidak ada
+# `secretmanager.secretAccessor`, tidak ada write. Itu diperlukan karena satu pertanyaan tidak
+# bisa dijawab dari riwayat run GitHub: "traffic sekarang ada di revisi mana". Deploy hijau tidak
+# membuktikannya — run #16 (2026-10-04) adalah contohnya: `portfolio-be-00012-4zs` dibuat dan
+# sehat sementara 100% traffic masih di `00011-5z8`, dan smoke test tetap hijau karena yang
+# di-probe URL layanan, bukan revisi yang melayani. Yang itu hanya terlihat di `status.traffic`.
+# Perbandingan jujur: deploy.yml sudah memeriksa `cloudrun.sh serving` di dalam run-nya sendiri,
+# jadi ia melindunginya pada saat deploy. Yang Watch tambahkan adalah bukti bahwa itu MASIH benar
+# di hari ketika tidak ada satu pun deploy berjalan.
 #
-# Kredensial yang dipakai hanya satu: GITHUB_TOKEN bawaan run, scope-nya persis `permissions:` di
-# atas (read-only, mati sendiri saat run selesai). Runner memasangnya sebagai GH_TOKEN — lihat
-# env di job.
+# Batas yang sengaja tidak dilewati: workflow terjadwal berjalan tanpa ulasan manusia, jadi
+# identitasnya harus tidak bisa mengubah apa pun. Kalau nanti butuh lebih (mis. membaca log atau
+# revisi di projek lain), itu keputusan pemilik repo, bukan default yang boleh diam-diam melebar.
+# Kegagalan membaca cloud dicatat KUNING, bukan MERAH — yang merah adalah produksinya, bukan
+# aksesorinya — dan KUNING berarti terbaca di rangkuman, tidak pernah senyap.
+#
+# Dua kredensial, dua nasib berbeda: GITHUB_TOKEN bawaan run (scope-nya persis `permissions:` di
+# atas, read-only, mati sendiri saat run selesai) yang dipasang runner sebagai GH_TOKEN — lihat
+# env di job — dan token akses cloud dari langkah WIF, yang umur maksimalnya satu jam dan tidak
+# ditulis ke mana-mana.
 
 on:
   schedule:
@@ -27,15 +39,29 @@ on:
 permissions:
   contents: read
   actions: read # hanya untuk membaca riwayat run deploy.yml (cek drift)
+  id-token: write # hanya untuk menukarkan token WIF jadi identitas BACA di bawah (roles/run.viewer)
 
 concurrency:
   group: watch-production
   cancel-in-progress: false
 
 env:
+  PROJECT_ID: config-agentic-ubuntu
+  REGION: us-central1
+  WIF_PROVIDER: projects/486641216758/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+  # Identitas read-only workflow ini. Binding WIF-nya `principalSet://…/attribute.repository/
+  # ArkanFzi/website-porto2`, jadi cuma repo ini yang bisa menukarnya, dan peran yang bisa
+  # dihasilkannya cuma run.viewer.
+  WATCH_SA: github-watch@config-agentic-ubuntu.iam.gserviceaccount.com
+  # Invarian yang dijaga langkah cloud-drift: kedua service HARUS berjalan di SA runtime
+  # least-privilege ini (F5). Kalau suatu hari ada yang deploy manual tanpa --service-account,
+  # field ini kembali ke default compute SA yang memegang roles/editor — dan itu harus kelihatan.
+  RUNTIME_SA: portfolio-runtime@config-agentic-ubuntu.iam.gserviceaccount.com
   DOMAIN: https://arkfazone-portofolio.elarisnoir.my.id
   BE_URL: https://portfolio-be-486641216758.us-central1.run.app
   FE_URL: https://portfolio-fe-486641216758.us-central1.run.app
+  BE_SERVICE: portfolio-be
+  FE_SERVICE: portfolio-fe
   BRANCH_LAYU_JAM: 168 # 7 hari
 
 jobs:
@@ -48,8 +74,9 @@ jobs:
       # GH_TOKEN belum di-set: `gh api` langsung keluar dengan pesan "set the GH_TOKEN
       # environment variable" dan stderr itu yang membuat langkah drift menulis MERAH pada
       # run pertama workflow ini di runner (2026-10-04 17:27 UTC). token di sini adalah
-      # GITHUB_TOKEN milik repo dengan scope persis seperti `permissions:` di atas
-      # (contents: read, actions: read) — bukan kredensial cloud, dan tidak ada id-token/WIF.
+      # GITHUB_TOKEN milik repo dengan scope persis seperti `permissions:` di atas — untuk
+      # GitHub tetap read-only. Kredensial cloud-nya terpisah, lewat langkah WIF di bawah,
+      # dan tidak bisa dipakai untuk menulis apa pun.
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout
@@ -57,6 +84,18 @@ jobs:
         with:
           # fetch-depth: 0 — cek drift butuh riwayat first-parent, dan .git repo ini 8 MB.
           fetch-depth: 0
+
+      # continue-on-error: SENGAJA. Kalau identitas baca ini rusak (binding WIF tercabut, SA
+      # nonaktif, penerbitan token gagal), yang benar adalah KUNING "cloud tidak terbaca" di
+      # rangkuman, bukan run merah yang menyerupai produksi rusak. Langkah berikutnya tidak
+      # menutupi ini: setiap titik gagal menulis vonisnya sendiri-sendiri.
+      - name: Authenticate read-only ke Google Cloud via WIF
+        continue-on-error: true
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.WATCH_SA }}
+          token_format: access_token
 
       # Semua langkah di bawah menulis vonisnya ke /tmp/hasil.tsv dan TIDAK pernah exit 1 sendiri.
       # Itu sengaja: baris harian harus tetap tertulis walaupun sebuah probe merah. Yang membuat
@@ -196,6 +235,82 @@ jobs:
           else
             vonis drift HIJAU "run #${latest_no} hijau untuk ${expected:0:7}, tidak ada deploy lain di atasnya"
           fi
+          exit 0
+
+      - name: Drift cloud — siapa yang melayani traffic, dan di SA apa
+        run: |
+          [ -s /tmp/hasil.tsv ] || echo "komponen|status|detail" > /tmp/hasil.tsv
+          set +e
+          vonis() { echo "$1|$2|$3" >> /tmp/hasil.tsv; }
+          # Detail tidak boleh mengandung '|': kolom status dibaca `awk -F'|'` di langkah gerbang.
+          bersih() { printf '%s' "$1" | tr -d '\n' | tr '|' '/'; }
+
+          if ! command -v gcloud > /dev/null; then
+            vonis cloud-drift KUNING "gcloud tidak ada di runner — status.traffic tidak terbaca"
+            exit 0
+          fi
+
+          describe() {
+            gcloud run services describe "$1" --project "$PROJECT_ID" \
+              --platform managed --region "$REGION" \
+              --format='json(status.traffic,status.latestReadyRevisionName,status.latestCreatedRevisionName,spec.template.spec.serviceAccountName)' \
+              2>/tmp/cloud.err
+          }
+
+          # Menilai "satu target 100%, dan target itu revisi Ready terbaru". Mengisi variabel
+          # global untuk dipakai pesan vonis; mengembalikan 0 kalau sesuai.
+          cek() {
+            READY=$(printf '%s' "$1" | jq -r '.status.latestReadyRevisionName // empty')
+            CREATED=$(printf '%s' "$1" | jq -r '.status.latestCreatedRevisionName // empty')
+            ALLOC=$(printf '%s' "$1" | jq -r '[.status.traffic[]? | "\(.revisionName // .latestRevisionName)=\(.percent // 0)"] | join(" ")')
+            N=$(printf '%s\n' "$ALLOC" | tr ' ' '\n' | grep -c .)
+            SUM=$(printf '%s\n' "$ALLOC" | tr ' ' '\n' | awk -F= '{s+=$2} END{print s+0}')
+            SERVING=$(printf '%s\n' "$ALLOC" | tr ' ' '\n' | awk -F= '$2==100{print $1; exit}')
+            [ -n "$READY" ] && [ "$N" = "1" ] && [ "$SUM" = "100" ] && [ "$SERVING" = "$READY" ]
+          }
+
+          for svc in "$BE_SERVICE" "$FE_SERVICE"; do
+            js=$(describe "$svc")
+            rc=$?
+            if [ "$rc" -ne 0 ] || [ -z "$js" ]; then
+              vonis "cloud-drift/$svc" KUNING "gcloud describe gagal (rc=$rc): $(bersih "$(head -c 200 /tmp/cloud.err)")"
+              continue
+            fi
+            if ! printf '%s' "$js" | jq -e '.status' > /dev/null 2>&1; then
+              vonis "cloud-drift/$svc" KUNING "JSON tidak terbaca: $(bersih "$(printf '%s' "$js" | head -c 160)")"
+              continue
+            fi
+            echo "$svc: sa=$(printf '%s' "$js" | jq -r '.spec.template.spec.serviceAccountName // empty') traffic=$(printf '%s' "$js" | jq -r '[.status.traffic[]? | "\(.revisionName // .latestRevisionName)=\(.percent // 0)"] | join(" ")')"
+
+            # 1. Invarian F5: yang memproses request harus SA runtime least-privilege. Field ini
+            #    diam-diam kembali ke default compute SA kalau ada yang deploy manual tanpa
+            #    --service-account, dan default itu memegang roles/editor se-proyek.
+            sa=$(printf '%s' "$js" | jq -r '.spec.template.spec.serviceAccountName // empty')
+            if [ "$sa" = "$RUNTIME_SA" ]; then
+              vonis "cloud-sa/$svc" HIJAU "$sa"
+            else
+              vonis "cloud-sa/$svc" MERAH "berjalan di ${sa:-kosong (= default compute SA)}, diharapkan $RUNTIME_SA"
+            fi
+
+            # 2. Traffic. Baca ulang sekali sebelum menuduh: deploy yang sedang berjalan punya
+            #    jendela sempit di mana revisi baru sudah dibuat tapi traffic belum dipindah.
+            if cek "$js"; then
+              vonis "cloud-traffic/$svc" HIJAU "100% di $READY"
+            else
+              sleep 20
+              js2=$(describe "$svc")
+              if [ -n "$js2" ] && cek "$js2"; then
+                vonis "cloud-traffic/$svc" KUNING "berubah di tengah baca; sekarang 100% di $READY"
+              else
+                vonis "cloud-traffic/$svc" MERAH "alokasi='$ALLOC' ready=$READY created=$CREATED — bukan satu target 100% di revisi Ready terbaru"
+              fi
+            fi
+
+            # 3. Revisi terbaru yang belum Ready = deploy menggantung, traffic di revisi lama.
+            if [ -n "$CREATED" ] && [ "$CREATED" != "$READY" ]; then
+              vonis "cloud-revisi/$svc" KUNING "$CREATED belum Ready (ready=${READY:-kosong})"
+            fi
+          done
           exit 0
 
       - name: Tripwire kontrak API
