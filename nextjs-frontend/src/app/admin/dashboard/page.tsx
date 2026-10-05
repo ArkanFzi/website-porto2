@@ -5,11 +5,13 @@ import { authFetch } from "@/lib/auth";
 import { Mail, Trash2, Calendar } from "lucide-react";
 
 interface ContactMsg {
-    id: number;
+    id: string;
     name: string;
     email: string;
-    message: string;
-    submittedDate: string;
+    subject: string;
+    body: string;
+    createdAt: string;
+    updatedAt: string;
 }
 
 export default function DashboardPage() {
@@ -20,7 +22,7 @@ export default function DashboardPage() {
     const fetchMessages = async () => {
         try {
             setLoading(true);
-            const res = await authFetch("/api/contact");
+            const res = await authFetch("/api/admin/contact");
             if (!res.ok) throw new Error("Failed to load messages");
             const data = await res.json();
             setMessages(data);
@@ -35,10 +37,10 @@ export default function DashboardPage() {
         fetchMessages();
     }, []);
 
-    const handleDelete = async (id: number) => {
+    const handleDelete = async (id: string) => {
         if (!confirm("Delete this message?")) return;
         try {
-            const res = await authFetch(`/api/contact/${id}`, { method: "DELETE" });
+            const res = await authFetch(`/api/admin/contact/${id}`, { method: "DELETE" });
             if (res.ok) setMessages((prev) => prev.filter((m) => m.id !== id));
         } catch (err) {
             alert("Failed to delete message");
@@ -77,7 +79,7 @@ export default function DashboardPage() {
                                 <div className="flex items-center gap-4 text-xs text-gray-500">
                                     <span className="flex items-center gap-1">
                                         <Calendar size={14} />
-                                        {new Date(msg.submittedDate).toLocaleString()}
+                                        {new Date(msg.createdAt).toLocaleString()}
                                     </span>
                                     <button
                                         onClick={() => handleDelete(msg.id)}
@@ -89,7 +91,7 @@ export default function DashboardPage() {
                                 </div>
                             </div>
                             <p className="text-gray-300 whitespace-pre-wrap text-sm leading-relaxed bg-[#050000] p-4 rounded-lg border border-red-900/10">
-                                {msg.message}
+                                {msg.body}
                             </p>
                         </div>
                     ))}

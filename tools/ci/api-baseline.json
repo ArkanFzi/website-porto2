@@ -3,14 +3,11 @@
   "dead_paths": [
     "DELETE /api/admin/projects/:p",
     "DELETE /api/certificates/:p",
-    "DELETE /api/contact/:p",
     "DELETE /api/experience/:p",
     "GET /api/admin/projects",
-    "GET /api/contact",
     "GET http://localhost:8080/api/certificates",
     "POST /api/admin/projects",
     "POST /api/admin/sync-github",
-    "POST /api/auth/login",
     "POST /api/certificates",
     "POST /api/experience",
     "PUT /api/admin/projects/:p"

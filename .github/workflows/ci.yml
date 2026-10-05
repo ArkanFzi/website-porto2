@@ -240,6 +240,59 @@ jobs:
           final=$(q 'select count(*) from contact_messages;')
           [ "$final" = "$after" ] || { echo "input cacat ikut tersimpan: $after -> $final"; exit 1; }
 
+      - name: Kontrak inbox admin (401 tanpa JWT, terhitung dengan JWT)
+        env:
+          ADMIN_USER: portfolio-admin
+          ADMIN_PASS: ${{ steps.fixtures.outputs.adminpass }}
+        run: |
+          q() { psql "host=127.0.0.1 user=postgres dbname=portfolio_db" -tAc "$1"; }
+          A=http://127.0.0.1:8080/api/admin/contact
+
+          # E13: tanpa JWT tidak ada satu pun rute admin yang boleh 200.
+          for m in GET DELETE; do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' -X $m "$A")
+            echo "$m /api/admin/contact tanpa token => $code"
+            [ "$code" = "401" ] || { echo "rute admin bocor tanpa JWT"; exit 1; }
+          done
+          tokrusak=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer bukan-token' "$A")
+          echo "GET dengan token rusak => $tokrusak"; [ "$tokrusak" = "401" ]
+
+          # POST /api/auth/login: satu handler, dua path, dan yang lama tetap hidup.
+          creds=$(jq -nc --arg u "$ADMIN_USER" --arg p "$ADMIN_PASS" '{username:$u,password:$p}')
+          T=$(curl -fsS -X POST -H 'Content-Type: application/json' -d "$creds" http://127.0.0.1:8080/api/auth/login | jq -r .token)
+          [ -n "$T" ] && [ "$T" != "null" ] || { echo "/api/auth/login tidak mengembalikan token"; exit 1; }
+          T2=$(curl -fsS -X POST -H 'Content-Type: application/json' -d "$creds" http://127.0.0.1:8080/api/login | jq -r .token)
+          echo "login: /api/auth/login ${#T} char, /api/login ${#T2} char"
+          [ -n "$T2" ] && [ "$T2" != "null" ] || { echo "/api/login lama mati"; exit 1; }
+          echo "sandi salah => $(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d "{\"username\":\"$ADMIN_USER\",\"password\":\"tidak-terdaftar\"}" http://127.0.0.1:8080/api/auth/login)"
+
+          # 1 POST dari situs publik harus terhitung lewat inbox admin.
+          before=$(q 'select count(*) from contact_messages;')
+          id=$(curl -fsS -X POST -H 'Content-Type: application/json' \
+            -d '{"name":"kontrak admin","email":"  Kontrak-Admin@Example.TEST  ","subject":"Visionary Project : kontrak admin","body":"pesan inbox admin ci"}' \
+            http://127.0.0.1:8080/api/contact | jq -r .id)
+          echo "POST publik => id=$id (sebelumnya count $before)"
+
+          curl -fsS -H "Authorization: Bearer $T" "$A" -o inbox.json
+          got=$(jq 'length' inbox.json)
+          member=$(jq --arg id "$id" '[.[].id] | index($id) != null' inbox.json)
+          rowcount=$(q 'select count(*) from contact_messages;')
+          echo "inbox panjang=$got, psql count=$rowcount, memuat id baru: $member"
+          [ "$member" = "true" ] || { echo "pesan publik tidak muncul di inbox admin"; exit 1; }
+          [ "$got" = "$rowcount" ] || { echo "inbox tidak sama dengan isi DB: $got vs $rowcount"; exit 1; }
+          [ "$rowcount" = "$((before + 1))" ] || { echo "count tidak naik satu: $before -> $rowcount"; exit 1; }
+          jq -e --arg id "$id" '.[] | select(.id==$id) | .email=="kontrak-admin@example.test"' inbox.json > /dev/null
+
+          # hapus ber-JWT, lalu idempoten: 404 untuk yang sudah hilang, 400 untuk id cacat
+          curl -fsS -X DELETE -H "Authorization: Bearer $T" "$A/$id" -o deleted.json
+          echo "DELETE => $(jq -c . deleted.json)"
+          [ "$(jq -r '.deleted' deleted.json)" = "1" ] || { echo "hapus tidak mengenai satu baris"; exit 1; }
+          [ "$(q 'select count(*) from contact_messages;')" = "$before" ] || { echo "baris masih ada setelah hapus"; exit 1; }
+          again=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $T" "$A/$id")
+          echo "DELETE lagi => $again"; [ "$again" = "404" ] || { echo "hapus tidak idempoten"; exit 1; }
+          cacat=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $T" "$A/bukan-uuid")
+          echo "DELETE id cacat => $cacat"; [ "$cacat" = "400" ] || { echo "id cacat lolos ke DB"; exit 1; }
+
       - name: Log backend saat gagal
         if: failure()
         run: |
