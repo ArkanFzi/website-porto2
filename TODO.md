@@ -99,8 +99,9 @@ Backend yang sebenarnya hidup (8 rute): `POST /api/login`, `GET /api/certificate
 Mail mati dua lapis: `mailer/mailer.go:18-19` baca `EMAIL_USER`/`EMAIL_PASS`, dan keduanya **tidak ada**
 di env runtime `portfolio-be` maupun di Secret Manager. Lapis kedua inilah yang ternyata bukan sekadar "mati":
 kodenya tetap menghubungi `smtp.gmail.com:587` dengan kredensial kosong dan dapat `530 5.7.0 Authentication
-Required` **(jumlahnya terukur di blok langkah (2a)**; lapis pertama masih benar sampai sekarang — `^EMAIL_`
-terhitung **0** di env revisi produksi terbaru).
+Required` **(jumlahnya terukur di blok langkah (2a)**; lapis pertama **sudah tidak benar sejak 2b** — hitungan
+nama berawalan `EMAIL_` di env revisi produksi: **0** pada `portfolio-be-00028-8dc` dan semuanya yang sebelum,
+**2** pada `portfolio-be-00029-wpx` yang sekarang melayani 100% traffic).
 
 ---
 
@@ -262,8 +263,9 @@ lewat file baseline, bukan melupakannya. Konsekuensi itu **berlaku sampai F9 lan
 bisa **dibaca dan dihapus kembali** lewat `GET`/`DELETE /api/admin/contact` ber-JWT — 401 untuk siapa pun tanpa
 token, terukur di produksi. Yang masih terbuka tinggal tiga: tidak ada satu pun yang dikirim ke inbox email
 (langkah **2a** lewat #31 sudah menghentikan *dial buta* — tanpa kredensial jalur email berhenti **sebelum**
-membuka socket dan tercatat sebagai `dilewati` — tapi **2b** tetap menunggu kredensial `EMAIL_USER`/
-`EMAIL_PASS`, dan fire-and-forget-nya belum berhenti), lima dead
+membuka socket dan tercatat sebagai `dilewati`; **2b** lewat #33 sudah memasang `EMAIL_USER`/`EMAIL_PASS` ke
+revisi produksi, jadi kredensial tidak lagi jadi penahan — yang menahan klausa itu sekarang cuma **satu POST**
+dari situs publik, dan fire-and-forget-nya belum berhenti), lima dead
 path admin, dan `AutoMigrate` yang belum jadi migration berversi. Dua hal yang tadi di daftar ini sudah
 tertutup dan tidak perlu ditebak lagi: **skema tidak lagi dibuat saat start** (PR #27) dan **tidak ada lagi
 error gorm atau `r.Run` yang dibuang** (PR #29).
@@ -561,37 +563,30 @@ memakai alat yang baru valid setelah F8.
 | **F6** (1a langkah 3) | Cabut `roles/editor` dari `486641216758-compute@developer.gserviceaccount.com`. **`pubsub.publisher` dibiarkan** (belum terukur siapa penerbitnya — dicatat sebagai hutang, bukan dihapus diam-diam) | **E9b**: `get-iam-policy` → member `roles/editor` hanya `…@cloudservices.gserviceaccount.com` (milik Google); 0 service Cloud Run di projek yang masih memakai SA compute (diukur `run services list --format=value(name,spec.template.spec.serviceAccountName)`); `connector state=READY`; `/api/health` tetap `.db=="ok"`; baris Watch besok hijau | Yang paling lebar di M12. Reversible dalam 1 perintah (`add-iam-policy-binding`), dan itu memang rencananya kalau connector atau logging merah. Jangan digabung dengan F5 dalam satu PR — kalau keduanya merah, tidak terbaca mana yang bersalah |
 | **F7** (2a, hasil K1) | **Drill pemulihan**: clone `portfolio-pg` ke titik waktu (`gcloud sql instances clone --restore-from-timestamp=…`, nama flag dikukuhkan dari `--help` dulu, tidak ditebak), ukur, lalu hapus clone-nya | **E10**: clone `state=RUNNABLE` + tier + `ipAddresses` tercatat; **RTO** = delta menit antara perintah dan `RUNNABLE` diukur; clone dihapus (`instances list` kembali 1 baris). Yang **tidak** dibuktikan, kutulis apa adanya: isi row tidak bisa dibaca dari laptop (DB hanya `PRIVATE 10.112.0.2`), jadi "data-nya kembali benar" masih 0× sampai ada jalur baca sementara di dalam VPC | Resource berbayar baru (±`db-f1-micro`) yang hidup beberapa menit lalu kuhapus. **Butuh "ya" terakhirmu** karena create + delete resource, meski 2a sudah kamu setujui dalam bentuk lain |
 | **F8** (keputusan 3a) | Bikin `github-watch@…`, grant **hanya** `roles/run.viewer`; binding `iam.workloadIdentityUser` di SA itu dengan `principalSet://…/attribute.repository/ArkanFzi/website-porto2` (satu-satunya granularitas yang tersedia — provider tidak memetakan `sub`/`environment`). Di `watch.yml`: `id-token: write`, `auth@v2` ke SA itu, lalu invariant traffic: **100% pada revisi `Ready` terbaru; kalau tidak → MERAH dengan nama revisi yang ter-pin; kalau kredensial/cloud tidak terbaca → KUNING** (bukan diam-diam bersih) | **E11**: satu run ber-`event=schedule` yang baris hariannya memuat `traffic\|HIJAU\|be-00018-fsc=100 / fe-00017-wqb=100` dan **log-nya membuktikan ia membaca state cloud** (bukan hanya repo). Negatifnya (opsional, lihat daftar butuh-izin): pin traffic ke revisi lama ±2 menit → Watch harus MERAH sendiri keesokan harinya, lalu lepas | Yang bocor kalau salah: **read-only** (`run.viewer`) — dan granularitasnya persis sama dengan binding `github-cd` yang sudah ada hari ini, jadi permukaan baru yang ditambahkan nyaris nol: menambah identitas *lebih kecil* di bentuk yang sudah dipakai identitas *lebih besar*. Hutang yang sengaja ditinggalkan: memperketat ke `attribute.environment` menuntut edit `attributeMapping` pada provider yang dipakai CD produksi — tidak kulakukan di fase ini |
-| **F9** (6b + 7) | M11 urutanku: (1) tabel `contact_messages` + POST `/api/contact` menulis (sekaligus menutup `main.go:173` yang membuang error gorm); (2) email via gomail; (3) rute admin `POST /api/auth/login`, `GET/DELETE /api/admin/contact` ber-JWT; (4) buang hardcode `http://localhost:8080` di `cv-layout`; (5) hapus `seedData()` + `AutoMigrate` saat start; (6) tutup 13 error gorm yang diabaikan. Satu sub-langkah = satu PR *(catatan (6): yang kucocok di jalur itu 6 `Find`/`Create`/`Delete` + 1 `r.Run`; tujuh lainnya sudah lenyap di (5) — dan lenyapnya karena `seedData()` dihapus, bukan karena errornya ditutup)* | **E13**: jumlah path mati di `tools/ci/api-baseline.json` **turun dari 13** dan `api-contract-check.mjs` tetap `rc=0`; 1 POST dari situs publik → **terhitung** lewat `GET /api/admin/contact` (count +1, dan **401 tanpa JWT**); email: 1 log run membuktikan SMTP menerima (hanya setelah kredensial ada); `go vet`+gofmt bersih; endpoint admin tidak menambah secret yang terbaca CI | Semua lewat gerbang yang sudah terbukti. (2) **terblokir padamu** (lihat di bawah). Rute admin = permukaan baru di internet: tanpa JWT tidak ada satu pun rute admin yang boleh 200, dan itu kukunci di job `api`, bukan di narasi. **Status 2026-10-05, 08:36 UTC:** (1) #22, (3) #24, (4) #25, (5) #27, (6) #29 sudah mendarat — path mati tetap **9** (`(5)` dan `(6)` tidak menyentuh frontend), error gorm yang dibuang **13 → 6 → 0** dan `r.Run` **1 → 0** diukur `cmd/audit-ignored` di `c78cb19`/`0204b70`/`bf11c2d`; job `api` 12 → **14** langkah; (2) masih terblokir kredensial. **Status 2026-10-05, 14:12 UTC:** (2a) mendarat
+| **F9** (6b + 7) | M11 urutanku: (1) tabel `contact_messages` + POST `/api/contact` menulis (sekaligus menutup `main.go:173` yang membuang error gorm); (2) email via gomail; (3) rute admin `POST /api/auth/login`, `GET/DELETE /api/admin/contact` ber-JWT; (4) buang hardcode `http://localhost:8080` di `cv-layout`; (5) hapus `seedData()` + `AutoMigrate` saat start; (6) tutup 13 error gorm yang diabaikan. Satu sub-langkah = satu PR *(catatan (6): yang kucocok di jalur itu 6 `Find`/`Create`/`Delete` + 1 `r.Run`; tujuh lainnya sudah lenyap di (5) — dan lenyapnya karena `seedData()` dihapus, bukan karena errornya ditutup)* | **E13**: jumlah path mati di `tools/ci/api-baseline.json` **turun dari 13** dan `api-contract-check.mjs` tetap `rc=0`; 1 POST dari situs publik → **terhitung** lewat `GET /api/admin/contact` (count +1, dan **401 tanpa JWT**); email: 1 log run membuktikan SMTP menerima (hanya setelah kredensial ada); `go vet`+gofmt bersih; endpoint admin tidak menambah secret yang terbaca CI | Semua lewat gerbang yang sudah terbukti. (2) **terblokir padamu** (lihat di bawah) *(tidak lagi sejak 2b: kredensial ada, tinggal satu POST — lihat status 15:20 UTC di sel ini)*. Rute admin = permukaan baru di internet: tanpa JWT tidak ada satu pun rute admin yang boleh 200, dan itu kukunci di job `api`, bukan di narasi. **Status 2026-10-05, 08:36 UTC:** (1) #22, (3) #24, (4) #25, (5) #27, (6) #29 sudah mendarat — path mati tetap **9** (`(5)` dan `(6)` tidak menyentuh frontend), error gorm yang dibuang **13 → 6 → 0** dan `r.Run` **1 → 0** diukur `cmd/audit-ignored` di `c78cb19`/`0204b70`/`bf11c2d`; job `api` 12 → **14** langkah; (2) masih terblokir kredensial. **Status 2026-10-05, 14:12 UTC:** (2a) mendarat
 lewat #31 → merge `89adbfb` → CI #60 + Deploy #32 hijau → revisi `portfolio-be-00028-8dc`. Yang terblokir
 kredensial tinggal (2b): **tanpa** `EMAIL_*` jalur email sekarang berhenti sebelum socket SMTP dibuka, dan CI
-menuntut hal itu dengan angka (lihat blok (2a) di bawah). **Koreksi pada rencanaku sendiri di baris ini:** yang kutulis "(1) sekaligus menutup `main.go:173` yang membuang error gorm" itu salah tempel. Di `c78cb19` baris 173 adalah `DB.Order("created_at desc").Find(&certs)` milik `/api/certificates`, sedangkan stub kontak lama (`main.go:233-248`) sama sekali tidak menyentuh DB — bind, lalu `go func()` pengirim email. Jadi (1) tidak menutup apa pun dari 13 itu, dan `Find` di 173 baru tertutup di (6) lewat #29 |
+menuntut hal itu dengan angka (lihat blok (2a) di bawah). **Status 2026-10-05, 15:20 UTC:** (2b) mendarat —
+kedua secret ada versi 1 `enabled` + `secretAccessor` untuk `portfolio-runtime@`, `deploy.yml:117` menerima
+dua pasangan, `1850577c` → PR **#33** → `go`/`api`/`web`/GitGuardian `success` → merge `95f91647` → **CI #64** +
+**Deploy #33** hijau (4 m 24 s) → **`portfolio-be-00029-wpx`** @100% dengan **8** entri env, 2 di antaranya
+`EMAIL_`. Klausa email E13 **masih terbuka**: kredensial sudah sampai ke proses, tapi satu-satunya pemicu jalur
+kirim adalah POST dari situs publik, dan itu aksi yang tersisa di tanganmu (blok (2b) + batasnya di bawah). **Koreksi pada rencanaku sendiri di baris ini:** yang kutulis "(1) sekaligus menutup `main.go:173` yang membuang error gorm" itu salah tempel. Di `c78cb19` baris 173 adalah `DB.Order("created_at desc").Find(&certs)` milik `/api/certificates`, sedangkan stub kontak lama (`main.go:233-248`) sama sekali tidak menyentuh DB — bind, lalu `go func()` pengirim email. Jadi (1) tidak menutup apa pun dari 13 itu, dan `Find` di 173 baru tertutup di (6) lewat #29 |
 | **F10** (4a) | *Hold* — `issues: write` **tidak** dipasang. Tidak ada kerja; hanya dicatat supaya tidak membusuk jadi keputusan yang tidak pernah diambil | Re-check paling cepat **2026-10-12 02:37 UTC**, syaratnya ≥8 baris `event=schedule` dan 0 MERAH. Kalau ada MERAH sebelumnya, hold menang dan alarm tetap run merah | nol |
 
 ### Yang masih butuh darimu
 
-1. **`EMAIL_USER` + `EMAIL_PASS`** di Secret Manager (app password Gmail, bukan password akun). Aku tidak
-   menulis nilai secret, hanya namanya ke `secretNames` di `deploy.yml`. F9 langkah (2) tidak bisa mulai
-   tanpa ini; langkah (1), (3), (4), (5), (6) bisa. **(2a) sudah mendarat tanpa menunggu ini** — bagian yang
-   tidak butuh kredensial sudah kukerjakan (lihat bloknya di bawah), jadi yang tersisa benar-benar cuma
-   tiga perintah yang nilainya hanya bisa kamu isi:
-
-   ```bash
-   gcloud secrets create portfolio-email-user --project config-agentic-ubuntu --data-file=-   # tempel EMAIL_USER
-   gcloud secrets create portfolio-email-pass --project config-agentic-ubuntu --data-file=-   # tempel app password
-   for s in portfolio-email-user portfolio-email-pass; do gcloud secrets add-iam-policy-binding $s \
-     --project config-agentic-ubuntu \
-     --member serviceAccount:portfolio-runtime@config-agentic-ubuntu.iam.gserviceaccount.com \
-     --role roles/secretmanager.secretAccessor; done
-   ```
-
-   Setelah kedua secret itu ada versi `1`, tinggalaku: menambahkan `EMAIL_USER=portfolio-email-user:latest,
-   EMAIL_PASS=portfolio-email-pass:latest` ke baris `--set-secrets` `deploy.yml:117`, deploy, lalu satu log
-   `contact <id>: email terkirim ke …` menutup klausa email E13. `deploy.yml` **tidak kusentuh sekarang**
-   karena `--set-secrets` menolak nama secret yang belum punya versi — itu membuat setiap deploy gagal, bukan
-   cuma email-nya mati. Pola binding-nya kuikuti dari yang sudah jalan: `portfolio-runtime@` punya
-   `secretAccessor` per secret (terukur di `portfolio-database-url` dan `portfolio-jwt-secret`), dan aku **tidak**
-   ikut memasang binding pada SA compute seperti keenam secret lama — itu salah satu sisa yang menunggu katamu
-   di butir 4c.
+1. **`EMAIL_USER` + `EMAIL_PASS` — SUDAH ADA, dan sudah terpasang (2b mendarat 15:14 UTC).** Kamu yang membuat
+   kedua secret di browser (aku tidak pernah membaca nilainya); aku menambahkan dua pasangan ke baris
+   `--set-secrets` `deploy.yml:117` lewat PR #33, dan revisi **`portfolio-be-00029-wpx`** sekarang melayani
+   request dengan 8 entri env — `EMAIL_USER` + `EMAIL_PASS` termasuk di dalamnya, terukur dari spesifikasi
+   revisi. Yang tersisa benar-benar satu aksi, dan aksi itu menutup tiga klaim sekaligus:
+   **kirim satu pesan lewat form kontak di situs publik.** Satu POST itu producing (i) baris `contact_messages`
+   yang terhitung `+1` lewat `GET /api/admin/contact` — klausa E13 yang masih terbuka, (ii) satu baris log
+   `contact <id>: email terkirim ke …` yang membuktikan SMTP menerima, dan (iii) penutup §8(a).
+   Sekalian bersihkan kotak masuknya di `/admin/dashboard`: baris probe lama `b693e544-3001-…` dan 5 baris seed
+   warisan. (Kenapa tidak kutembak sendiri: `DELETE /api/admin/contact/:id` butuh JWT, JWT butuh `ADMIN_PASS`,
+   dan itu secret yang tidak kubaca — jadi baris yang kutulis tidak bisa kuhapus.)
 2. **`chore/gerbang-ci`** — hapus atau simpan (ukurannya sudah di F1b).
 3. **"ya" terakhir untuk F7** (create + delete clone berbayar) dan, kalau kau mau bukti negatif E11,
    **untuk drill pin-traffic** di F8 — itu menyentuh traffic produksi kelasnya dengan P5 yang sudah kamu izinkan.
@@ -1550,6 +1545,10 @@ Dari empat butir §5, (6) menutup satu secara penuh. Yang masih terbuka, dengan 
 `EMAIL_PASS`** (langkah 2, terblokir padamu) dan pola fire-and-forget yang menyertainya — *(catatan setelah
 (2a) mendarat: yang terblokir kredensial tinggal **mengirim**; bagian "menyapa Gmail dengan kredensial kosong"
 sudah ditutup lebih dulu lewat #31, lihat bloknya di bawah, dan fire-and-forget memang belum disentuh)*;
+*(catatan setelah **2b** mendarat: `EMAIL_USER`/`EMAIL_PASS` tidak lagi terblokir padamu — keduanya sudah jadi
+secret berversi dan sudah sampai ke proses `portfolio-be-00029-wpx`. Yang menahan klausa E13 sekarang cuma satu
+POST dari situs publik, dan itu juga satu-satunya aksi yang belum bisa kukerjakan sendiri karena barisnya tidak
+bisa kuhapus lagi)*;
 **5 dead path admin**
 di `admin/projects/page.tsx` (+ 4 yang menuntut token); dan **"migration yang berversi"** — `-migrate` masih
 berisi `AutoMigrate`, bukan migration file bernomor. Yang terakhir ini tetap kutulis ulang di setiap blok
@@ -1654,6 +1653,86 @@ bukan membuatnya bisa dipercaya; itu §5 "melanjutkan pola fire-and-forget" dan 
 Dan yang paling penting untuk tidak terbalik baca: sejak hari ini, **tanpa kredensial, tidak ada satu pun
 notifikasi email yang keluar dari produksi** — sama seperti kemarin-kemarin, hanya sekarang itu tertulis
 `dilewati` alih-alih menyamar sebagai kegagalan Gmail.
+
+### F9 langkah (2b) — kredensialnya masuk, dan itu masih belum membuktikan apa pun soal Gmail (2026-10-05, 14:50 – 15:20 UTC)
+
+Kedua secret kamu buat di browser. Nilai tidak pernah lewat tanganku dan tidak pernah kubaca — yang kupakai
+hanya `describe`, `versions list`, `get-iam-policy`:
+
+```
+portfolio-email-user  dibuat 2026-10-05T14:50:21.034420Z  versi 1: enabled  secretAccessor → portfolio-runtime@
+portfolio-email-pass  dibuat 2026-10-05T14:54:32.720621Z  versi 1: enabled  secretAccessor → portfolio-runtime@
+```
+
+Yang tersisa cuma wiring, dan hanya satu baris: `deploy.yml:117` menerima dua pasangan tambahan
+(`EMAIL_USER=portfolio-email-user:latest`, `EMAIL_PASS=portfolio-email-pass:latest`), komentar header di
+baris 31 ikut dibenarkan **5 → 7** secret `portfolio-*`. Diff PR-nya `1 file changed, 2 insertions(+),
+2 deletions(-)`; nol baris Go dan nol baris TS bergerak. `mailer.SendEmail` sudah membaca kedua env itu dari
+prosesnya sejak sebelum #31 — #31 yang membuat jalur itu berhenti sebelum socket dibuka kalau keduanya kosong.
+
+**Kenapa `deploy.yml` memang baru kusentuh sekarang, dan bukan di (2a).** `--set-secrets` menolak nama secret
+yang belum punya versi, dan menolak itu bukan menggagalkan email saja tapi **seluruh deploy**. Menulis baris
+ini sebelum secret-nya ada = menjamin setiap deploy merah sejak itu. Urutannya karena itu bukan birokrasi:
+secret dulu (1 versi + binding), baru baris ini.
+
+**Gerbang lokal pada `1850577c`.** `gofmt -l` kosong · `go vet ./...` rc=0 · `go build ./...` rc=0 ·
+`go test -count=1 ./...` → `ok github.com/arkanFzi/website-porto2/go-backend/mailer 0.005s` ·
+`cmd/audit-ignored` → `silent_gorm=0 silent_listen=0` · `npx tsc --noEmit -p /tmp/tsconfig.check.json` rc=0 ·
+`deploy.yml` dimuat `yaml.safe_load`: ok, `jobs=[deploy]`. Yang terakhir itu satu-satunya pemeriksaan yang benar-benar
+menyentuh berkas yang kuubah — tidak ada `actionlint` di repo ini (ia disebut di §7 hanya sebagai catatan bahwa
+ia bersih di mesin lain), dan `ci.yml` tidak membaca `deploy.yml` sama sekali.
+
+**Kenapa job `api` tetap hijau justru karena CI tidak ikut dapat kredensial.** Backend di job `api` dijalankan
+tanpa `EMAIL_USER`/`EMAIL_PASS`; `ci.yml` tidak punya satu pun referensi `secrets.` (`grep -c 'secrets\.'` = **0**)
+dan tidak punya langkah `google-github-actions/auth` (**0** juga). Yang dieksekusi CI tetap cabang (2a), jadi gate
+`email dilewati` masih menuntut hal yang benar. Ukuran yang sama menutup klausa E13 "endpoint admin tidak menambah
+secret yang terbaca CI": 0 → 0, dan dua secret baru ini hanya sampai ke proses `portfolio-be`.
+
+**Mendarat.** `1850577c` → PR **#33** (base `493808e`, `changed_files=1`, `+2/−2`, `mergeable_state=clean`) →
+`go` / `api` / `web` / GitGuardian **success** → merge **`95f91647`** → **CI #64** + **Deploy #33** hijau, deploy
+15:09:01Z → 15:13:25Z = **4 m 24 s** → revisi **`portfolio-be-00029-wpx`** pada **100%** traffic
+(`latestCreated` == `latestReady` == yang melayani), gambar `sha256:8a3048af7a0ae897…1d3a`. Frontend ikut
+dibangun ulang seperti setiap deploy workflow ini dan tetap melayani `portfolio-fe-00028-jlz=100`.
+Satu jeda yang wajib dicatat supaya poll berikutnya tidak terbaca sebagai kegagalan: check-runs untuk head SHA
+kembali **0 check** selama **8** percobaan beruntun (±160 s) sebelum keempatnya muncul — GitHub mengantri, bukan
+menolak. Poll berikutnya (ke-12) sudah `completed` semua.
+
+**Yang berubah di produksi, terukur sebagai pasangan.**
+
+| revisi | entri env | nama berawalan `EMAIL_` |
+| --- | --- | --- |
+| `portfolio-be-00028-8dc` (pra-2b, hasil (2a)) | 6 | **0** |
+| `portfolio-be-00029-wpx` (2b) | 8 | **2** — `EMAIL_USER ← portfolio-email-user`, `EMAIL_PASS ← portfolio-email-pass` |
+
+`GET /api/health` → `{"db":"ok","status":"ok"}`. 20 menit pertama revisi baru: **38** baris log, **38/38**
+berlabel `portfolio-be-00029-wpx`, **0** baris mengandung `email`, dan 3 baris mengandung `contact` — ketiganya
+`[GIN-debug]` registrasi rute, bukan POST.
+
+### Batas langkah (2b) — nol baris `email` itu belum berarti apa-apa soal Gmail
+
+Ini bagian yang paling mudah dibaca terbalik, jadi kutulis apa adanya: **2b tidak membuktikan satu pun klausa
+email.** Jalur kirim hanya diinjak dari handler `POST /api/contact`, dan sejak deploy tidak ada POST. Yang
+dibuktikan 2b persis satu hal — kedua env sekarang ada di proses yang melayani request, dilihat dari *spesifikasi*
+revisi, bukan dari perilaku. Klausa E13 `email: 1 log run membuktikan SMTP menerima` masih terbuka.
+
+Kenapa probe itu kusisakan untukmu dan tidak kutembak sendiri: satu POST produksi menulis baris `contact_messages`
+yang **tidak bisa kuhapus sendiri** — `DELETE /api/admin/contact` butuh JWT, JWT butuh `ADMIN_PASS`, dan itu secret
+yang tidak kubaca. Baris probe lama (`b693e544-3001-…`) plus 5 baris seed warisan juga masih menunggu dibersihkan
+di `/admin/dashboard`. Satu POST sekarang menutup tiga hal sekaligus: §8(a) (situs publik menulis), klausa count +1
+E13, dan klausa email E13 lewat satu baris log `contact <id>: email terkirim ke …`.
+
+Yang tetap belum tersentuh, dan sekarang justru lebih kelihatan:
+
+- **Cabang `gagal kirim email` tetap nol eksekusi**, dan deploy ini tidak bisa menangkapnya: `--set-secrets`
+  memvalidasi nama secret + versinya + akses SA, **bukan** kredensial SMTP. App password salah = Deploy #33
+  tetap hijau, dan kegagalannya baru muncul sebagai satu baris log pada POST pertama dari pengunjung sungguhan.
+  Ini persis bentuk kegagalan yang (2a) buat tidak lagi diam-diam — bedanya, sekarang ada kredensial untuk salah.
+- **Alamat penerima tidak kuklaim.** Kalau `portfolio-admin-email` menyimpan alamat yang bukan kotak masukmu,
+  Gmail akan tetap menerima dan mengirim ke sana. Nilainya tidak kubaca, jadi klaim apa pun di baris ini akan jadi
+  narasi, bukan angka.
+- `EMAIL_HOST`/port tetap hardcoded `smtp.gmail.com:587` di `mailer.go`; pola fire-and-forget (`go func()` tanpa
+  konteks, tanpa tunggakan, tanpa retry) **masih utuh**. 2b memasang kredensial, tidak mengubah bentuk pemanggilnya
+  — itu §5 butir fire-and-forget, dan ia bukan bagian urutan F9.
 
 ### Yang tidak kubebereskan di M12 (biar tidak kelihatan lupa)
 
