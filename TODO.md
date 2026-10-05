@@ -41,6 +41,19 @@ M10 membangun gerbangnya supaya klaim "stable" punya dasar.
 > **16 → 2**, dengan bundle tertanggal dan pemulihan yang **dites**, bukan dijanjikan. Proteksi:
 > `strict: true`. SA runtime baru sudah dibuat tapi **belum dipakai apa pun** — F5 (pindah service)
 > dan F6 (cabut `editor`) masih terbuka, dan justru itu yang berbahaya.
+>
+> **Update 2026-10-05 03:02 UTC:** **F5 hijau — E9a terbukti.** Kedua service sekarang berjalan di
+> `portfolio-runtime@…`, dan itu dicetak oleh assertion baru di dalam `deploy.yml` (log run #26,
+> baris 1058–1060) selain diukur ulang dari `gcloud`: `be-00022-w7f` @100 + `fe-00021-hmv` @100,
+> connector utuh, `/api/cv` 774.803 byte `%PDF-`, `logWriter` terbukti. **F8 hijau mekanisme**:
+> `watch.yml` sekarang memegang identitas yang **cuma** `roles/run.viewer` dan Watch #4 `rows=17
+> merah=0` membacanya langsung dari runner; lima mutasi terhadap stub semuanya berbuah MERAH/KUNING
+> (0 false-clean), dan bukti kandangnya terukur dua arah — `update-traffic` + `secrets describe`
+> **403** dengan identitas itu, `rc=0` dengan identitasku. Yang **gugur**: `event=schedule` masih 0
+> pada 02:59:50 UTC, 2 jam 23 menit lewat cron, `next_run_at=null` — E8 jadi masih 0 dari 7 hari, dan
+> dua penyebab umum (repo private, plan tanpa scheduler) sudah kubuang dengan pengukuran. Yang
+> **kutahan sendiri**: F6 — setelah F5, `roles/editor` tinggal menempel di dua VM yang berjalan, salah
+> satunya ber-scope `cloud-platform`; itu keputusanmu, bukan langkah senyap (opsi A/B/C di §8).
 
 ---
 
@@ -259,8 +272,8 @@ lewat file baseline, bukan melupakannya.
 | 1 | Izin drill rollback | **Diberikan dan selesai.** Drill jalan di produksi (run #18), bukan di service baru; jendela rusak 63 detik, hanya `/api/cv`. Lihat §7 P5 |
 | 2 | Branch protection `main` | **Diberikan dan terpasang.** `required_status_checks.contexts = ["go","web","api"]`, `strict` tetap `false` (kompensasinya: `ci.yml` ikut tersulut `push: main`) |
 | 3 | Cabut kunci statis `github-cd` | **Sudah tidak relevan — dan bukan karena aku.** `gcloud iam service-accounts keys list` kini hanya mengembalikan 1 kunci `SYSTEM_MANAGED`; kunci `USER_MANAGED` (valid sampai 2028-09-22) yang tercatat di §1 sudah tidak ada saat diperiksa ulang 16:45 UTC. Aku tidak menghapusnya dan tidak bisa memastikan siapa yang menghapus — kalau itu kamu, bagus; kalau bukan, itu pertanyaan sendiri. |
-| 4 | Runtime SA tanpa `roles/editor` | **Setengah jalan, dan sengaja dipisah.** Diverifikasi 2026-10-05 01:47 UTC: `486641216758-compute@developer.gserviceaccount.com` masih `roles/editor` + `roles/pubsub.publisher` se-proyek dan **masih** yang melayani request di kedua service. F4 sudah selesai: `portfolio-runtime@…` dibuat dengan grant seperlunya saja (reader pada repo AR `portfolio-app`, logWriter, metricWriter, secretAccessor per-secret pada 5 secret) dan **belum dipakai apa pun** — angka lengkapnya di §8 F4. F5 (pindah service) dan F6 (cabut `editor`) masih terbuka; keduanya tidak kubarengkan dalam satu PR supaya kalau merah, penyebabnya terbaca |
-| 5 | `watch.yml` membuat issue otomatis | **Hold atas keputusanmu (4a), sampai 8 hari baris `schedule` terkumpul.** `issues: write` tetap tidak diberi, jadi Watch hanya menulis baris harian + membuat run merah; alarmnya notifikasi default GitHub. Status terukur 02:12 UTC: workflow `state=active`, 3 run selesai (#1 `failure`, #2 & #3 `success`, `rows=13 merah=0`) — **tetapi ketiganya `workflow_dispatch`**, dan run `event=schedule` di repo masih **0** karena cron `37 2 * * *` baru jatuh tempo 02:37 UTC. Re-check paling cepat 2026-10-12 |
+| 4 | Runtime SA tanpa `roles/editor` | **F4 + F5 selesai; F6 kublokir sendiri, dan itu pilihan.** Terukur 2026-10-05 02:46 UTC: `spec.template.spec.serviceAccountName` kedua service = `portfolio-runtime@…` — bukan cuma dari `gcloud`, tapi juga dicetak sendiri oleh assertion baru di dalam `deploy.yml` (log run #26, baris 1058–1060, termasuk `vpc-access-connector=portfolio-connector`). `/` sehat, `/api/cv` 774.803 byte `%PDF-`, `logWriter` terbukti. Yang tersisa cuma `roles/editor` pada `486641216758-compute@…`, dan yang memakainya sekarang **dua VM yang berjalan** dengan risiko tidak setara (`agentic-watchdog-vm`: 1 scope `cloud-platform` → `editor` = kuasa nyata; `hermes-openclaw-vm`: 7 scope sempit → praktis inert). Angka + tiga opsi di §8 "F6 — diblokir" |
+| 5 | `watch.yml` membuat issue otomatis | **Hold atas keputusanmu (4a), sampai 8 hari baris `schedule` terkumpul.** `issues: write` tetap tidak diberi. Perubahan 2026-10-05: Watch sekarang **bisa** membaca state cloud lewat identitas `github-watch@…` yang cuma memegang `roles/run.viewer` (F8) dan sudah membuktikannya dari runner — Watch #4 `rows=17 merah=0`, Watch #5 `rows=19 merah=0`. Status terukur 02:59:50 UTC: `state=active`, **`next_run_at=null`**, `event=schedule` di repo masih **0**, 2 jam 23 menit lewat cron. Dua penyebab umum kubuang dengan pengukuran: repo `public` dan plan `pro`. Re-check paling cepat 2026-10-12 |
 | 6 | `staging`, `chore/bughunter-ci` | **Selesai (F1).** `git ls-remote --heads origin` **16 → 2**: 13 branch yang sudah jadi ancestor `main` (termasuk `staging` `1f2486b`) dihapus bersama `chore/bughunter-ci` `bd38b93` yang isinya dibuang. Sebelum hapus: `porto2-branch-backup-2026-10-05.bundle` (6.768.151 byte, `sha256:85677cee…`) dan pemulihan dites di repo sementara — `staging` kembali ke `1f2486b`, `chore/bughunter-ci` ke `bd38b93`. Yang **kutahan** atas nama keputusanmu: `chore/gerbang-ci` `e3ce49d`, ahead 2 commit (PR #1, isinya sudah tersuperseded oleh PR #2 — 7 file yang disentuhnya semua ADA di `main`, `ci.yml` beda 20 baris). Hitungan "10 cabang" yang kupakai kemarin salah, angka yang benar 13 + 2 |
 
 ---
@@ -542,6 +555,16 @@ memakai alat yang baru valid setelah F8.
 2. **`chore/gerbang-ci`** — hapus atau simpan (ukurannya sudah di F1b).
 3. **"ya" terakhir untuk F7** (create + delete clone berbayar) dan, kalau kau mau bukti negatif E11,
    **untuk drill pin-traffic** di F8 — itu menyentuh traffic produksi kelasnya dengan P5 yang sudah kamu izinkan.
+4. **F6 — satu huruf.** Cabut `roles/editor` dari SA compute sekarang cuma affects dua VM (angkanya di
+   §8 "F6 — sengaja belum dikerjakan"): **(A)** berhenti di sini — runtime situs sudah bersih, `editor`
+   di SA compute dicatat sebagai hutang dan tidak disentuh; **(B)** pasang SA khusus per VM lebih dulu
+   (least-privilege sesuai yang dipakai watchdog/openclaw), baru cabut `editor`; **(C)** pre-grant
+   pengganti (`logWriter`, `metricWriter`, `storage.objectViewer`, `pubsub.publisher` + secret yang
+   memang dipakai) ke SA kedua VM, lalu cabut `editor` dalam satu langkah. Rekomendasiku **(B)** untuk
+   `agentic-watchdog-vm` karena satu-satunya yang ber-scope `cloud-platform`, dan **(A)** untuk
+   `hermes-openclaw-vm` sampai ada bukti ia memanggil API yang butuh `editor`. Aku tidak bisa memutuskan
+   ini sendiri karena yang terancam bukan porto2: dua VM itu dan dua secret non-portofolio di projek yang
+   sama.
 
 ### Hasil terukur F1–F4 (2026-10-05, 01:55 – 02:12 UTC)
 
@@ -626,6 +649,89 @@ Yang **tidak** dimilikinya, diukur sebagai peniadaan (bukan diasumsikan): `edito
 `kosong (benar)`. `cloudsql.client` memang tidak dibutuhkan: backend mencapai Cloud SQL lewat
 **private IP `10.112.0.2`** via connector `portfolio-connector` dengan `vpc-access-egress=all-traffic`
 dan **tanpa** volume `cloudsql` — terukur dari `run services describe`.
+
+### Hasil terukur F5 + F8, dan satu fase yang kublokir sendiri (2026-10-05, 02:26 – 03:00 UTC)
+
+**F5 — E9a hijau.** PR #17 (`2731cd2`) → `ci.yml` `pull_request` run #30 `success` (go/web/api di
+bawah `strict: true`) → merge `382f0e4` → **deploy run #25 `success`**. Lalu merge F8 (`3a88e25`)
+menyulut deploy run #26 `success`, dan log run #26 adalah bukti bahwa assertion yang kutambah di F5
+benar-benar dieksekusi, bukan hanya ada di file:
+
+```text
+1058  portfolio-be serviceAccountName=portfolio-runtime@config-agentic-ubuntu.iam.gserviceaccount.com
+1059  portfolio-fe serviceAccountName=portfolio-runtime@config-agentic-ubuntu.iam.gserviceaccount.com
+1060  portfolio-be vpc-access-connector=portfolio-connector
+```
+
+Keadaan live sesudahnya, diukur 02:46 UTC langsung dari `gcloud` (bukan dari log workflow):
+
+| service | traffic | `serviceAccountName` | connector |
+|---|---|---|---|
+| `portfolio-be` | `portfolio-be-00022-w7f` @100, `latestCreated == latestReady`, `Ready=True` | `portfolio-runtime@…` | `portfolio-connector` |
+| `portfolio-fe` | `portfolio-fe-00021-hmv` @100, sama | `portfolio-runtime@…` | tidak dipakai oleh FE |
+
+Konten utuh di bawah SA baru: `/api/health` `{"db":"ok","status":"ok"}` dari domain publik (02:42
+UTC), `/api/cv` HTTP 200 **774.803 byte** diawali `%PDF-`. `logging.logWriter` terbukti — entri
+`run.googleapis.com/stdout` baru muncul setelah deploy. `monitoring.metricWriter` **belum terukur**:
+grant-nya ada, buktinya tidak; itu hutang, bukan keberhasilan.
+
+Dua jebakan yang hampir jadi kesimpulan palsu, dan dua-duanya gugur oleh pengukuran ulang:
+`/api/cv` sempat terlihat 404 di URL `run.app` **backend** (jalur yang benar memang `$FE/api/cv`;
+domain publik 200), dan `gcloud logging read` sempat menampilkan **0 baris** karena filter
+`timestampMin>=` yang kubentuk tidak terparse — bukan karena lognya hilang.
+
+**F8 — E11 hijau mekanisme, merah muda untuk `schedule`.** Identitas `github-watch@…` memegang
+**hanya** `roles/run.viewer` (project-level) + `iam.workloadIdentityUser` pada dirinya sendiri dengan
+member `principalSet://…/github-pool/attribute.repository/ArkanFzi/website-porto2`; pemeriksaan
+peniadaan menghasilkan `tulis/secret: kosong (benar)`. PR #18 (`ee52c1e`) → CI run #32 `success` →
+merge `3a88e25` → **Watch run #4 `success`** (id 37256510503), baris `cloud-*` pertama yang dibaca
+dari *runner*:
+
+```text
+02:43:37  access_token_scopes: https://www.googleapis.com/auth/cloud-platform   ← langkah auth@v3
+02:43:51  portfolio-be: sa=portfolio-runtime@… traffic=portfolio-be-00021-kmb=100
+02:43:55  cloud-traffic/portfolio-be|HIJAU|100% di portfolio-be-00021-kmb
+          baris harian: rows=17 merah=0
+```
+
+Sisi negatifnya lima mutasi terhadap `gcloud` stub (skrip langkah diekstrak apa adanya dari YAML):
+traffic di revisi lama → MERAH ×2; traffic 50/50 → MERAH ×2; SA kembali ke compute → `cloud-sa`
+MERAH ×2; revisi belum `Ready` → KUNING ×2; `describe` rc=3 → `cloud-drift` KUNING ×2 dan tidak ada
+vonis lain. **0 false-clean.** Tabel lengkap ada di `DEPLOY.md` § "F8 — drift cloud".
+
+**Bukti kandang** (02:48 UTC, branch buangan `chore/bukti-kandang-watch`, commit `9824e86`, dispatch
+→ Watch run #5 `success`): `update-traffic` → **403 PERMISSION_DENIED** (`run.service…`),
+`secrets describe portfolio-database-url` → **403** (`secretmanager.secrets.get`). Kontrol negatif
+biar 403 tidak berarti "metodenya mati": `update-traffic` yang sama dengan identitasku sendiri →
+**`rc=0`**. Karena kontrol itu menyentuh produksi, keadaan sesudahnya kuukur: traffic tetap
+`portfolio-be-00022-w7f`=100, `latestCreated == latestReady`, 0 revisi baru; yang berubah hanya
+`metadata.generation=35` dan `lastModifier`. Branch dibuang **setelah** backup:
+`porto2-probe-leashed-2026-10-05.patch`, 3.319 byte, `sha256:a6de7287…8b83f`. Dua cabang PR yang
+sudah ter-merge (`2731cd2`, `ee52c1e`) kuhapus dari remote sesudah dipastikan **ancer `main`** →
+`git ls-remote --heads origin` **3 → 2**.
+
+Yang **tidak** terpenuhi oleh ini: `event=schedule`. Pada 02:59:50 UTC — 2 jam 23 menit sesudah cron
+`37 2 * * *` — `watch.yml` `state=active`, `next_run_at=null`, jumlah run `schedule` di repo **0**.
+Dua penyebab umum dibuang dengan pengukuran, bukan asumsi: `visibility=public` dan plan pemilik
+`pro`. E8 (7 baris `schedule` hijau berturut) jadi masih 0 dari 7, dan Watch #1–#5 tidak dihitung —
+persis disiplin yang sama dengan E4.
+
+### F6 — sengaja belum dikerjakan, dan ini bukan kemalasan
+
+Rencana: cabut `roles/editor` dari `486641216758-compute@developer.gserviceaccount.com`. Setelah F5,
+Cloud Run tidak lagi memakai SA itu; yang tersisa dua VM yang **sedang berjalan** (terukur 02:47 UTC),
+dan risiko di antara keduanya tidak setara:
+
+| VM | status | access scopes | arti `editor` di dalam VM |
+|---|---|---|---|
+| `agentic-watchdog-vm` | RUNNING | `cloud-platform` (1 scope) | **kuasa nyata** — scope penuh membuat peran project-level berlaku penuh dari dalam |
+| `hermes-openclaw-vm` | RUNNING | 7 scope sempit: devstorage.read_only, logging.write, monitoring.write, pubsub, service.management.readonly, servicecontrol, trace.append | sebagian besar **inert** — tanpa `cloud-platform`, API yang butuh scope lain tidak terjangkau |
+
+Yang juga ikut tercabut: akses ke 2 secret **non-portofolio** di projek yang sama
+(`agentic-laptop-backup-passphrase`, `gog-keyring-password`) dan apa pun yang watchdog ber-scope penuh
+itu lakukan di dalam VM. F5 sudah menghilangkan alasan struktural untuk buru-buru (runtime situs
+sudah bersih); yang tinggal adalah memutuskan nasib dua VM yang bukan bagian porto2. Karena itu
+fase ini menunggu satu huruf darimu, bukan kujalankan senyap.
 
 ### Yang tidak kubebereskan di M12 (biar tidak kelihatan lupa)
 
