@@ -7,6 +7,7 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       { source: "/api/login", destination: `${BACKEND_URL}/api/login` },
+      { source: "/api/contact", destination: `${BACKEND_URL}/api/contact` },
       { source: "/api/auth/:path*", destination: `${BACKEND_URL}/api/auth/:path*` },
       { source: "/api/admin/:path*", destination: `${BACKEND_URL}/api/admin/:path*` },
       { source: "/api/certificates", destination: `${BACKEND_URL}/api/certificates` },
