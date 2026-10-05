@@ -251,7 +251,7 @@ di 13 titik. M10 sengaja dibuat **mendukung** M11: baseline ratchet §1 menyusut
 Urutan yang kuambil: gerbang dulu (permintaanmu), produk setelah — dengan konsekuensi jujur bahwa
 situs tetap kehilangan pesan kontak sampai M11 jalan, dan mulai sekarang CI akan **mengingat** itu
 lewat file baseline, bukan melupakannya. Konsekuensi itu **berlaku sampai F9 langkah (1) mendarat**
-(lihat bloknya di §8): sejak itu pesan visitors masuk ke `contact_messages`, tapi masih belum bisa
+(lihat bloknya di §8): sejak itu pesan pengunjung masuk ke `contact_messages`, tapi masih belum bisa
 dibaca kembali dari situs — rute admin-nya baru ada di langkah (3).
 
 ---
@@ -571,6 +571,15 @@ memakai alat yang baru valid setelah F8.
    masih membacanya, tidak dicabut karena kegagalannya senyap (Data Access logging mati). Kalau kamu
    bilang cabut, aku jalankan dan ukur; kalau kamu bilang amankan dulu, satu-satunya jalan yang jujur
    adalah menghidupkan logging pembacaan secret selama seminggu.
+
+**Butiran baru yang keluar setelah F9 langkah (1) mendarat — rate limit `POST /api/contact`.** Endpoint ini
+sekarang adalah **tulis DB tanpa autentikasi** yang terbuka di internet. Tiga pilihan yang kubaca: **(i)**
+batas per IP di middleware gin — murah dan nyata, tapi in-memory jadi hilang saat scale-to-zero; **(ii)**
+honeypot di form — nol infra, tapi tidak menolak bot yang serius; **(iii)** terima dulu dan pantau jumlah baris
+seminggu — nol kode, tagihannya Cloud SQL. Aku sengaja tidak memilih sendiri, dan ini bukan kekurangan ide:
+sebelumnya endpoint ini *tidak bisa* ditumpahi spam karena dia tidak menulis apa pun, dan sejak pagi itu bisa.
+Nomor ini kutaruh di sini, bukan di dalam daftar di atas, karena tidak ada satu pun butir 1–4 yang berubah
+olehnya.
 
 ### Hasil terukur F1–F4 (2026-10-05, 01:55 – 02:12 UTC)
 
@@ -967,6 +976,40 @@ Gmail masuk Secret Manager; tidak ada kode yang perlu kutulis untuk itu, dan aku
 dan tanpa rate limit** — permukaan baru untuk spam yang membayangi Cloud SQL. Itu bukan kelalaian senyap:
 ia tercatat di bawah, dan kuncinya harus dibikin sadar (batasan per IP di middleware, atau honeypot di form),
 bukan diterima sebagai harga yang harus dibayar tanpa dihitung.
+
+**Cara langkah ini mendarat.** PR #22 (`21f8b7d`) → CI run #40 `pull_request` **`success`** (`go` + `web` +
+`api`, 05:46 – 05:48 UTC). Yang membedakan fase ini dari F1–F6: langkah baruku bukan satu-satunya bukti —
+`Kontrak kontak (form publik benar-benar menulis)` tercatat `success` di job `api`, dan log-nya mencetak
+`POST /api/contact => id=d536d996-0649-4870-ad58-d6207cfa5179`, `jumlah baris: 0 -> 1`,
+`email tersimpan: 'kontrak-ci@example.test'`, lalu penolakan bentuk message dengan `400`. Jadi kontraknya
+dipegang Postgres nyata di runner, bukan oleh salinan yang kuputar di laptop. Merge 05:48 UTC → `005d5ea`;
+CI #41 `success` dan **Deploy to Cloud Run #27 `success`** (selesai 05:52:07 UTC).
+
+Ini menutup arah E7 yang sebaliknya: empat merge dokumen sebelumnya menghasilkan **0** run deploy, merge kode
+ini menghasilkan **1**. Gerbang `paths` bekerja dua arah, dan angka "0 run" yang kubanggakan di F6 tidak
+berarti gerbangnya mati — cuma tidak sedang dipanggil.
+
+**Produksi, sesudah deploy (05:53 UTC).** `portfolio-be` generation 35 → 37 dengan revisi aktif
+`portfolio-be-00023-xsf`; `portfolio-fe` 32 → 34 dengan `portfolio-fe-00022-s9h`. Generasi naik dua, revisi
+baru cuma satu per service, karena `deploy.yml` melakukan `set-secrets` lalu `set-image`; revisi lama
+berstatus `Retired` tapi tetap ada — 21 revisi `portfolio-be` tidak dipangkas, jadi target rollback F6 utuh.
+
+| probe produksi | sebelum PR ini | sesudah PR ini |
+|---|---|---|
+| POST payload persis dari situs | 400, 35 byte, 0,35 s | **201**, 93 byte, 0,40 s, `id=b693e544-3001-…` |
+| POST bentuk message | 200 palsu, 54 byte, **1,36 s** | **400**, 46 byte, 0,38 s |
+| GET `/api/contact` | 405 dari handler stub | **404** `404 page not found` — dari gin, artinya rewrite benar-benar meneruskan |
+| GET `/api/admin/contact` | 404 | **404** — belum ada satu pun permukaan admin |
+| GET `/api/health` | 200, 25 byte | 200, 25 byte, identik |
+| GET `/` | 40.699 byte | **40.699 byte**, jejak `Application error` = **0** |
+| GET `/api/cv` | 774.803 byte `%PDF-1.4` | **774.803 byte**, 5,63 s |
+
+**Satu hal yang kutinggalkan di DB produksi dan harus kamu tahu:** baris `b693e544-3001-4ea2-ac75-04909dbe3c92`
+dari probe di atas masih ada, dan **belum ada jalan menghapusnya dari aplikasi** — rute hapus ber-JWT datang di
+langkah (3); sementara ini hanya bisa dibersihkan lewat Cloud SQL. Aku juga tidak mengklaim "count di produksi
+naik": tidak ada jalur yang diizinkan dari laptop ke Cloud SQL, dan itu bukan sesuatu yang kubuka diam-diam.
+Bukti bahwa barisnya nyata adalah `id` yang dikembalikan `gen_random_uuid()` bersama `201` — insert yang gagal
+tidak bisa menghasilkan uuid sisi DB — dan `select count(*)` yang sebenarnya sudah kubuktikan di CI.
 
 ### Yang tidak kubebereskan di M12 (biar tidak kelihatan lupa)
 
