@@ -97,7 +97,10 @@ Backend yang sebenarnya hidup (8 rute): `POST /api/login`, `GET /api/certificate
 `POST /api/contact`. `POST /api/certificates` tanpa token → 401 (auth works).
 
 Mail mati dua lapis: `mailer/mailer.go:18-19` baca `EMAIL_USER`/`EMAIL_PASS`, dan keduanya **tidak ada**
-di env runtime `portfolio-be` maupun di Secret Manager.
+di env runtime `portfolio-be` maupun di Secret Manager. Lapis kedua inilah yang ternyata bukan sekadar "mati":
+kodenya tetap menghubungi `smtp.gmail.com:587` dengan kredensial kosong dan dapat `530 5.7.0 Authentication
+Required` **(jumlahnya terukur di blok langkah (2a)**; lapis pertama masih benar sampai sekarang — `^EMAIL_`
+terhitung **0** di env revisi produksi terbaru).
 
 ---
 
@@ -258,7 +261,9 @@ lewat file baseline, bukan melupakannya. Konsekuensi itu **berlaku sampai F9 lan
 (lihat bloknya di §8): sejak itu pesan pengunjung masuk ke `contact_messages`, dan sejak langkah (3) pesan itu
 bisa **dibaca dan dihapus kembali** lewat `GET`/`DELETE /api/admin/contact` ber-JWT — 401 untuk siapa pun tanpa
 token, terukur di produksi. Yang masih terbuka tinggal tiga: tidak ada satu pun yang dikirim ke inbox email
-(langkah 2 — menunggu kredensial `EMAIL_USER`/`EMAIL_PASS`, dan fire-and-forget-nya belum berhenti), lima dead
+(langkah **2a** lewat #31 sudah menghentikan *dial buta* — tanpa kredensial jalur email berhenti **sebelum**
+membuka socket dan tercatat sebagai `dilewati` — tapi **2b** tetap menunggu kredensial `EMAIL_USER`/
+`EMAIL_PASS`, dan fire-and-forget-nya belum berhenti), lima dead
 path admin, dan `AutoMigrate` yang belum jadi migration berversi. Dua hal yang tadi di daftar ini sudah
 tertutup dan tidak perlu ditebak lagi: **skema tidak lagi dibuat saat start** (PR #27) dan **tidak ada lagi
 error gorm atau `r.Run` yang dibuang** (PR #29).
@@ -556,14 +561,37 @@ memakai alat yang baru valid setelah F8.
 | **F6** (1a langkah 3) | Cabut `roles/editor` dari `486641216758-compute@developer.gserviceaccount.com`. **`pubsub.publisher` dibiarkan** (belum terukur siapa penerbitnya — dicatat sebagai hutang, bukan dihapus diam-diam) | **E9b**: `get-iam-policy` → member `roles/editor` hanya `…@cloudservices.gserviceaccount.com` (milik Google); 0 service Cloud Run di projek yang masih memakai SA compute (diukur `run services list --format=value(name,spec.template.spec.serviceAccountName)`); `connector state=READY`; `/api/health` tetap `.db=="ok"`; baris Watch besok hijau | Yang paling lebar di M12. Reversible dalam 1 perintah (`add-iam-policy-binding`), dan itu memang rencananya kalau connector atau logging merah. Jangan digabung dengan F5 dalam satu PR — kalau keduanya merah, tidak terbaca mana yang bersalah |
 | **F7** (2a, hasil K1) | **Drill pemulihan**: clone `portfolio-pg` ke titik waktu (`gcloud sql instances clone --restore-from-timestamp=…`, nama flag dikukuhkan dari `--help` dulu, tidak ditebak), ukur, lalu hapus clone-nya | **E10**: clone `state=RUNNABLE` + tier + `ipAddresses` tercatat; **RTO** = delta menit antara perintah dan `RUNNABLE` diukur; clone dihapus (`instances list` kembali 1 baris). Yang **tidak** dibuktikan, kutulis apa adanya: isi row tidak bisa dibaca dari laptop (DB hanya `PRIVATE 10.112.0.2`), jadi "data-nya kembali benar" masih 0× sampai ada jalur baca sementara di dalam VPC | Resource berbayar baru (±`db-f1-micro`) yang hidup beberapa menit lalu kuhapus. **Butuh "ya" terakhirmu** karena create + delete resource, meski 2a sudah kamu setujui dalam bentuk lain |
 | **F8** (keputusan 3a) | Bikin `github-watch@…`, grant **hanya** `roles/run.viewer`; binding `iam.workloadIdentityUser` di SA itu dengan `principalSet://…/attribute.repository/ArkanFzi/website-porto2` (satu-satunya granularitas yang tersedia — provider tidak memetakan `sub`/`environment`). Di `watch.yml`: `id-token: write`, `auth@v2` ke SA itu, lalu invariant traffic: **100% pada revisi `Ready` terbaru; kalau tidak → MERAH dengan nama revisi yang ter-pin; kalau kredensial/cloud tidak terbaca → KUNING** (bukan diam-diam bersih) | **E11**: satu run ber-`event=schedule` yang baris hariannya memuat `traffic\|HIJAU\|be-00018-fsc=100 / fe-00017-wqb=100` dan **log-nya membuktikan ia membaca state cloud** (bukan hanya repo). Negatifnya (opsional, lihat daftar butuh-izin): pin traffic ke revisi lama ±2 menit → Watch harus MERAH sendiri keesokan harinya, lalu lepas | Yang bocor kalau salah: **read-only** (`run.viewer`) — dan granularitasnya persis sama dengan binding `github-cd` yang sudah ada hari ini, jadi permukaan baru yang ditambahkan nyaris nol: menambah identitas *lebih kecil* di bentuk yang sudah dipakai identitas *lebih besar*. Hutang yang sengaja ditinggalkan: memperketat ke `attribute.environment` menuntut edit `attributeMapping` pada provider yang dipakai CD produksi — tidak kulakukan di fase ini |
-| **F9** (6b + 7) | M11 urutanku: (1) tabel `contact_messages` + POST `/api/contact` menulis (sekaligus menutup `main.go:173` yang membuang error gorm); (2) email via gomail; (3) rute admin `POST /api/auth/login`, `GET/DELETE /api/admin/contact` ber-JWT; (4) buang hardcode `http://localhost:8080` di `cv-layout`; (5) hapus `seedData()` + `AutoMigrate` saat start; (6) tutup 13 error gorm yang diabaikan. Satu sub-langkah = satu PR *(catatan (6): yang kucocok di jalur itu 6 `Find`/`Create`/`Delete` + 1 `r.Run`; tujuh lainnya sudah lenyap di (5) — dan lenyapnya karena `seedData()` dihapus, bukan karena errornya ditutup)* | **E13**: jumlah path mati di `tools/ci/api-baseline.json` **turun dari 13** dan `api-contract-check.mjs` tetap `rc=0`; 1 POST dari situs publik → **terhitung** lewat `GET /api/admin/contact` (count +1, dan **401 tanpa JWT**); email: 1 log run membuktikan SMTP menerima (hanya setelah kredensial ada); `go vet`+gofmt bersih; endpoint admin tidak menambah secret yang terbaca CI | Semua lewat gerbang yang sudah terbukti. (2) **terblokir padamu** (lihat di bawah). Rute admin = permukaan baru di internet: tanpa JWT tidak ada satu pun rute admin yang boleh 200, dan itu kukunci di job `api`, bukan di narasi. **Status 2026-10-05, 08:36 UTC:** (1) #22, (3) #24, (4) #25, (5) #27, (6) #29 sudah mendarat — path mati tetap **9** (`(5)` dan `(6)` tidak menyentuh frontend), error gorm yang dibuang **13 → 6 → 0** dan `r.Run` **1 → 0** diukur `cmd/audit-ignored` di `c78cb19`/`0204b70`/`bf11c2d`; job `api` 12 → **14** langkah; (2) masih terblokir kredensial. **Koreksi pada rencanaku sendiri di baris ini:** yang kutulis "(1) sekaligus menutup `main.go:173` yang membuang error gorm" itu salah tempel. Di `c78cb19` baris 173 adalah `DB.Order("created_at desc").Find(&certs)` milik `/api/certificates`, sedangkan stub kontak lama (`main.go:233-248`) sama sekali tidak menyentuh DB — bind, lalu `go func()` pengirim email. Jadi (1) tidak menutup apa pun dari 13 itu, dan `Find` di 173 baru tertutup di (6) lewat #29 |
+| **F9** (6b + 7) | M11 urutanku: (1) tabel `contact_messages` + POST `/api/contact` menulis (sekaligus menutup `main.go:173` yang membuang error gorm); (2) email via gomail; (3) rute admin `POST /api/auth/login`, `GET/DELETE /api/admin/contact` ber-JWT; (4) buang hardcode `http://localhost:8080` di `cv-layout`; (5) hapus `seedData()` + `AutoMigrate` saat start; (6) tutup 13 error gorm yang diabaikan. Satu sub-langkah = satu PR *(catatan (6): yang kucocok di jalur itu 6 `Find`/`Create`/`Delete` + 1 `r.Run`; tujuh lainnya sudah lenyap di (5) — dan lenyapnya karena `seedData()` dihapus, bukan karena errornya ditutup)* | **E13**: jumlah path mati di `tools/ci/api-baseline.json` **turun dari 13** dan `api-contract-check.mjs` tetap `rc=0`; 1 POST dari situs publik → **terhitung** lewat `GET /api/admin/contact` (count +1, dan **401 tanpa JWT**); email: 1 log run membuktikan SMTP menerima (hanya setelah kredensial ada); `go vet`+gofmt bersih; endpoint admin tidak menambah secret yang terbaca CI | Semua lewat gerbang yang sudah terbukti. (2) **terblokir padamu** (lihat di bawah). Rute admin = permukaan baru di internet: tanpa JWT tidak ada satu pun rute admin yang boleh 200, dan itu kukunci di job `api`, bukan di narasi. **Status 2026-10-05, 08:36 UTC:** (1) #22, (3) #24, (4) #25, (5) #27, (6) #29 sudah mendarat — path mati tetap **9** (`(5)` dan `(6)` tidak menyentuh frontend), error gorm yang dibuang **13 → 6 → 0** dan `r.Run` **1 → 0** diukur `cmd/audit-ignored` di `c78cb19`/`0204b70`/`bf11c2d`; job `api` 12 → **14** langkah; (2) masih terblokir kredensial. **Status 2026-10-05, 14:12 UTC:** (2a) mendarat
+lewat #31 → merge `89adbfb` → CI #60 + Deploy #32 hijau → revisi `portfolio-be-00028-8dc`. Yang terblokir
+kredensial tinggal (2b): **tanpa** `EMAIL_*` jalur email sekarang berhenti sebelum socket SMTP dibuka, dan CI
+menuntut hal itu dengan angka (lihat blok (2a) di bawah). **Koreksi pada rencanaku sendiri di baris ini:** yang kutulis "(1) sekaligus menutup `main.go:173` yang membuang error gorm" itu salah tempel. Di `c78cb19` baris 173 adalah `DB.Order("created_at desc").Find(&certs)` milik `/api/certificates`, sedangkan stub kontak lama (`main.go:233-248`) sama sekali tidak menyentuh DB — bind, lalu `go func()` pengirim email. Jadi (1) tidak menutup apa pun dari 13 itu, dan `Find` di 173 baru tertutup di (6) lewat #29 |
 | **F10** (4a) | *Hold* — `issues: write` **tidak** dipasang. Tidak ada kerja; hanya dicatat supaya tidak membusuk jadi keputusan yang tidak pernah diambil | Re-check paling cepat **2026-10-12 02:37 UTC**, syaratnya ≥8 baris `event=schedule` dan 0 MERAH. Kalau ada MERAH sebelumnya, hold menang dan alarm tetap run merah | nol |
 
 ### Yang masih butuh darimu
 
 1. **`EMAIL_USER` + `EMAIL_PASS`** di Secret Manager (app password Gmail, bukan password akun). Aku tidak
    menulis nilai secret, hanya namanya ke `secretNames` di `deploy.yml`. F9 langkah (2) tidak bisa mulai
-   tanpa ini; langkah (1), (3), (4), (5), (6) bisa.
+   tanpa ini; langkah (1), (3), (4), (5), (6) bisa. **(2a) sudah mendarat tanpa menunggu ini** — bagian yang
+   tidak butuh kredensial sudah kukerjakan (lihat bloknya di bawah), jadi yang tersisa benar-benar cuma
+   tiga perintah yang nilainya hanya bisa kamu isi:
+
+   ```bash
+   gcloud secrets create portfolio-email-user --project config-agentic-ubuntu --data-file=-   # tempel EMAIL_USER
+   gcloud secrets create portfolio-email-pass --project config-agentic-ubuntu --data-file=-   # tempel app password
+   for s in portfolio-email-user portfolio-email-pass; do gcloud secrets add-iam-policy-binding $s \
+     --project config-agentic-ubuntu \
+     --member serviceAccount:portfolio-runtime@config-agentic-ubuntu.iam.gserviceaccount.com \
+     --role roles/secretmanager.secretAccessor; done
+   ```
+
+   Setelah kedua secret itu ada versi `1`, tinggalaku: menambahkan `EMAIL_USER=portfolio-email-user:latest,
+   EMAIL_PASS=portfolio-email-pass:latest` ke baris `--set-secrets` `deploy.yml:117`, deploy, lalu satu log
+   `contact <id>: email terkirim ke …` menutup klausa email E13. `deploy.yml` **tidak kusentuh sekarang**
+   karena `--set-secrets` menolak nama secret yang belum punya versi — itu membuat setiap deploy gagal, bukan
+   cuma email-nya mati. Pola binding-nya kuikuti dari yang sudah jalan: `portfolio-runtime@` punya
+   `secretAccessor` per secret (terukur di `portfolio-database-url` dan `portfolio-jwt-secret`), dan aku **tidak**
+   ikut memasang binding pada SA compute seperti keenam secret lama — itu salah satu sisa yang menunggu katamu
+   di butir 4c.
 2. **`chore/gerbang-ci`** — hapus atau simpan (ukurannya sudah di F1b).
 3. **"ya" terakhir untuk F7** (create + delete clone berbayar) dan, kalau kau mau bukti negatif E11,
    **untuk drill pin-traffic** di F8 — itu menyentuh traffic produksi kelasnya dengan P5 yang sudah kamu izinkan.
@@ -1519,10 +1547,113 @@ image dibangun tetap hanya kelihatan di respons. README §"Cek yang sama dengan 
 ### Batas langkah (6) — sisa §5 yang belum tertutup
 
 Dari empat butir §5, (6) menutup satu secara penuh. Yang masih terbuka, dengan nama aslinya: **`EMAIL_USER`/
-`EMAIL_PASS`** (langkah 2, terblokir padamu) dan pola fire-and-forget yang menyertainya; **5 dead path admin**
+`EMAIL_PASS`** (langkah 2, terblokir padamu) dan pola fire-and-forget yang menyertainya — *(catatan setelah
+(2a) mendarat: yang terblokir kredensial tinggal **mengirim**; bagian "menyapa Gmail dengan kredensial kosong"
+sudah ditutup lebih dulu lewat #31, lihat bloknya di bawah, dan fire-and-forget memang belum disentuh)*;
+**5 dead path admin**
 di `admin/projects/page.tsx` (+ 4 yang menuntut token); dan **"migration yang berversi"** — `-migrate` masih
 berisi `AutoMigrate`, bukan migration file bernomor. Yang terakhir ini tetap kutulis ulang di setiap blok
 supaya "langkah 5 sudah mendarat" tidak pernah terbaca sebagai "skema sudah berversi".
+
+### F9 langkah (2a) — email berhenti menyapa Gmail sebelum ada yang bisa disapa (2026-10-05, 13:47 – 14:12 UTC)
+
+Yang bisa dikerjakan dari langkah (2) **tanpa** kredensial, dikerjakan; sisanya (2b) memang tidak bisa.
+
+**Apa yang berubah (empat berkas, +102/−15).** `SendEmail` sekarang mengembalikan `ErrNotConfigured` lebih dulu
+kalau `EMAIL_USER`/`EMAIL_PASS` kosong — sebelum `gomail.NewDialer` sempat membuka apa pun. `From` tidak lagi
+dibakar sebagai literal alamat pribadi (`mailer.go:12` yang lama), sekarang = akun yang diautentikasi, karena
+Gmail menolak `From` yang bukan pengirimnya. `main.go` memecah satu cabang `if err != nil` jadi tiga nasib yang
+semuanya membawa id pesan: `email terkirim ke …` / `email dilewati, …` / `gagal kirim email: …`.
+
+**Kenapa ini bukan kosmetik — produksi sudah membayarnya.** `gcloud logging read` pada `portfolio-be`,
+`--freshness 168h`, memisahkan **3** baris kegagalan kirim, dan ketiganya adalah jawaban SMTP sungguhan:
+
+```
+2026-10-05T05:52:27Z  contact: gagal kirim email: gomail: could not send email 1: 530 "5.7.0 Authentication Required …
+2026-10-04T15:08:40Z  Gagal kirim email: gomail: could not send email 1: 530 "5.7.0 Authentication Required …
+2026-10-02T14:30:22Z  Gagal kirim email: gomail: could not send email 1: 530 "5.7.0 Authentication Required …
+```
+
+`530` berarti socket-nya **sampai** ke Gmail dan ditolak di sana — bukan koneksi yang gagal. Dan karena
+`gcloud logging read` juga menyimpan `revision_name`, ketiga baris itu bisa dikunci ke kode mana yang
+berjalan: `portfolio-be-00010-5x9` (revisi yang mengudara pada 2 dan 4 Okt, sebelum semua deploy hari ini)
+untuk dua baris `Gagal kirim email` berhuruf besar — string yang lahir di `25787ec` (2026-03-08), yaitu era
+**stub yang menjawab sukses tanpa menyimpan apa pun** — dan `portfolio-be-00023-xsf` (dibuat `05:49:48Z`,
+deploy langkah (1)) untuk yang `05:52:27Z`. Jadi klaim §1 "mail mati dua lapis" itu kurang tepat: lapis
+keduanya bukan mati, tapi *berjalan lalu dipermalukan* — bahkan ketika jalur itu belum menyimpan pesan
+samasekali. Revisi yang melayani sekarang: `portfolio-be-00028-8dc`. Yang **tidak** bisa kubaca dari log:
+penyebutnya. Dari 17 baris `[GIN]` yang menyebut `/api/contact` dalam 7 hari, cuma **1** yang berstatus `201`,
+sementara kegagalan email ada 3 — jadi angka "setiap pesan membuka socket" kusandarkan pada kode dan pada tes,
+bukan pada hitungan log akses.
+
+**Gerbangnya punya gigi — diukur dua arah.** Step `Kontrak kontak` kuambil **apa adanya** dari `ci.yml`
+(`yaml.safe_load`, 60 baris) lalu kujalankan terhadap harness docker (Postgres nyata + binary statis); yang
+berbeda hanya 4 baris mekanis: `psql` lewat `docker exec`, dan `127.0.0.1:8080` → `8099`/`8098`. Tabel
+`contact_messages` direset ke keadaan CI (`0` baris) **sebelum masing-masing run**, supaya kedua run mulai dari
+state yang sama:
+
+| binary yang melayani | rc | waktu | baris penutup |
+|---|---|---|---|
+| `3e0265a` (pra-2a) | **1** | 15s | `SMTP tetap disapa padahal EMAIL_USER/EMAIL_PASS tidak ada:` → `gagal kirim email: dial tcp 142.251.12.108:587: i/o timeout` |
+| commit `1f9c70f` (ini) | **0** | <1s | `email tanpa kredensial => dilewati, tercatat dengan id pesan, socket SMTP tidak dibuka` |
+
+Keduanya tetap menjawab `400` untuk `POST` bentuk `{message}` (yang dulu dijawab 200 palsu) dan `email
+tersimpan: 'kontrak-ci@example.test'` untuk payload persis `Contact.tsx`.
+
+**Tiga koreksi pada drafku sendiri, semuanya keluar dari angka.** **(i)** Draf pertama menulis `sleep 1`
+sebelum men-*grep* log. Kuukur latensi kegagalan `DialAndSend` di mesin ini: **10s** (timeout bawaan
+`gomail`, `smtp.go:61` — `Dialer`-nya tidak punya field timeout sendiri). Dengan 1s, CI akan menjawab
+"jalur email tidak tercatat sebagai dilewati" untuk kegagalan yang sebenarnya bernama lain; batas tunggunya
+kunaikkan jadi 15s, dan jalur bahagia tidak menunggu (lihat angka CI di bawah). **(ii)** Kontrol pertama mati di
+assertion yang salah — bukan assertion email — karena tabelnya masih berisi baris dari run sebelumnya:
+`select email … where body='pesan uji kontrak'` mengembalikan **2** baris dan lolos ke perbandingan string.
+Itu artefak harness-ku, bukan gerbangnya; CI memulai dengan DB per-kerja yang kosong. Karena itu kedua run
+di atas kureset dulu. **(iii)** `grep 'email' /tmp/be.log` pada cabang gagal mencetak `binary file matches`,
+bukan buktinya (berkas log hasil `docker logs -f` yang kutruncate berisi NUL). Jadi `grep` di cabang kegagalan
+kubeikan `-a`: kalau gerbang ini gagal suatu hari, yang terbaca harus baris SMTP-nya, bukan nama berkasnya.
+
+**Angka di CI (run `37321435827`, PR #31).** `go`/`api`/`web` = `success`; GitGuardian `success`. Dari log job
+`api`: `POST /api/contact => id=57871bac-12f8-4fe2-91bf-0c1d7523986a` → `jumlah baris: 0 -> 1` →
+`POST /api/contact bentuk {message} => 400` → `email tanpa kredensial => dilewati, …` pada `14:03:00.605`,
+yaitu **75 ms** setelah POST (`14:03:00.529`) — jadi loop 15s itu keluar pada iterasi pertama, seperti
+didesain. Job `go` mencetak `ok github.com/arkanFzi/website-porto2/go-backend/mailer 0.003s`: **untuk pertama
+kali** ada paket Go yang mengembalikan `ok` di CI, sebelumnya modul itu hanya `[no test files]`.
+
+**Tes yang mendarat bersamanya (yang pertama di `go-backend`).** `TestSendEmailTanpaKredensialBerhentiSebelumSMTP`
+(3 subtest: keduanya kosong / `pass` belum / `user` belum — semuanya wajib `errors.Is(err, ErrNotConfigured)`)
+dan `TestPengirimAdalahAkunYangDiautentikasi` (`GetHeader` From/To/Subject). Negatif kontrolnya: `From` literal
+dikembalikan → `header From = ["muhammadarkanfauzi9@gmail.com"], seharusnya ["pengirim@example.test"]`. Di
+mesin ini: `gofmt -l` kosong · `go vet ./...` rc=0 · `go build ./...` rc=0 · `go test -count=1 ./...` ok ·
+`go run ./cmd/audit-ignored .` → `silent_gorm=0 silent_listen=0` · `npx tsc --noEmit` rc=1 dengan **satu**
+error yang sama seperti di (6) (`.next/types/validator.ts` menunjuk `src/app/api/contact/route.ts` yang memang
+sudah tidak ada; berkas itu ter-gitignore dan bukan bagian perubahan ini) — sumber yang terlacak kucek ulang
+dengan config terpisah: rc=0, 0 galat.
+
+**Mendarat.** `1f9c70f` → PR **#31** (base `3e0265a`) → CI run `37321435827` hijau → merge **`89adbfb`** →
+**CI #60** + **Deploy #32** hijau → revisi **`portfolio-be-00028-8dc`**, gambar
+`sha256:4c44507278aaf90a…a566`. Sekali catatan API: percobaan merge pertamaku `422` karena kuirim `sha` pendek
+(`1f9c70f`); `sha` untuk endpoint merge harus penuh.
+
+**Probe produksi setelah deploy.** `GET /api/health` → `{"db":"ok","status":"ok"}`. `GET /api/admin/contact`
+tanpa JWT → **401** pada 5/5 percobaan HTTP/2 dan 3/3 HTTP/1.1, body `{"error":"Unauthorized"}`; `Bearer`
+palsu → **401** juga (jadi ini bukan sekadar "tidak ada header"). Env revisi produksi berisi
+`ADMIN_USER, DATABASE_URL, JWT_SECRET, ADMIN_PASS, ADMIN_EMAIL, CORS_ORIGINS` dan hitungan nama yang berawalan
+`EMAIL_` = **0** — artinya (2a) sedang aktif di produksi sebagai *skip* yang jujur, bukan sebagai `530`.
+Probe kali ini **tidak menulis baris baru**: satu-satunya cara memicu jalur email produksi adalah POST sungguhan,
+dan baris itu nanti tidak bisa kuhapus sendiri (token admin ada di tanganmu) — jadi satu POST publik itu sengaja
+kusisakan untukmu, sekaligus penutup §8(a).
+
+### Batas langkah (2a) — apa yang justru tidak dibuktikan
+
+Bahwa Gmail **menerima** satu pesan: belum, dan itu memang klausa E13 yang tunggu kredensial (2b). Cabang
+`gagal kirim email` masih **nol** eksekusi di tes mana pun — satu-satunya cara mengujinya adalah SMTP yang
+menyapa balik, dan yang terdekat dengannya adalah `530` produksi di atas. `EMAIL_HOST`/port tetap tidak
+kubuat parameter (tidak ada yang memintanya, dan tidak ada yang bisa mengujinya). Pola fire-and-forget
+(`go func()` tanpa konteks, tanpa tunggakan, tanpa retry) **masih utuh** — (2a) cuma membuat kegagalannya jujur,
+bukan membuatnya bisa dipercaya; itu §5 "melanjutkan pola fire-and-forget" dan ia bukan bagian urutan F9.
+Dan yang paling penting untuk tidak terbalik baca: sejak hari ini, **tanpa kredensial, tidak ada satu pun
+notifikasi email yang keluar dari produksi** — sama seperti kemarin-kemarin, hanya sekarang itu tertulis
+`dilewati` alih-alih menyamar sebagai kegagalan Gmail.
 
 ### Yang tidak kubebereskan di M12 (biar tidak kelihatan lupa)
 
