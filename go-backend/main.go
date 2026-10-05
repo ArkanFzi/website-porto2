@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -102,6 +103,33 @@ type ContactMessage struct {
 
 var DB *gorm.DB
 
+// managedTables adalah tabel yang harus sudah ada sebelum satu request pun dilayani.
+var managedTables = []string{"certificates", "experiences", "contact_messages"}
+
+func migrateSchema() {
+	if err := DB.AutoMigrate(&Certificate{}, &Experience{}, &ContactMessage{}); err != nil {
+		log.Fatalf("migrate: gagal menyiapkan skema: %v", err)
+	}
+	log.Println("migrate: skema siap")
+}
+
+// verifySchema dipakai jalur serve. AutoMigrate sengaja tidak lagi berjalan di sini: skema
+// berubah karena perintah, bukan karena sebuah proses dingin kebetulan naik. Kalau tabel belum
+// ada, boot menolak keras — kegagalan terdengar di deploy, bukan di request pengunjung.
+func verifySchema() {
+	var got int64
+	err := DB.Raw(`select count(distinct table_name) from information_schema.tables
+		where table_schema = current_schema() and table_name in (?)`, managedTables).Scan(&got).Error
+	if err != nil {
+		log.Fatalf("db: gagal memeriksa skema: %v", err)
+	}
+	if got != int64(len(managedTables)) {
+		log.Fatalf("db: %d/%d tabel belum ada (%v); jalankan `%s -migrate` dulu",
+			got, len(managedTables), managedTables, os.Args[0])
+	}
+	log.Println("Database connection established; skema terverifikasi.")
+}
+
 func initDB() {
 	// Try loading .env file if exists
 	_ = godotenv.Load()
@@ -116,25 +144,25 @@ func initDB() {
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
-
-	// Migrate the schema
-	err = DB.AutoMigrate(&Certificate{}, &Experience{}, &ContactMessage{})
-	if err != nil {
-		log.Fatalf("Failed to migrate database: %v", err)
-	}
-
-	log.Println("Database connection established and schema migrated.")
 }
 
 func main() {
+	migrate := flag.Bool("migrate", false, "siapkan skema lalu keluar; tidak dipakai saat melayani request")
+	flag.Parse()
+
 	initDB()
+
+	// -migrate berjalan sebelum ada tabel, jadi ia tidak boleh melewati verifySchema.
+	if *migrate {
+		migrateSchema()
+		return
+	}
+
+	verifySchema()
 
 	jwtSecret = []byte(requireEnv("JWT_SECRET"))
 	adminUser = getEnv("ADMIN_USER", "admin")
 	adminPass = requireEnv("ADMIN_PASS")
-
-	// Seed dummy data if empty
-	seedData()
 
 	r := gin.Default()
 
@@ -353,24 +381,5 @@ func handleLogin(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"token": tokenString})
 	} else {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
-	}
-}
-
-func seedData() {
-	var certCount int64
-	DB.Model(&Certificate{}).Count(&certCount)
-	if certCount == 0 {
-		DB.Create(&Certificate{Title: "AWS Solutions Architect", Issuer: "Amazon Web Services", Date: "2024"})
-		DB.Create(&Certificate{Title: "Advanced React Patterns", Issuer: "Frontend Masters", Date: "2023"})
-		DB.Create(&Certificate{Title: "Full-Stack Design", Issuer: "Educative", Date: "2023"})
-		log.Println("Seeded Certificates.")
-	}
-
-	var expCount int64
-	DB.Model(&Experience{}).Count(&expCount)
-	if expCount == 0 {
-		DB.Create(&Experience{Role: "Senior Software Engineer", Company: "TechNova Solutions", Period: "2023 - Pres"})
-		DB.Create(&Experience{Role: "Fullstack Developer", Company: "Digital Artisan", Period: "2021 - 2023"})
-		log.Println("Seeded Experiences.")
 	}
 }

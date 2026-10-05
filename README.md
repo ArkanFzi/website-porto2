@@ -21,6 +21,13 @@ Ditulis apa adanya, karena sebagian situs ini belum berfungsi dan daftarnya dija
 [`tools/ci/api-baseline.json`](tools/ci/api-baseline.json). Selama sebuah jalur masih mati, CI ikut
 mengetahuinya; kalau diperbaiki tanpa memperbarui baseline, CI justru merah.
 
+**Kolom di bawah adalah hasil audit sebelum M11.** Yang sudah berubah sejak itu: form kontak menulis
+ke `contact_messages` dan menjawab `201 {id}`; `/api/cv` ikut memuat daftar sertifikat;
+`/admin/dashboard` membaca + menghapus kotak masuk lewat `GET`/`DELETE /api/admin/contact` ber-JWT,
+dan `POST /api/auth/login` akhirnya ada; `seedData()` + `AutoMigrate` tidak lagi jalan saat start.
+Yang masih mati persis seperti tertulis: lima rute `/api/admin/projects` dan empat tulis
+`/api/certificates` + `/api/experience` dari `/admin/page.tsx` (fetch polos tanpa `Authorization`).
+
 | Fitur | Status |
 |---|---|
 | Halaman utama, seksi About/Projects, animasi scroll, menu mobile | jalan |
@@ -33,11 +40,12 @@ mengetahuinya; kalau diperbaiki tanpa memperbarui baseline, CI justru merah.
 | Halaman admin (`/admin`, `/admin/projects`, `/admin/dashboard`) | **mati** — `/admin/login` memanggil `POST /api/auth/login` yang tidak ada di backend, jadi token tidak pernah terbit; `/admin/projects` + `/admin/dashboard` memanggil `/api/admin/*` dan `GET/DELETE /api/contact/:id` yang juga tidak ada; `/admin/page.tsx` menulis dengan `fetch` biasa tanpa header `Authorization` |
 | Login admin (`POST /api/login` + JWT) | ada di backend, belum dipakai jalur yang hidup |
 
-`/api/cv` kosong daftar sertifikatnya karena `src/app/cv-layout/page.tsx` memanggil
+`/api/cv` dulu kosong daftar sertifikatnya karena `src/app/cv-layout/page.tsx` memanggil
 `http://localhost:8080` secara hardcoded — origin itu tidak ada di dalam container frontend.
 Perbaikan produk (kontak, admin, CV, `seedData()` yang ikut jalan di produksi, `AutoMigrate` saat
-container start) dijadwalkan sebagai **M11**; gerbang CI/CD-nya (M10) sudah lebih dulu dibangun,
-lihat [TODO.md](TODO.md).
+container start) dijadwalkan sebagai **M11** — kontak, inbox admin, CV dan jalur start sudah mendarat
+(PR #22, #24, #25, plus langkah ini); yang tersisa email (butuh kredensial) dan 13 error gorm yang
+diabaikan. Gerbang CI/CD-nya (M10) sudah lebih dulu dibangun, lihat [TODO.md](TODO.md).
 
 ---
 
@@ -124,14 +132,24 @@ ADMIN_PASS=ganti-dengan-sandi-lokal
 ADMIN_EMAIL=kamu@example.com
 CORS_ORIGINS=http://localhost:3000
 ENV
+go run . -migrate
 go run .
 ```
 
 `DATABASE_URL` kosong → jatuh ke default `host=localhost … port=5433` di `main.go`.
 `JWT_SECRET` dan `ADMIN_PASS` **wajib** ada; kalau kosong proses langsung `log.Fatalf`.
-Saat start, backend menjalankan `AutoMigrate` dan `seedData()` — kalau tabel kosong, tiga sertifikat
-dan dua pengalaman kerja fiktif ikut dimasukkan. Perilaku itu dijadwalkan hilang di M11; untuk
-sekarang, hapus barisnya langsung lewat `psql`.
+
+Skema **tidak** dibuat lagi saat container start, dan backend tidak menyisipkan data apa pun.
+Sekali di awal — dan setiap kali model berubah — siapkan skema secara eksplisit:
+
+```bash
+go run . -migrate
+```
+
+Setelah itu `go run .` menolak boot kalau salah satu dari `certificates`, `experiences`,
+`contact_messages` belum ada, dengan pesan yang menyebut tabel mana yang kurang. Datamu diisi lewat
+`psql` atau API admin; tiga sertifikat dan dua pengalaman kerja fiktif yang dulu ikut muncul di
+produksi tidak dibuat lagi.
 
 ### 2. Frontend
 
@@ -161,6 +179,11 @@ required check-nya (`go`, `web`, `api`) sudah hijau. Merge ke `main` menjalankan
 membangun image by digest, menyalakan traffic ke revisi baru secara eksplisit, lalu memverifikasi
 isi respons kedua layanan; kalau verifikasi gagal, traffic kedua layanan dikembalikan ke revisi
 sebelumnya. Detail, postur IAM, dan alasan Cloud Build dimatikan: [DEPLOY.md](DEPLOY.md).
+
+Karena container tidak lagi membuat tabel saat start, perubahan model menuntut satu langkah sebelum
+traffic dipindah: jalankan image yang sama dengan `-migrate` memakai `DATABASE_URL` produksi (yang
+di Secret Manager, bukan yang ditulis di mana pun). Kalau langkah itu terlewat, revisi baru menolak
+boot — kegagalan yang terdengar di deploy, bukan di request pengunjung.
 
 ---
 
