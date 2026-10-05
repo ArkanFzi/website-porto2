@@ -251,8 +251,10 @@ di 13 titik. M10 sengaja dibuat **mendukung** M11: baseline ratchet §1 menyusut
 Urutan yang kuambil: gerbang dulu (permintaanmu), produk setelah — dengan konsekuensi jujur bahwa
 situs tetap kehilangan pesan kontak sampai M11 jalan, dan mulai sekarang CI akan **mengingat** itu
 lewat file baseline, bukan melupakannya. Konsekuensi itu **berlaku sampai F9 langkah (1) mendarat**
-(lihat bloknya di §8): sejak itu pesan pengunjung masuk ke `contact_messages`, tapi masih belum bisa
-dibaca kembali dari situs — rute admin-nya baru ada di langkah (3).
+(lihat bloknya di §8): sejak itu pesan pengunjung masuk ke `contact_messages`, dan sejak langkah (3) pesan itu
+bisa **dibaca dan dihapus kembali** lewat `GET`/`DELETE /api/admin/contact` ber-JWT — 401 untuk siapa pun tanpa
+token, terukur di produksi. Yang masih terbuka: tidak ada yang dikirim ke inbox email (langkah 2, menunggu
+kredensial) dan skema masih dibuat saat start (langkah 5).
 
 ---
 
@@ -546,7 +548,7 @@ memakai alat yang baru valid setelah F8.
 | **F6** (1a langkah 3) | Cabut `roles/editor` dari `486641216758-compute@developer.gserviceaccount.com`. **`pubsub.publisher` dibiarkan** (belum terukur siapa penerbitnya — dicatat sebagai hutang, bukan dihapus diam-diam) | **E9b**: `get-iam-policy` → member `roles/editor` hanya `…@cloudservices.gserviceaccount.com` (milik Google); 0 service Cloud Run di projek yang masih memakai SA compute (diukur `run services list --format=value(name,spec.template.spec.serviceAccountName)`); `connector state=READY`; `/api/health` tetap `.db=="ok"`; baris Watch besok hijau | Yang paling lebar di M12. Reversible dalam 1 perintah (`add-iam-policy-binding`), dan itu memang rencananya kalau connector atau logging merah. Jangan digabung dengan F5 dalam satu PR — kalau keduanya merah, tidak terbaca mana yang bersalah |
 | **F7** (2a, hasil K1) | **Drill pemulihan**: clone `portfolio-pg` ke titik waktu (`gcloud sql instances clone --restore-from-timestamp=…`, nama flag dikukuhkan dari `--help` dulu, tidak ditebak), ukur, lalu hapus clone-nya | **E10**: clone `state=RUNNABLE` + tier + `ipAddresses` tercatat; **RTO** = delta menit antara perintah dan `RUNNABLE` diukur; clone dihapus (`instances list` kembali 1 baris). Yang **tidak** dibuktikan, kutulis apa adanya: isi row tidak bisa dibaca dari laptop (DB hanya `PRIVATE 10.112.0.2`), jadi "data-nya kembali benar" masih 0× sampai ada jalur baca sementara di dalam VPC | Resource berbayar baru (±`db-f1-micro`) yang hidup beberapa menit lalu kuhapus. **Butuh "ya" terakhirmu** karena create + delete resource, meski 2a sudah kamu setujui dalam bentuk lain |
 | **F8** (keputusan 3a) | Bikin `github-watch@…`, grant **hanya** `roles/run.viewer`; binding `iam.workloadIdentityUser` di SA itu dengan `principalSet://…/attribute.repository/ArkanFzi/website-porto2` (satu-satunya granularitas yang tersedia — provider tidak memetakan `sub`/`environment`). Di `watch.yml`: `id-token: write`, `auth@v2` ke SA itu, lalu invariant traffic: **100% pada revisi `Ready` terbaru; kalau tidak → MERAH dengan nama revisi yang ter-pin; kalau kredensial/cloud tidak terbaca → KUNING** (bukan diam-diam bersih) | **E11**: satu run ber-`event=schedule` yang baris hariannya memuat `traffic\|HIJAU\|be-00018-fsc=100 / fe-00017-wqb=100` dan **log-nya membuktikan ia membaca state cloud** (bukan hanya repo). Negatifnya (opsional, lihat daftar butuh-izin): pin traffic ke revisi lama ±2 menit → Watch harus MERAH sendiri keesokan harinya, lalu lepas | Yang bocor kalau salah: **read-only** (`run.viewer`) — dan granularitasnya persis sama dengan binding `github-cd` yang sudah ada hari ini, jadi permukaan baru yang ditambahkan nyaris nol: menambah identitas *lebih kecil* di bentuk yang sudah dipakai identitas *lebih besar*. Hutang yang sengaja ditinggalkan: memperketat ke `attribute.environment` menuntut edit `attributeMapping` pada provider yang dipakai CD produksi — tidak kulakukan di fase ini |
-| **F9** (6b + 7) | M11 urutanku: (1) tabel `contact_messages` + POST `/api/contact` menulis (sekaligus menutup `main.go:173` yang membuang error gorm); (2) email via gomail; (3) rute admin `POST /api/auth/login`, `GET/DELETE /api/admin/contact` ber-JWT; (4) buang hardcode `http://localhost:8080` di `cv-layout`; (5) hapus `seedData()` + `AutoMigrate` saat start; (6) tutup 13 error gorm yang diabaikan. Satu sub-langkah = satu PR | **E13**: jumlah path mati di `tools/ci/api-baseline.json` **turun dari 13** dan `api-contract-check.mjs` tetap `rc=0`; 1 POST dari situs publik → **terhitung** lewat `GET /api/admin/contact` (count +1, dan **401 tanpa JWT**); email: 1 log run membuktikan SMTP menerima (hanya setelah kredensial ada); `go vet`+gofmt bersih; endpoint admin tidak menambah secret yang terbaca CI | Semua lewat gerbang yang sudah terbukti. (2) **terblokir padamu** (lihat di bawah). Rute admin = permukaan baru di internet: tanpa JWT tidak ada satu pun rute admin yang boleh 200, dan itu kukunci di job `api`, bukan di narasi |
+| **F9** (6b + 7) | M11 urutanku: (1) tabel `contact_messages` + POST `/api/contact` menulis (sekaligus menutup `main.go:173` yang membuang error gorm); (2) email via gomail; (3) rute admin `POST /api/auth/login`, `GET/DELETE /api/admin/contact` ber-JWT; (4) buang hardcode `http://localhost:8080` di `cv-layout`; (5) hapus `seedData()` + `AutoMigrate` saat start; (6) tutup 13 error gorm yang diabaikan. Satu sub-langkah = satu PR | **E13**: jumlah path mati di `tools/ci/api-baseline.json` **turun dari 13** dan `api-contract-check.mjs` tetap `rc=0`; 1 POST dari situs publik → **terhitung** lewat `GET /api/admin/contact` (count +1, dan **401 tanpa JWT**); email: 1 log run membuktikan SMTP menerima (hanya setelah kredensial ada); `go vet`+gofmt bersih; endpoint admin tidak menambah secret yang terbaca CI | Semua lewat gerbang yang sudah terbukti. (2) **terblokir padamu** (lihat di bawah). Rute admin = permukaan baru di internet: tanpa JWT tidak ada satu pun rute admin yang boleh 200, dan itu kukunci di job `api`, bukan di narasi. **Status 2026-10-05:** (1) #22, (3) #24, (4) #25 sudah mendarat — path mati 13 → 9; (2) terblokir kredensial; (5) dan (6) belum |
 | **F10** (4a) | *Hold* — `issues: write` **tidak** dipasang. Tidak ada kerja; hanya dicatat supaya tidak membusuk jadi keputusan yang tidak pernah diambil | Re-check paling cepat **2026-10-12 02:37 UTC**, syaratnya ≥8 baris `event=schedule` dan 0 MERAH. Kalau ada MERAH sebelumnya, hold menang dan alarm tetap run merah | nol |
 
 ### Yang masih butuh darimu
@@ -580,6 +582,19 @@ seminggu — nol kode, tagihannya Cloud SQL. Aku sengaja tidak memilih sendiri, 
 sebelumnya endpoint ini *tidak bisa* ditumpahi spam karena dia tidak menulis apa pun, dan sejak pagi itu bisa.
 Nomor ini kutaruh di sini, bukan di dalam daftar di atas, karena tidak ada satu pun butir 1–4 yang berubah
 olehnya.
+
+**Tiga butir yang keluar setelah F9 langkah (3) dan (4) mendarat.** **(a)** Klausa E13 "count +1 lewat
+`GET /api/admin/contact`" sudah hijau di CI dengan Postgres nyata tapi belum kukur di produksi, dan satu-satunya
+yang menghalangi adalah kredensial admin produksi: nilainya ada di Secret Manager, yang tidak pernah kubaca, dan
+Cloud SQL-nya `PRIVATE` tanpa IP publik (`portfolio-pg`, `10.112.0.2`) sehingga tidak ada jalur sah dari laptop.
+Kamu bisa menutupnya dua cara: login ke dashboard sendiri (dan sekaligus menghapus baris probe
+`b693e544-3001-…` yang kutinggalkan), atau memutuskan bahwa angka produksi memang tidak perlu diukur dari
+laptop. **(b)** Cangkang halaman `/admin/dashboard` menjawab **200** publik — tanpa isi, karena datanya datang
+dari API yang sudah 401 — dan token admin disimpan di `localStorage`, yang terbaca oleh XSS. Aku tidak
+mengubahnya (di luar F9), tapi ini bukan berarti "sudah aman": ini keputusan yang belum diambil. **(c)** CV
+yang diunduh publik ternyata ikut berubah oleh langkah (4) (+9.093 byte, tiga sertifikasi masuk); kalau itu
+perubahan yang kamu tidak inginkan muncul sekarang, jalan paling murah bukan menghapus kode — cukup
+`update-traffic` ke revisi `portfolio-fe-00023-g7s`, yang masih utuh.
 
 ### Hasil terukur F1–F4 (2026-10-05, 01:55 – 02:12 UTC)
 
@@ -1010,6 +1025,168 @@ langkah (3); sementara ini hanya bisa dibersihkan lewat Cloud SQL. Aku juga tida
 naik": tidak ada jalur yang diizinkan dari laptop ke Cloud SQL, dan itu bukan sesuatu yang kubuka diam-diam.
 Bukti bahwa barisnya nyata adalah `id` yang dikembalikan `gen_random_uuid()` bersama `201` — insert yang gagal
 tidak bisa menghasilkan uuid sisi DB — dan `select count(*)` yang sebenarnya sudah kubuktikan di CI.
+
+### F9 langkah (3) — inbox admin ber-JWT, dan middleware gin yang tidak pernah jalan (2026-10-05, 06:04 – 07:01 UTC)
+
+**Yang dibangun.** `admin := api.Group("/admin")` + `AuthMiddleware`, berisi `GET /api/admin/contact`
+(urut terbaru, cap 500 baris) dan `DELETE /api/admin/contact/:id`. `handleLogin` dijadikan satu fungsi dan
+didaftarkan pada dua path: `POST /api/login` (yang selama ini dipakai `admin/page.tsx`) dan
+`POST /api/auth/login` (yang dipakai `admin/login/page.tsx` dan selama ini mati). Satu handler, tidak ada
+duplikasi logika kredensial. `admin/dashboard/page.tsx` pindah ke `/api/admin/contact`, dan tipe `ContactMsg`
+disesuaikan ke kunci yang benar-benar dikirim backend: `id` string (bukan `number`), `body` (bukan `message`),
+`createdAt` (bukan `submittedDate`). Baseline: **13 → 10 path mati**, `rc=0`.
+
+**Bug yang tidak akan ketahuan kalau step CI-nya tidak kujalankan verbatim.** Assertion pertamaku —
+`DELETE /api/admin/contact` tanpa token harus 401 — **gagal di run lokal: malah 404**. Penyebabnya perilaku
+gin: `group.Use(mw)` tidak berjalan untuk path yang tidak pernah didaftarkan group itu. Jadi `DELETE
+/api/admin/contact` (tanpa `:id`) lolos tanpa menyentuh JWT dan dijawab 404 oleh router. Tidak ada data yang
+bocor, tapi itu adalah oracle "rute ini ada / tidak ada", dan kalimat E13-ku ("tanpa JWT tidak ada satu pun
+rute admin yang boleh 200") jadi **tidak benar** untuk seluruh subtree admin. Kuberes dengan `r.NoRoute`:
+path berawalan `/api/admin/` yang tidak terdaftar dijawab 401. Aku memilih memperkuat guarded-nya, bukan
+melonggarkan assertion-nya.
+
+**Efek samping yang harus diketahui:** 404 untuk path tak dikenal di backend sekarang berbadan JSON.
+Terukur di produksi: `GET /api/contact` → `404`, body `{"error":"Not found"}`, **21 byte di jalur**
+(20 byte JSON + newline penutup gin). Statusnya tetap 404; hanya bentuknya yang berubah.
+
+**Angka CI.** Run #44 (`pull_request`) `success` 06:04 UTC — `go` + `web` + `api`, 0 step gagal, step 11 dari
+13 bernama `Kontrak inbox admin (401 tanpa JWT, terhitung dengan JWT)` `success`. Log-nya mencetak:
+
+| yang tercetak | hasil |
+|---|---|
+| `GET /api/admin/contact tanpa token` | **401** |
+| `DELETE /api/admin/contact tanpa token` | **401** |
+| `GET dengan token rusak` | **401** |
+| `login: /api/auth/login …, /api/login …` | **144 char** keduanya |
+| `sandi salah` | **401** |
+| `POST publik` | **201**, `id=b6c8f6fd-ed96-469e-8b43-9e8a550cd841`, sebelumnya `count 1` |
+| `inbox panjang=…, psql count=…, memuat id baru` | **2, 2, true** |
+| `DELETE` | `{"deleted":1}` |
+| `DELETE lagi` | **404** |
+| `DELETE id cacat` | **400** |
+
+Yang tidak tercetak tapi di-assert langkah yang sama: `rowcount == before + 1` (naik **persis satu**),
+panjang inbox **sama dengan** `select count(*)`, baris hilang lagi setelah hapus, email tersimpan
+`kontrak-admin@example.test` (trim + lower), `.deleted == 1`. Inilah bentuk E13 yang diminta: 1 POST →
+terhitung lewat `GET /api/admin/contact`, 401 tanpa JWT, hapus idempoten. `DELETE /api/admin/contact/:id`
+menolak id non-uuid dengan **400 sebelum** menyentuh DB, karena kalau tidak Postgres menjawab
+`invalid input syntax for type uuid` dan handler-ku akan berubah jadi `500` untuk sampah.
+
+**Cara langkah ini mendarat, dan satu fakta operasional baru dari keputusan 8.** PR #24 (`4c5e6d0`) → CI #44
+`success`. Merge pertama **ditolak**: `PUT /pulls/24/merge` → **HTTP 405**, pesan `3 of 3 required status
+checks are expected.` Ini konsekuensi nyata pertama dari `strict: true` yang kupasang di F2/keputusan 8 — branch
+yang tertinggal satu merge dokumen (`25d4e5f`) tidak boleh masuk meski delta-nya cuma `TODO.md`. Jalan keluarnya
+bukan mematikan strict: `git merge origin/main` ke branch (`8b9ad41`) → CI #45 `success` 06:56:03 → merge lolos
+06:56:28 → `1ef9e0b`. Harganya **satu run CI tambahan** (±50 detik) dan itu harga yang memang kubayar di muka
+saat memilih strict. CI #46 `success` (push, 06:57:34), **Deploy to Cloud Run #28 `success`** 07:01:22.
+
+**Produksi, sesudah deploy (07:0x UTC).** `portfolio-be` generation 37 → 39 (`portfolio-be-00024-h5m`),
+`portfolio-fe` 34 → 36 (`portfolio-fe-00023-g7s`). Semua probe lewat **URL situs publik** (`portfolio-fe-…`)
+dan sebagian langsung ke backend:
+
+| probe produksi (tanpa JWT) | hasil |
+|---|---|
+| `GET` / `DELETE` `/api/admin/contact` | **401** `{"error":"Unauthorized"}` (lewat FE, dan lewat BE langsung) |
+| `GET` / `DELETE` / `POST` `/api/admin/projects` | **401** untuk ketiganya — rute yang tidak ada pun tidak lagi jadi oracle |
+| `GET /api/admin/contact/bukan-uuid` | **401** |
+| `GET /api/admin/` | **401** |
+| `GET /api/admin/contact` dengan `Bearer abc.def.ghi` | **401** |
+| `POST /api/auth/login` kredensial salah | **401** `Invalid username or password` — **bukan 404**, jadi path yang dulu mati sudah hidup di produksi |
+| `POST /api/login` kredensial salah | **401** (yang lama tetap hidup) |
+| `POST /api/contact` empat body cacat (`{}`, tanpa email, email non-koheren, name spasi) | **400** keempatnya, tanpa menulis baris |
+| `GET /` | **40.699 byte**, jejak `Application error` = 0 — identik dengan sebelum |
+| `GET /api/health` | `{"db":"ok","status":"ok"}` |
+
+**Yang masih belum bisa kubuktikan di produksi, dan alasannya konkret.** Klausa "count +1 lewat
+`GET /api/admin/contact`" sudah hijau di CI dengan Postgres nyata, tapi belum kukur di produksi karena
+membaca inbox butuh JWT produksi, dan JWT produksi butuh `ADMIN_USER`/`ADMIN_PASS` — nilainya ada di Secret
+Manager dan aku tidak pernah membaca nilai secret. Jalan lain (psql langsung) juga tertutup, dan sekarang
+terukur: `portfolio-pg` **us-central1, Postgres 15.19, satu-satunya IP `10.112.0.2` bertipe `PRIVATE`** —
+tidak ada interface publik, jadi tidak ada jalur sah dari laptop. Tidak kupaksakan dengan mengubah
+produksi (menambah tag revisi / IP publik / secret baru) hanya demi sebuah angka. Konsekuensinya: baris probe
+`b693e544-3001-…` dari langkah (1) **masih ada** di DB produksi dan sekarang *bisa* dihapus — tapi oleh tangan
+yang punya login, lewat dashboard, bukan olehku.
+
+**Satu fakta yang perlu nampan, bukan kubungkus.** `GET /admin/dashboard` (halaman, bukan API) menjawab
+**200** untuk siapa pun — 10.275 byte HTML cangkang. Tidak ada isinya: `grep` untuk `kontrak-admin`,
+`b693e544`, `Inbox`, `Pesan` = **0** kemunculan, karena datanya datang dari `authFetch` yang dijawab 401.
+Jadi klausa E13 ("tidak ada satu pun rute admin yang boleh 200") berlaku untuk **rute API**, dan halaman
+admin adalah cangkang client-side (`localStorage.admin_token`, 401 → hapus token → `window.location.href =
+/admin/login`). Gerbang sungguhnya ada di server, tapi dua hal ini tercatat sebagai utang, bukan sebagai
+"bersih": cangkang `/admin/*` publik, dan token di `localStorage` yang terbaca oleh XSS. Keduanya di luar
+scope F9 dan tidak kusentuh diam-diam di sini.
+
+### F9 langkah (4) — cv-layout, localhost pengunjung, dan CV yang ternyata ikut berubah (2026-10-05, 07:02 – 07:14 UTC)
+
+**Bug-nya terbukti dari artefak yang di-deliver, tanpa browser.** Produksi sebelum PR ini:
+
+| ukur | hasil |
+|---|---|
+| `GET /cv-layout` | **200**, 16.167 byte |
+| chunk JS yang direferensikan halaman | 9 buah |
+| kemunculan `localhost:8080` di kesembilannya | **1**, di `/_next/static/chunks/4884843434ac0d06.js` |
+| chunk yang sama memuat | `"http://localhost:8080/api/certificates"` **dan** `"No professional certifications loaded"` — jadi ini memang chunk milik cv-layout |
+
+Bundle produksi menyuruh **browser pengunjung** menghubungi komputernya sendiri. Yang dilihat pengunjung
+selalu fallback-nya. Perbaikan: satu baris, `fetch("/api/certificates")` — rewrite `/api/certificates` sudah
+ada di `next.config.ts` dan rutenya publik. Baseline lewat `--emit-baseline`: **10 → 9**. Sebelum kucetak, `api-contract-check.mjs` rc=1 dengan
+**tepat satu** baris temuan: `Sudah diperbaiki, kecilkan baseline (1): - GET http://localhost:8080/api/certificates`.
+
+**Sisa 9 path mati, dan kenapa tidak kutuntaskan di PR ini:** 5 milik
+`GET/POST/PUT/DELETE /api/admin/projects` + `POST /api/admin/sync-github` (rutenya memang tidak ada di
+backend — memperbaikinya = fitur baru), 4 milik `POST/DELETE /api/certificates` dan `/api/experience` dari
+`admin/page.tsx` (rutenya ada dan protected, tapi dipanggil `fetch()` polos tanpa header `Authorization`).
+Kelas yang kedua ini bug yang berbeda dari yang kubersihkan di sini, dan aku tidak mencampurnya supaya
+satu sub-langkah tetap satu PR.
+
+**Yang membuat langkah ini bukan sekadar bersih-bersih tripwire.** `src/app/api/cv/route.ts:21` membuka
+`http://127.0.0.1:$PORT/cv-layout` dengan puppeteer **di dalam container FE** lalu mencetaknya ke PDF. Di
+dalam container itu, `localhost:8080` adalah container FE sendiri — tidak ada yang mendengar di 8080. Artinya
+sejak awal, **CV yang bisa diunduh publik** dirender dari halaman yang sertifikasinya kosong. Terukur:
+
+|ukur|sebelum (diukur di langkah 1)|sesudah|
+|---|---|---|
+| `GET /api/cv` | 774.803 byte `%PDF-1.4` | **783.896 byte**, `%PDF-1.4`, 2 halaman A4 — **+9.093 byte** |
+| teks PDF (`pdftotext -layout`) | tidak kuukur waktu itu | `VALIDATIONS / CERTIFICATES` + **FULL-STACK DESIGN / Educative \| 2023**, **ADVANCED REACT PATTERNS / Frontend Masters \| 2023**, **AWS SOLUTIONS ARCHITECT / Amazon Web Services \| 2024** |
+| `GET /api/certificates` produksi | 200, 607 byte, **3 baris** | identik |
+| `GET /cv-layout` | 200, 16.167 byte | 200, **16.167 byte** (identik — perubahan ada di chunk JS, bukan di HTML) |
+| kemunculan `localhost:8080` di 9 chunk halaman | **1** | **0** |
+| chunk lama `4884843434ac0d06.js` | dilayani | **404** — bukti revisi baru yang menjawab, bukan cache |
+
+Tiga judul itu muncul dengan `issuer` dan tahun yang cocok dengan `GET /api/certificates`. `pdftotext`
+menyusun ulang teks dua-kolom secara berselang-seling, jadi `"advanced react patterns"` tidak lulus sebagai
+satu string utuh (`hit=0`) sementara kata-katanya ada; kalau teks dinormalkan jadi satu baris, potongan
+`full-stack design`, `aws solutions architect`, `educative`, `frontend masters` semuanya lulus. Atribusi
+"delta ini dari langkah (4), bukan (3)" kunyimpulkan lewat eliminasi: di antara dua pengukuran itu yang mendarat
+adalah (3) dan (4), dan (3) tidak menyentuh jalur render `/cv-layout`; **aku tidak membandingkan dengan berkas
+PDF lama** — URL khas per-revisi tidak tersedia (`gcloud run revisions describe --format='value(status.url)'`
+mengembalikan kosong untuk kedua revisi), jadi klaim "sebelumnya sertifikasinya kosong" berdiri di atas
+pengukuran byte + pembacaan kode, bukan di atas dua PDF.
+
+**Cara langkah ini mendarat.** PR #25 (`27103d0`, branch sudah sejajar main sehingga tidak kena 405) → CI #47
+`success` 07:08:47; job `web` mencetak `Kontrak sesuai baseline: 9 path mati, 0 stub, tidak ada regresi`
+dengan hitungan `rute backend 12 (protected: 6)`, `rewrite 9`, `handler lokal 3`, `pemanggilan UI 25 (18 unik)`.
+Merge 07:09:17 → `93686e0`; CI #48 `success` 07:10:31; **Deploy #29 `success`** 07:13:36. `portfolio-fe`
+36 → 38 (`portfolio-fe-00024-m5v`), `portfolio-be` 39 → 41 (`portfolio-be-00025-s6z`) — backend ikut naik
+revisi meskipun **tidak ada berkas Go yang berubah**, pola lama `set-secrets` lalu `set-image`. Revisi
+bertumpuk dan tidak dipangkas: **23 revisi `portfolio-be`**, 24 `portfolio-fe`, target rollback F6 tetap utuh.
+Gerbang `paths` sekarang punya delapan percobaan dua arah: **lima merge dokumen → 0 run deploy** (empat diukur
+di F6, satu di PR #23) dan **tiga merge kode → 1 run** (#27, #28, #29).
+
+**Gerbang lokal untuk (4):** `npm run lint` rc=0 (0 error, 11 warning lama), `npm run build` **rc=0** dan
+`npx tsc --noEmit` **rc=0** di dalam container `node:20-alpine` dengan proyek disalin ke layer container.
+Di host `tsc` masih menjawab **rc=2** dengan `Cannot find module '../../src/app/api/contact/route.js'` —
+itu `.next/types/validator.ts` **milik root dari build docker 2 Oktober** yang basi, bukan typoku; bukti
+lengkapnya: di container, types digenerate ulang dan `grep api/contact/route .next/types/validator.ts` = 0.
+`.next/` milik root itu bukan typoku dan tidak kuhapus (butuh sudo); ia dicatat di sini sebagai
+kondisi lingkungan yang membuat `tsc` host tidak bisa dipercaya, bukan sebagai hasil pekerjaan.
+
+**E13 setelah (1)+(3)+(4).** "turun dari 13" → **ya, 9**. `rc=0` → **ya**. "1 POST dari situs publik terhitung
+lewat inbox admin" → **ya di CI** (1→2, inbox == `select count(*)`), **belum di produksi** (butuh JWT-mu).
+"401 tanpa JWT" → **ya, dan sudah di produksi** (10 probe, termasuk subtree yang tidak terdaftar).
+"go vet + gofmt bersih" → **ya**. "endpoint admin tidak menambah secret yang terbaca CI" → **ya**, `deploy.yml`
+tidak pernah berubah di (3) maupun (4); `secretNames` tetap. Tinggal **(2)** email — terblokir kredensial —
+dan **(5)** `seedData()`/`AutoMigrate`, **(6)** 13 error gorm.
 
 ### Yang tidak kubebereskan di M12 (biar tidak kelihatan lupa)
 
