@@ -25,6 +25,14 @@ M10 membangun gerbangnya supaya klaim "stable" punya dasar.
 > Yang masih terbuka tinggal dua: **E4** (dua push berjarak < 60 s, sampai sekarang belum pernah
 > terjadi) dan **7 hari baris `schedule` hijau berturut-turut untuk E8** — hari pertama yang sah
 > baru 2026-10-05 02:37 UTC, jadi M10 belum bisa dinyatakan selesai sebelum 2026-10-11.
+>
+> **Update 2026-10-05 01:50 UTC:** keputusan §6 sudah jatuh dan **rencana M12 ada di §8** (F0–F10,
+> tiap fase dengan angka "sebelum", exit criterion, dan jalan baliknya). Sebelum tulis baseline aku
+> ukur ulang semuanya, dan **dua kalimatku sendiri gugur**: PITR ternyata **aktif** (sejak lama —
+> salahku baca path JSON, bukan salah dunianya), dan `serviceAccountName` kedua service ternyata
+> **diisi eksplisit**, bukan kosong. Keputusan 2a dengan begitu sudah jadi keadaan dunia, dan tagihan
+> sebenarnya berpindah ke **drill pemulihan yang 0×**. Hitungan branch juga kukoreksi: bukan "10 cabang"
+> tapi **13 ancestor + 2 unik**. Tidak ada yang dieksekusi di luar pengukuran read-only.
 
 ---
 
@@ -452,4 +460,85 @@ yang kutulis 20 menit sebelumnya.
 | E6 | Smoke bisa gagal | **hijau** | run #18 `"/api/cv tidak mengembalikan PDF"` pada HTTP 200 — `curl -f` tidak akan melihatnya |
 | E7 | Dokumen tidak memicu deploy | **hijau — dua pengukuran** | (1) merge PR #9 (`f218564`, hanya `README.md`/`DEPLOY.md`/`TODO.md`) → `deploy.yml` run count **0** untuk SHA itu, `ci.yml` push run #14 `success`. (2) merge PR #13 (`7d7217b`, juga dokumen saja) → `deploy.yml` **0 run**, `watch.yml` 0 run, `ci.yml` push run #23 `success`, dan `gcloud run services describe` tetap `portfolio-be-00018-fsc` / `portfolio-fe-00017-wqb` @100% — merge dokumen tidak mengubah apa pun yang melayani request. Kontrasnya terukur di hari yang sama: PR #10/#11/#12 yang menyentuh `.github/workflows/**` memicu deploy run #20, #21, #22 — ketiganya `success`. `paths-ignore: ['**.md','docs/**']` + `actionlint` bersih |
 | E8 | Dokumen tidak menyimpang dari realita | **sebagian — 0 dari 7 hari** | koreksi manual pass 1 (16:45) dan pass 2 (16:52) vs keluaran `gcloud`, perintah pembuktinya kini tertulis di `DEPLOY.md`; drift-check **otomatis** hidup di runner dan hijau: Watch #2 `merah=0`, Watch #3 `rows=13 merah=0` dengan `expected 14fe90e` = head. Tapi kedua run itu `workflow_dispatch` di tanggal yang sama — exit criterion-nya 7 **hari** `schedule` hijau berturut-turut, hari pertama sah 2026-10-05, jadi statusnya belum bisa ditutup sebelum 2026-10-11 |
+
+---
+
+## 8. M12 — realisasi keputusan §6 (rencana, ditulis 2026-10-05 01:47 UTC)
+
+Keputusan yang sudah jatuh: **1a** SA runtime khusus · **2a** PITR · **3a** kredensial cloud read-only
+untuk Watch · **4a** *hold* `issues: write` sampai 8 hari · **5** hapus branch layu + `staging`,
+`chore/bughunter-ci` dibuang · **6b** kontak masuk DB **dan** dikirim email · **7** urutan M11 ikut
+rekomendasiku · **8** `strict: true` · **9a** provokasi E4.
+
+Aturan mainnya tidak berubah dari M10: setiap fase ditutup dengan **angka keluaran alat**, setiap
+perubahan cloud masuk lewat **PR ke `main`** (bukan push langsung, bukan `workflow_dispatch` di branch
+lepas), dan tidak ada nilai secret yang kubaca atau kucetak.
+
+### F0 — Baseline (semuanya terukur 2026-10-05 01:47 UTC, read-only)
+
+| Aspek | Angka |
+|---|---|
+| `origin/main` | `c78c8ae`; PR terbuka = **0** |
+| Yang melayani request | `portfolio-be-00018-fsc=100%`, `portfolio-fe-00017-wqb=100%`, `Ready=True` keduanya; image be digest `sha256:074584ae0a96…` |
+| SA runtime | `486641216758-compute@developer.gserviceaccount.com` — **di-set eksplisit** di kedua service (lihat K2) |
+| Binding principal itu | `roles/editor` se-proyek (satu binding bersama `486641216758@cloudservices.gserviceaccount.com`), `roles/pubsub.publisher` se-proyek |
+| Env backend | `ADMIN_USER` literal; `DATABASE_URL`→`portfolio-database-url`, `JWT_SECRET`→`portfolio-jwt-secret`, `ADMIN_PASS`→`portfolio-admin-pass`, `ADMIN_EMAIL`→`portfolio-admin-email`, `CORS_ORIGINS`→`portfolio-cors-origins` = **5 secret** |
+| Env frontend | `BACKEND_URL` literal = **0 secret** |
+| Jalur ke DB | `ipAddresses: PRIVATE 10.112.0.2`, **tidak ada** volume `cloudsql`, anotasi `vpc-access-connector=portfolio-connector` + `vpc-access-egress=all-traffic` → **`roles/cloudsql.client` tidak dibutuhkan SA runtime** |
+| VPC connector | `portfolio-connector`: `e2-micro`, min 2 / max 3, `state=READY`, `10.10.0.0/28`, network `default`, `scheduler.serviceAccountEmail` **kosong** → VM connector jalan sebagai default compute SA = principal yang sama yang mau dicabut `editor`-nya. Ini blast radius F6, bukan tebakanku |
+| PITR | **AKTIF** (lihat K1): `pointInTimeRecoveryEnabled=true`, `replicationLogArchivingEnabled=true`, `transactionLogRetentionDays=7`, `retainedBackups=7`, jendela backup `03:00`, `ENTERPRISE`, tier `db-f1-micro`, `state=RUNNABLE` |
+| Branch | `git ls-remote --heads origin` = **16 heads**; non-main **15**; yang murni ancestor `main` (ahead 0) = **13**; yang punya commit unik = **2** |
+| Branch protection `main` | `contexts=["go","web","api"]`, **`strict=false`**, `enforce_admins=true`, `allow_force_pushes=false`, `allow_deletions=false` |
+| WIF | pool `github-pool` (nomor projek `486641216758`), provider `github-provider` + `pickertime-provider`, keduanya `ACTIVE`. `attributeMapping` = `actor`, `ref`, `repository`, `google.subject=assertion.sub` → **tidak ada `attribute.sub` maupun `attribute.environment`**, jadi binding baru hanya bisa sehalus `attribute.repository/ArkanFzi/website-porto2` (lihat konsekuensi F8) |
+| Binding WIF `github-cd` | `roles/iam.workloadIdentityUser` di-level **SA**, member `principalSet://…/attribute.repository/ArkanFzi/website-porto2`; `roles/secretmanager.secretAccessor` + `run.admin` + `artifactregistry.writer` + `cloudsql.client` + `iam.serviceAccountUser` di-level projek |
+| Environment GHA | **0** (`GET /repos/…/environments` mengembalikan list kosong) — `deploy.yml` tidak pakai `environment:` |
+| Watch | workflow id `374751227`, 3 run: `#1 failure`, `#2 success`, `#3 success` — semuanya `workflow_dispatch`. Run `event=schedule` di repo = **0**. Jam pengukuran 01:47 UTC, cron `37 2 * * *` → hari pertama E8 **belum jatuh tempo** (±50 menit lagi), bukan rusak |
+| Deploy | run #19–#22 `success`, semua `event=push` |
+
+### K — Dua klaimku sendiri yang gagal diukur ulang
+
+| # | Klaim lama | Realita 2026-10-05 | Sebab |
+|---|---|---|---|
+| **K1** | "PITR **mati**; `pointInTimeRecoveryEnabled` absent" (dicatat 2026-10-04, jadi bahan keputusan 2a) | PITR **aktif penuh** | Aku membaca path JSON yang salah: `.settings.backupConfiguration.settings.pointInTimeRecoveryEnabled` (tidak ada) → keluaran `"absent"`. Path benar `.settings.backupConfiguration.pointInTimeRecoveryEnabled` → `true`. Bukti dua-duanya dijalankan berdampingan hari ini dan hanya bedanya `settings` di tengah. Kesalahan klasnya sama dengan yang kutulis di §7 "Catatan jujur" #6: **alat yang kupakai bukan verifikasi** |
+| **K2** | "`spec.template.spec.serviceAccountName` **kosong** → default compute SA" (`DEPLOY.md` §Postur IAM) | Field itu **diisi eksplisit** dengan `486641216758-compute@developer.gserviceaccount.com` di kedua service | Kalimat itu kutulis sendiri kemarin tanpa `jq` pada field tersebut. Kabar baiknya: F5 tinggal mengganti satu field bernama, bukan menambang default |
+
+Konsekuensi keputusan: **2a sudah jadi keadaan dunia**, jadi yang benar-benar tertagih bukan "aktifkan
+PITR" tapi **"pemulihan belum pernah terbukti"** — 0× restore drill. Itu pindah menjadi F7.
+
+### Fase
+
+Urutannya punya satu sebab: F1–F3 murah dan tidak menyentuh cloud; F3 sengaja dikerjakan **sebelum**
+fase SA supaya serialisasi terbukti saat tidak ada hal lain yang berubah; F4→F5→F6 wajib berurutan
+karena F6 satu-satunya yang efeknya bisa melebar; F7 dan F8 berdiri sendiri; F9 paling besar dan
+memakai alat yang baru valid setelah F8.
+
+| Fase | Isi | Exit criterion (angka, bukan narasi) | Risiko & jalan balik |
+|---|---|---|---|
+| **F1** (keputusan 5) | Simpan `git bundle` semua branch non-main + catat 15 tip SHA. Lalu `git push origin --delete` untuk **13** ancestor + `chore/bughunter-ci` (buang). Koreksi hitunganku yang lama: "10 cabang" salah, yang benar **13 ancestor + 2 unik** | `git ls-remote --heads origin \| wc -l` turun dari **16 → 2**; `sha256sum` bundle tercatat; 0 branch layu di baris Watch berikutnya | Tidak bisa dibatalkan sendiri → karena itu bundle **sebelum** delete; isi `chore/bughunter-ci` = 48 baris `ci.yml` untuk `bugfix/*`, tidak ada file lain yang tersentuh, jadi jalan balik = `git push` dari bundle |
+| **F1b** | **Masih butuh satu kata darimu:** `chore/gerbang-ci` (tip `e3ce49d`, ahead **2**) | — | Kutebus bukan diam-diam. Ukurannya: 7 file yang disentuh kedua commit itu **semuanya ADA di `main`**, dan `ci.yml` cabangnya beda **20 baris** dengan `ci.yml` main — artinya isinya sudah tersuperseded oleh PR #2, yang hilang cuma riwayat commit-nya. Kalau kamu bilang hapus → ikut F1; kalau bilang simpan → tetap tinggal dan Watch menghitungnya sebagai unik |
+| **F2** (keputusan 8) | `PUT /repos/…/branches/main/protection` dengan body yang sama, `strict: true`. Simpan JSON proteksi sebelum/sesudah | `GET …/branches/main/protection` → `"strict": true`, `contexts` tetap `["go","web","api"]`, `enforce_admins` tetap `true`. Efeknya dites di F3: merge tetap mungkin | 1 API call, balik dengan 1 API call. Konsekuensi yang harus diterima: PR wajib di-rebase ke head `main` sebelum merge (itu memang tujuannya) |
+| **F3** (keputusan 9a) | Dua PR **non-dokumen** yang digabung berjarak < 60 s. Isinya sengaja inert: `tools/ci/probe-e4-a.txt` dan `tools/ci/probe-e4-b.txt` (`.md` tidak boleh — `paths-ignore` akan membuat keduanya 0 run) | **E4**: poll langsung sesudah merge kedua → run deploy #N+1 berstatus `queued`/`in_progress` **saat** #N masih `in_progress`; #N **tidak** `cancelled` (conclusion `success`); sesudah keduanya selesai, digest image live == digest hasil build HEAD, kedua service `Ready`; 2 deploy × ±4 menit tercatat di log. File probe dihapus di PR F5 | Kalau `cancel-in-progress` ternyata salah, kerusakannya = deploy yang terpotong, dan F5 punya rollback teruji untuk itu. Tidak ada perubahan kode aplikasi |
+| **F4** (1a langkah 1) | Bikin `portfolio-runtime@config-agentic-ubuntu.iam.gserviceaccount.com`; grant `roles/artifactregistry.reader`, `roles/logging.logWriter`, `roles/monitoring.metricWriter` (projek) + `roles/secretmanager.secretAccessor` **per-secret** pada 5 `portfolio-*` (bukan se-proyek). **Tidak menyentuh service** | `gcloud iam service-accounts list --filter portfolio-runtime` → 1 baris; `gcloud secrets get-iam-policy portfolio-<5 nama>` → SA di member `secretAccessor` untuk **5/5**; binding projek menunjukkan 3 role itu. Efek produksi: **0** | Reversible per-binding (`remove-iam-policy-binding`), dan belum ada yang memakainya |
+| **F5** (1a langkah 2) | Ubah `deploy.yml`: `--service-account=portfolio-runtime@…` untuk kedua service (FE hanya butuh reader+logWriter — gemuk tapi aman kalau role sama dipakai dua-duanya). Masuk sebagai PR, lewat gerbang + deploy + verifikasi smoke | **E9a**: `gcloud run services describe … --format=value(spec.template.spec.serviceAccountName)` = `portfolio-runtime@…` untuk **be dan fe**; `/api/health` `.db=="ok"` lewat domain publik **dan** lewat URL `run.app`; `connector state=READY`; `gcloud logging read` menampilkan entri **baru** dari kedua service (bukti `logWriter`, karena ini yang gagal secara senyap) | Kalau role kurang, revisi tidak pernah `Ready` → deploy `failure` → rollback otomatis `update-traffic` ke revisi lama yang masih di SA lama → service pulih. Jalan balik manual: revert PR. File probe F3 dibersihkan di PR yang sama |
+| **F6** (1a langkah 3) | Cabut `roles/editor` dari `486641216758-compute@developer.gserviceaccount.com`. **`pubsub.publisher` dibiarkan** (belum terukur siapa penerbitnya — dicatat sebagai hutang, bukan dihapus diam-diam) | **E9b**: `get-iam-policy` → member `roles/editor` hanya `…@cloudservices.gserviceaccount.com` (milik Google); 0 service Cloud Run di projek yang masih memakai SA compute (diukur `run services list --format=value(name,spec.template.spec.serviceAccountName)`); `connector state=READY`; `/api/health` tetap `.db=="ok"`; baris Watch besok hijau | Yang paling lebar di M12. Reversible dalam 1 perintah (`add-iam-policy-binding`), dan itu memang rencananya kalau connector atau logging merah. Jangan digabung dengan F5 dalam satu PR — kalau keduanya merah, tidak terbaca mana yang bersalah |
+| **F7** (2a, hasil K1) | **Drill pemulihan**: clone `portfolio-pg` ke titik waktu (`gcloud sql instances clone --restore-from-timestamp=…`, nama flag dikukuhkan dari `--help` dulu, tidak ditebak), ukur, lalu hapus clone-nya | **E10**: clone `state=RUNNABLE` + tier + `ipAddresses` tercatat; **RTO** = delta menit antara perintah dan `RUNNABLE` diukur; clone dihapus (`instances list` kembali 1 baris). Yang **tidak** dibuktikan, kutulis apa adanya: isi row tidak bisa dibaca dari laptop (DB hanya `PRIVATE 10.112.0.2`), jadi "data-nya kembali benar" masih 0× sampai ada jalur baca sementara di dalam VPC | Resource berbayar baru (±`db-f1-micro`) yang hidup beberapa menit lalu kuhapus. **Butuh "ya" terakhirmu** karena create + delete resource, meski 2a sudah kamu setujui dalam bentuk lain |
+| **F8** (keputusan 3a) | Bikin `github-watch@…`, grant **hanya** `roles/run.viewer`; binding `iam.workloadIdentityUser` di SA itu dengan `principalSet://…/attribute.repository/ArkanFzi/website-porto2` (satu-satunya granularitas yang tersedia — provider tidak memetakan `sub`/`environment`). Di `watch.yml`: `id-token: write`, `auth@v2` ke SA itu, lalu invariant traffic: **100% pada revisi `Ready` terbaru; kalau tidak → MERAH dengan nama revisi yang ter-pin; kalau kredensial/cloud tidak terbaca → KUNING** (bukan diam-diam bersih) | **E11**: satu run ber-`event=schedule` yang baris hariannya memuat `traffic\|HIJAU\|be-00018-fsc=100 / fe-00017-wqb=100` dan **log-nya membuktikan ia membaca state cloud** (bukan hanya repo). Negatifnya (opsional, lihat daftar butuh-izin): pin traffic ke revisi lama ±2 menit → Watch harus MERAH sendiri keesokan harinya, lalu lepas | Yang bocor kalau salah: **read-only** (`run.viewer`) — dan granularitasnya persis sama dengan binding `github-cd` yang sudah ada hari ini, jadi permukaan baru yang ditambahkan nyaris nol: menambah identitas *lebih kecil* di bentuk yang sudah dipakai identitas *lebih besar*. Hutang yang sengaja ditinggalkan: memperketat ke `attribute.environment` menuntut edit `attributeMapping` pada provider yang dipakai CD produksi — tidak kulakukan di fase ini |
+| **F9** (6b + 7) | M11 urutanku: (1) tabel `contact_messages` + POST `/api/contact` menulis (sekaligus menutup `main.go:173` yang membuang error gorm); (2) email via gomail; (3) rute admin `POST /api/auth/login`, `GET/DELETE /api/admin/contact` ber-JWT; (4) buang hardcode `http://localhost:8080` di `cv-layout`; (5) hapus `seedData()` + `AutoMigrate` saat start; (6) tutup 13 error gorm yang diabaikan. Satu sub-langkah = satu PR | **E13**: jumlah path mati di `tools/ci/api-baseline.json` **turun dari 13** dan `api-contract-check.mjs` tetap `rc=0`; 1 POST dari situs publik → **terhitung** lewat `GET /api/admin/contact` (count +1, dan **401 tanpa JWT**); email: 1 log run membuktikan SMTP menerima (hanya setelah kredensial ada); `go vet`+gofmt bersih; endpoint admin tidak menambah secret yang terbaca CI | Semua lewat gerbang yang sudah terbukti. (2) **terblokir padamu** (lihat di bawah). Rute admin = permukaan baru di internet: tanpa JWT tidak ada satu pun rute admin yang boleh 200, dan itu kukunci di job `api`, bukan di narasi |
+| **F10** (4a) | *Hold* — `issues: write` **tidak** dipasang. Tidak ada kerja; hanya dicatat supaya tidak membusuk jadi keputusan yang tidak pernah diambil | Re-check paling cepat **2026-10-12 02:37 UTC**, syaratnya ≥8 baris `event=schedule` dan 0 MERAH. Kalau ada MERAH sebelumnya, hold menang dan alarm tetap run merah | nol |
+
+### Yang masih butuh darimu
+
+1. **`EMAIL_USER` + `EMAIL_PASS`** di Secret Manager (app password Gmail, bukan password akun). Aku tidak
+   menulis nilai secret, hanya namanya ke `secretNames` di `deploy.yml`. F9 langkah (2) tidak bisa mulai
+   tanpa ini; langkah (1), (3), (4), (5), (6) bisa.
+2. **`chore/gerbang-ci`** — hapus atau simpan (ukurannya sudah di F1b).
+3. **"ya" terakhir untuk F7** (create + delete clone berbayar) dan, kalau kau mau bukti negatif E11,
+   **untuk drill pin-traffic** di F8 — itu menyentuh traffic produksi kelasnya dengan P5 yang sudah kamu izinkan.
+
+### Angka yang tidak akan kubebereskan di M12 (biar tidak kelihatan lupa)
+
+`roles/editor` pada `…@cloudservices.gserviceaccount.com` (SA milik Google, bukan kita); `roles/pubsub.publisher`
+pada SA compute (pemakainya belum terukur); build image yang tidak reproducible (§7 "Catatan jujur" #5 —
+digest berbeda untuk konten identik); artefak CI ≠ artefak produksi (masih benar, dan `deploy.yml` tidak
+pura-pura mengesahkannya); `allUsers → roles/run.invoker` (memang publik by design).
 
