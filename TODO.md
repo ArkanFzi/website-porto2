@@ -245,7 +245,9 @@ Selesai: E8 + tidak ada klaim dokumen yang bertentangan dengan keluaran `gcloud`
 Perbaikan produk, bukan gerbang: wiring form kontak ke backend + secret SMTP (`EMAIL_USER`/
 `EMAIL_PASS`) + menghentikan pola fire-and-forget (`main.go:237-242`); memperbaiki 5 dead path
 admin; menghapus `seedData()` (`main.go:121,253-270`) dari jalur start produksi dan mengganti
-`AutoMigrate` (`main.go:105`) dengan migration yang berversi; mengembalikan error gorm yang diabaikan
+`AutoMigrate` (`main.go:105`) dengan migration yang berversi *(status: `seedData()` dan otomatisme start
+hilang lewat PR #27, tapi "berversi" belum — `-migrate` masih memanggil `AutoMigrate`, bukan migration
+file bernomor)*; mengembalikan error gorm yang diabaikan
 di 13 titik. M10 sengaja dibuat **mendukung** M11: baseline ratchet §1 menyusut tiap perbaikan.
 
 Urutan yang kuambil: gerbang dulu (permintaanmu), produk setelah — dengan konsekuensi jujur bahwa
@@ -548,7 +550,7 @@ memakai alat yang baru valid setelah F8.
 | **F6** (1a langkah 3) | Cabut `roles/editor` dari `486641216758-compute@developer.gserviceaccount.com`. **`pubsub.publisher` dibiarkan** (belum terukur siapa penerbitnya — dicatat sebagai hutang, bukan dihapus diam-diam) | **E9b**: `get-iam-policy` → member `roles/editor` hanya `…@cloudservices.gserviceaccount.com` (milik Google); 0 service Cloud Run di projek yang masih memakai SA compute (diukur `run services list --format=value(name,spec.template.spec.serviceAccountName)`); `connector state=READY`; `/api/health` tetap `.db=="ok"`; baris Watch besok hijau | Yang paling lebar di M12. Reversible dalam 1 perintah (`add-iam-policy-binding`), dan itu memang rencananya kalau connector atau logging merah. Jangan digabung dengan F5 dalam satu PR — kalau keduanya merah, tidak terbaca mana yang bersalah |
 | **F7** (2a, hasil K1) | **Drill pemulihan**: clone `portfolio-pg` ke titik waktu (`gcloud sql instances clone --restore-from-timestamp=…`, nama flag dikukuhkan dari `--help` dulu, tidak ditebak), ukur, lalu hapus clone-nya | **E10**: clone `state=RUNNABLE` + tier + `ipAddresses` tercatat; **RTO** = delta menit antara perintah dan `RUNNABLE` diukur; clone dihapus (`instances list` kembali 1 baris). Yang **tidak** dibuktikan, kutulis apa adanya: isi row tidak bisa dibaca dari laptop (DB hanya `PRIVATE 10.112.0.2`), jadi "data-nya kembali benar" masih 0× sampai ada jalur baca sementara di dalam VPC | Resource berbayar baru (±`db-f1-micro`) yang hidup beberapa menit lalu kuhapus. **Butuh "ya" terakhirmu** karena create + delete resource, meski 2a sudah kamu setujui dalam bentuk lain |
 | **F8** (keputusan 3a) | Bikin `github-watch@…`, grant **hanya** `roles/run.viewer`; binding `iam.workloadIdentityUser` di SA itu dengan `principalSet://…/attribute.repository/ArkanFzi/website-porto2` (satu-satunya granularitas yang tersedia — provider tidak memetakan `sub`/`environment`). Di `watch.yml`: `id-token: write`, `auth@v2` ke SA itu, lalu invariant traffic: **100% pada revisi `Ready` terbaru; kalau tidak → MERAH dengan nama revisi yang ter-pin; kalau kredensial/cloud tidak terbaca → KUNING** (bukan diam-diam bersih) | **E11**: satu run ber-`event=schedule` yang baris hariannya memuat `traffic\|HIJAU\|be-00018-fsc=100 / fe-00017-wqb=100` dan **log-nya membuktikan ia membaca state cloud** (bukan hanya repo). Negatifnya (opsional, lihat daftar butuh-izin): pin traffic ke revisi lama ±2 menit → Watch harus MERAH sendiri keesokan harinya, lalu lepas | Yang bocor kalau salah: **read-only** (`run.viewer`) — dan granularitasnya persis sama dengan binding `github-cd` yang sudah ada hari ini, jadi permukaan baru yang ditambahkan nyaris nol: menambah identitas *lebih kecil* di bentuk yang sudah dipakai identitas *lebih besar*. Hutang yang sengaja ditinggalkan: memperketat ke `attribute.environment` menuntut edit `attributeMapping` pada provider yang dipakai CD produksi — tidak kulakukan di fase ini |
-| **F9** (6b + 7) | M11 urutanku: (1) tabel `contact_messages` + POST `/api/contact` menulis (sekaligus menutup `main.go:173` yang membuang error gorm); (2) email via gomail; (3) rute admin `POST /api/auth/login`, `GET/DELETE /api/admin/contact` ber-JWT; (4) buang hardcode `http://localhost:8080` di `cv-layout`; (5) hapus `seedData()` + `AutoMigrate` saat start; (6) tutup 13 error gorm yang diabaikan. Satu sub-langkah = satu PR | **E13**: jumlah path mati di `tools/ci/api-baseline.json` **turun dari 13** dan `api-contract-check.mjs` tetap `rc=0`; 1 POST dari situs publik → **terhitung** lewat `GET /api/admin/contact` (count +1, dan **401 tanpa JWT**); email: 1 log run membuktikan SMTP menerima (hanya setelah kredensial ada); `go vet`+gofmt bersih; endpoint admin tidak menambah secret yang terbaca CI | Semua lewat gerbang yang sudah terbukti. (2) **terblokir padamu** (lihat di bawah). Rute admin = permukaan baru di internet: tanpa JWT tidak ada satu pun rute admin yang boleh 200, dan itu kukunci di job `api`, bukan di narasi. **Status 2026-10-05:** (1) #22, (3) #24, (4) #25 sudah mendarat — path mati 13 → 9; (2) terblokir kredensial; (5) dan (6) belum |
+| **F9** (6b + 7) | M11 urutanku: (1) tabel `contact_messages` + POST `/api/contact` menulis (sekaligus menutup `main.go:173` yang membuang error gorm); (2) email via gomail; (3) rute admin `POST /api/auth/login`, `GET/DELETE /api/admin/contact` ber-JWT; (4) buang hardcode `http://localhost:8080` di `cv-layout`; (5) hapus `seedData()` + `AutoMigrate` saat start; (6) tutup 13 error gorm yang diabaikan. Satu sub-langkah = satu PR | **E13**: jumlah path mati di `tools/ci/api-baseline.json` **turun dari 13** dan `api-contract-check.mjs` tetap `rc=0`; 1 POST dari situs publik → **terhitung** lewat `GET /api/admin/contact` (count +1, dan **401 tanpa JWT**); email: 1 log run membuktikan SMTP menerima (hanya setelah kredensial ada); `go vet`+gofmt bersih; endpoint admin tidak menambah secret yang terbaca CI | Semua lewat gerbang yang sudah terbukti. (2) **terblokir padamu** (lihat di bawah). Rute admin = permukaan baru di internet: tanpa JWT tidak ada satu pun rute admin yang boleh 200, dan itu kukunci di job `api`, bukan di narasi. **Status 2026-10-05:** (1) #22, (3) #24, (4) #25, (5) #27 sudah mendarat — path mati 13 → 9 (tidak bergerak di (5), karena (5) tidak menyentuh frontend); (2) terblokir kredensial; (6) belum |
 | **F10** (4a) | *Hold* — `issues: write` **tidak** dipasang. Tidak ada kerja; hanya dicatat supaya tidak membusuk jadi keputusan yang tidak pernah diambil | Re-check paling cepat **2026-10-12 02:37 UTC**, syaratnya ≥8 baris `event=schedule` dan 0 MERAH. Kalau ada MERAH sebelumnya, hold menang dan alarm tetap run merah | nol |
 
 ### Yang masih butuh darimu
@@ -583,7 +585,7 @@ sebelumnya endpoint ini *tidak bisa* ditumpahi spam karena dia tidak menulis apa
 Nomor ini kutaruh di sini, bukan di dalam daftar di atas, karena tidak ada satu pun butir 1–4 yang berubah
 olehnya.
 
-**Tiga butir yang keluar setelah F9 langkah (3) dan (4) mendarat.** **(a)** Klausa E13 "count +1 lewat
+**Empat butir yang keluar setelah F9 langkah (3), (4) dan (5) mendarat.** **(a)** Klausa E13 "count +1 lewat
 `GET /api/admin/contact`" sudah hijau di CI dengan Postgres nyata tapi belum kukur di produksi, dan satu-satunya
 yang menghalangi adalah kredensial admin produksi: nilainya ada di Secret Manager, yang tidak pernah kubaca, dan
 Cloud SQL-nya `PRIVATE` tanpa IP publik (`portfolio-pg`, `10.112.0.2`) sehingga tidak ada jalur sah dari laptop.
@@ -594,7 +596,12 @@ dari API yang sudah 401 — dan token admin disimpan di `localStorage`, yang ter
 mengubahnya (di luar F9), tapi ini bukan berarti "sudah aman": ini keputusan yang belum diambil. **(c)** CV
 yang diunduh publik ternyata ikut berubah oleh langkah (4) (+9.093 byte, tiga sertifikasi masuk); kalau itu
 perubahan yang kamu tidak inginkan muncul sekarang, jalan paling murah bukan menghapus kode — cukup
-`update-traffic` ke revisi `portfolio-fe-00023-g7s`, yang masih utuh.
+`update-traffic` ke revisi `portfolio-fe-00023-g7s`, yang masih utuh. **(d)** Produksi hari ini menyajikan
+lima baris fiktif warisan `seedData()` — tiga sertifikat ("AWS Solutions Architect", "Advanced React
+Patterns", "Full-Stack Design") dan dua pengalaman ("TechNova Solutions", "Digital Artisan"), semuanya
+ber-`createdAt` pada detik yang sama dengan sebaran **41 ms**. Langkah (5) menutup jalan masuknya, tidak
+menghapus isinya; yang menghapus tinggal kamu, lewat dua `DELETE` admin (butuh token login-mu) atau lewat
+Cloud SQL.
 
 ### Hasil terukur F1–F4 (2026-10-05, 01:55 – 02:12 UTC)
 
@@ -1186,7 +1193,161 @@ lewat inbox admin" → **ya di CI** (1→2, inbox == `select count(*)`), **belum
 "401 tanpa JWT" → **ya, dan sudah di produksi** (10 probe, termasuk subtree yang tidak terdaftar).
 "go vet + gofmt bersih" → **ya**. "endpoint admin tidak menambah secret yang terbaca CI" → **ya**, `deploy.yml`
 tidak pernah berubah di (3) maupun (4); `secretNames` tetap. Tinggal **(2)** email — terblokir kredensial —
-dan **(5)** `seedData()`/`AutoMigrate`, **(6)** 13 error gorm.
+dan **(5)** `seedData()`/`AutoMigrate`, **(6)** 13 error gorm. *(Paragraf ini snapshot saat (4) mendarat;
+(5) sudah menyusul di PR #27 — bagiannya di bawah.)*
+
+### F9 langkah (5) — skema jadi perintah, dan `psql` yang menolak `TimeZone` (2026-10-05, 07:37 – 08:02 UTC)
+
+**Yang hilang:** `AutoMigrate` dari `initDB()` dan `seedData()` dari jalur start. **Yang masuk:** `-migrate`
+dan `verifySchema()` di jalur serve. Bedanya bukan kosmetik: sebelum ini, container yang naik dengan tabel
+kosong **menulis baris** — dan ia melakukannya bahkan sebelum `requireEnv("JWT_SECRET")` sempat bertanya,
+karena migrasi ada di dalam `initDB()`.
+
+Kupotret perilaku lama itu sebelum menyentuh kode, di DB kosong, dengan biner pra-(5):
+
+```
+Seeded Certificates.
+Seeded Experiences.
+cert=3 exp=2      (dan rc=0 walaupun bind :8080 gagal — itu bahan langkah (6))
+```
+
+**Langkah CI baruku sendiri yang merah lebih dulu.** Kupakai `yaml` untuk menarik body langkah dari
+`ci.yml` supaya yang kurunkan benar-benar yang akan dijalankan runner, lalu kukirim `bash -e` ke Postgres
+15 kosong. Output pertama:
+
+```
+psql: error: invalid connection option "TimeZone"
+DB uji tidak kosong:  tabel sudah ada
+STEP5_RC=1
+```
+
+Ini bukan salah DB-nya — DB memang kosong; `T()` mengembalikan string kosong karena `psql` mati, dan
+`[ "" = "0" ]` gagal. Penyebabnya dua parser yang tidak sama untuk satu berkas `DATABASE_URL` yang sama:
+**pgx (gorm) menerima `TimeZone`, libpq (psql) menolaknya.** Kubuktikan dua-duanya di DB yang sama, supaya
+ini tidak jadi tebakan:
+
+| yang dipanggil | conninfo | hasil |
+|---|---|---|
+| `psql` | `… sslmode=disable TimeZone=UTC` | `invalid connection option "TimeZone"` |
+| `psql` | `… sslmode=disable` | `1` |
+| biner Go | `… sslmode=disable TimeZone=UTC` | `db: 0/3 tabel belum ada (…)` — koneksi DB sukses, sampai cek skema |
+
+Kuberes: `psql` dapat conninfo sendiri (`PSQL=…`, tanpa `TimeZone`), biner tetap memakai `DATABASE_URL`.
+Langkah kontak/inbox yang lama tidak tersentuh bug ini karena mereka sudah menulis conninfo literal tanpa
+`TimeZone`. Tanpa kebiasaan menjalankan langkah verbatim, merah ini baru ketahuan di runner.
+
+**Angka langkah (5) di lokal, sesudah perbaikan** (satu-satunya yang kuganti: port DB 5432 → 5435, dan
+biner `CGO_ENABLED=0` supaya bisa kuboot di container — host 5432/8080 ditempati `local_postgres` dan
+`local_adminer`, keduanya tidak kusentuh):
+
+```
+tabel sebelum apa pun: 0/3
+boot di DB kosong => rc=1
+2026-10-05 14:41:12 db: 0/3 tabel belum ada ([certificates experiences contact_messages]); jalankan `/tmp/portfolio-be -migrate` dulu
+2026-10-05 14:41:12 migrate: skema siap
+2026-10-05 14:41:12 migrate: skema siap
+tabel setelah -migrate dua kali: 3/3
+baris setelah -migrate: certificates=0 experiences=0
+fixture ditanam: certificates=1 experiences=1
+STEP5_RC=0
+```
+
+Enam properti terkunci di situ: DB uji benar-benar kosong sebelum apa pun; boot **gagal** dengan `rc!=0`;
+pesan sebabnya menyebut tabel; boot yang gagal tidak membuat satu tabel pun; `-migrate` berjalan **tanpa**
+`JWT_SECRET`/`ADMIN_PASS` dan idempoten (dijalankan dua kali → tetap 3/3); dan tidak menanam baris.
+
+**Lalu rantainya kuputar penuh**, karena menghapus seed mengubah lebih dari satu langkah — `Kontrak publik`
+menuntut `certificates`/`experience` `length>0` dan selama ini yang memenuhinya adalah seed. Langkah 7–10
+kuambil dari YAML, hanya `127.0.0.1:8080` → `127.0.0.1:8099`:
+
+| langkah CI | hasil |
+|---|---|
+| 5 `Skema dibuat eksplisit…` | **rc=0** |
+| 6 `Jalankan backend terhadap Postgres nyata` | siap dalam **1** percobaan, melawan skema hasil `-migrate` |
+| 7 `Kontrak publik` | **rc=0** — `health={"db":"ok","status":"ok"}`, `length>0` kini dipenuhi **fixture uji** |
+| 8 `Kontrak admin (login lalu tulis)` | **rc=0** — `login dengan sandi salah => 401`, cert dibuat `id=d7a80d72-…` |
+| 9 `Kontrak kontak` | **rc=0** — `id=aa452c22-…`, `jumlah baris: 0 -> 1`, `email tersimpan: 'kontrak-ci@example.test'`, bentuk `{message}` → `400` |
+| 10 `Kontrak inbox admin` | **rc=0** — `GET`/`DELETE` tanpa token `401`/`401`, token rusak `401`, `login: /api/auth/login 144 char, /api/login 144 char`, `sandi salah => 401`, `inbox panjang=2 == psql count=2`, `{"deleted":1}`, `404` idempoten, `400` id cacat |
+
+**Jebakan yang kuraih sendiri di tengah jalan, dan penting untuk tidak kusenyapkan.** Pada percobaan
+pertama kukirim berkas langkah yang **belum** kuedit portnya, jadi langkah 7–10 menghantam Adminer di 8080.
+Hasilnya `RC=5` dan — yang harus kubaca dengan kepala dingin — `GET /api/admin/contact tanpa token => 200`
+diikuti `rute admin bocor tanpa JWT`. **Itu bukan temuan keamanan**: 200 itu halaman login Adminer
+(`<title>Login - Adminer</title>` ada di output), bukan backend. Kutulis di sini supaya angka 200 itu tidak
+berubah jadi klaim di kemudian hari. Setelah berkas yang benar dijalankan, langkah 10 memberi 401.
+
+Gerbang lain: `gofmt -l` kosong, `go vet ./...` rc=0, `go build` rc=0, `api-contract-check.mjs` **rc=0 dengan
+9 path mati / 0 stub** (baseline tidak bergerak — langkah ini tidak menyentuh frontend; hitungan yang tercetak:
+`rute backend 12 (protected: 6)`, `rewrite 9`, `handler lokal 3`, `pemanggilan UI 25 (18 unik)`).
+
+**Cara langkah ini mendarat.** PR #27 (`c08fb67`) → CI #51 (`pull_request`, id 37279448013) `success`
+(go + web + api); log runner mencetak **persis** angka lokal di atas (`tabel sebelum apa pun: 0/3` …
+`fixture ditanam: certificates=1 experiences=1`) — kontraknya dipegang Postgres nyata di runner, bukan
+salinan di laptopku. Merge 07:55:46 UTC → `0204b70`; CI **#52** (`push`, id 37280514758) `success` dan
+**Deploy to Cloud Run #30 `success`** (07:55:50 → 07:59:47). Gerbang `paths` jadi sembilan percobaan dua
+arah: **lima merge dokumen → 0 run deploy** dan **empat merge kode → 1 run** (#27, #28, #29, #30).
+
+Yang diukur `deploy.yml` sendiri di langkah 12 (bukan probeku):
+
+```
+portfolio-be traffic: portfolio-be-00026-wl5=100
+portfolio-fe traffic: portfolio-fe-00025-dm4=100
+backend /api/health => {"db":"ok","status":"ok"}
+backend /api/certificates => 3 baris
+backend /api/experience => 2 baris
+frontend / => 40699 byte
+/api/cv => 783896 byte PDF
+Verifikasi lulus: kedua layanan serve artefak SHA 0204b70… dengan isi yang benar.
+```
+
+Generasi `portfolio-be` 41 → **43** (`portfolio-be-00026-wl5`), `portfolio-fe` 38 → **40**
+(`portfolio-fe-00025-dm4`); titik rollback yang dicatat langkah 5 `deploy.yml`: `portfolio-be-00025-s6z` +
+`portfolio-fe-00024-m5v`, dan **24**/**25** revisi bertumpuk tidak dipangkas. Backend ikut naik revisi walau
+tidak ada berkas Go yang berubah — pola lama `set-secrets` lalu `set-image`.
+
+**Probe produksi sesudah deploy (08:00 UTC).** `health` 200 / 25 byte / 0,357 s; `GET /api/certificates` dan
+`/api/experience` tetap 3 dan 2; `GET`+`DELETE /api/admin/contact` tanpa token → **401 / 401**; `POST
+/api/contact` bentuk `{message}` → **400**; `/api/cv` **783896 byte** — identik dengan hasil langkah (4), tidak
+berubah oleh langkah ini; `/` **40699 byte**, jejak `Application error` = **0**. Yang paling relevan dari
+semua itu: revisi baru **boot terhadap skema yang sudah ada** dan melayani traffic 100 %, artinya
+`verifySchema()` tidak mengunci siapa pun keluar.
+
+### Baris fiktif yang ternyata sudah hidup di produksi — dan (5) tidak menghapusnya
+
+Ini keluar dari probe, bukan dari rencana. `GET /api/certificates` di produksi hari ini mengembalikan:
+
+| yang disajikan publik | nilai |
+|---|---|
+| sertifikat | "AWS Solutions Architect" / Amazon Web Services / 2024; "Advanced React Patterns" / Frontend Masters / 2023; "Full-Stack Design" / Educative / 2023 |
+| pengalaman | "Senior Software Engineer" / TechNova Solutions / 2023 - Pres; "Fullstack Developer" / Digital Artisan / 2021 - 2023 |
+
+Kelima string itu persis literal `seedData()` yang kuhapus barusan. Bekas mesinnya ada pada cap waktu:
+`createdAt` kelima baris jatuh pada **2026-09-23T15:09:36** dan tersebar hanya **41 ms**
+(`.063079` → `.104474`) — satu proses, lima insert, bukan lima kali seseorang mengetuk form.
+
+Dua hal yang harus dibedakan dengan jujur:
+
+- **(5) menghentikan penanaman, bukan menghapus yang ditanam.** Langkah ini benar-benar menutup jalan masuk
+  (dan `deploy.yml` memang tidak pernah memanggilnya), tapi `seedData()` dulu hanya bertindak kalau tabel
+  kosong — jadi **count produksi yang tetap 3 dan 2 di atas bukan bukti bahwa seed berhenti**; itu juga
+  akan terjadi oleh biner lama. Bukti yang benar untuk "seed berhenti" adalah angka lokal di dua arah
+  (biner lama di DB kosong → `cert=3 exp=2`; biner baru → `certificates=0 experiences=0`) dan langkah 5 di
+  runner. Aku menulis pembedaan ini supaya angka "3 baris" tidak terbaca sebagai kesimpulan yang tidak
+  mendukungnya.
+- **Menghapus kelima baris itu bukan pekerjaanku hari ini.** Jalurnya dua: API admin (`DELETE
+  /api/certificates/:id` dan `/api/experience/:id`, butuh token login-mu — nilainya di Secret Manager dan
+  tidak pernah kubaca) atau Cloud SQL langsung (private IP, tidak ada jalur sah dari laptop). Yang mana pun
+  kamu pilih, itu keputusanmu, bukan otomatisasi yang kugulirkan diam-diam. Kontennya sendiri ada di halaman
+  publik situsmu, jadi ini bukan pembersihan kosmetik.
+
+**Batas yang sengaja kubiarkan.** `deploy.yml` **tidak** menjalankan `-migrate`: perubahan model sekarang
+menuntut satu langkah manual (`image yang sama` + `DATABASE_URL` produksi) sebelum traffic dipindah, dan
+kalau itu terlewat revisi baru **menolak boot** — kegagalan di deploy, bukan di request pengunjung. Ini
+kupindah ke README, tidak kupasang sebagai langkah otomatis, karena otomatisasi itu butuh jalur kredensial
+DB di `deploy.yml` yang hari ini tidak kuanggap pantas untuk workflow itu. Dan **TODO.md:248 belum selesai
+sepenuhnya**: yang dijanjikan di sana "mengganti `AutoMigrate` dengan migration yang berversi" — yang
+terhapus adalah *otomatisme saat start*, isinya masih `AutoMigrate`, belum migration file bernomor. Aku
+tidak menyebut butir itu beres cuma karena separuhnya sudah.
 
 ### Yang tidak kubebereskan di M12 (biar tidak kelihatan lupa)
 
