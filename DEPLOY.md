@@ -8,7 +8,7 @@ masing-masing membuktikan hal yang berbeda:
 |---|---|---|---|
 | `ci.yml` (nama: **CI**) | `pull_request: [main]`, `push: [main]`, `workflow_dispatch` | `go` (gofmt/vet/build/test), `web` (lint, `tsc --noEmit`, `next build`, tripwire kontrak), `api` (Postgres 15 service container + binary Go asli, assertion isi JSON + round-trip tulis/hapus dengan JWT) | **tidak ada** — `permissions: contents: read`, tanpa `id-token` |
 | `deploy.yml` (nama: **Deploy to Cloud Run**) | `push: [main]` dengan `paths-ignore`, `workflow_dispatch` | build + push by digest, deploy, alokasi traffic eksplisit, verifikasi isi respons, rollback | WIF ke `github-cd@…` (`contents: read`, `id-token: write`) |
-| `watch.yml` (nama: **Watch**) | `schedule` 02:37 UTC + `workflow_dispatch` | probe konten produksi (domain publik + run.app), cek drift `main` vs deploy terakhir, tripwire kontrak, branch layu; satu baris per hari | **tidak ada** — `contents: read` + `actions: read`, tanpa `id-token`. Satu-satunya kredensialnya `GITHUB_TOKEN` bawaan run (dijadikan `GH_TOKEN` supaya `gh` di runner mau jalan), scope-nya persis dua permission itu. Lihat bagiannya di bawah |
+| `watch.yml` (nama: **Watch**) | `schedule` 02:37 UTC + `workflow_dispatch` | probe konten produksi (domain publik + run.app), cek drift `main` vs deploy terakhir, **drift cloud (`status.traffic` + `serviceAccountName`)**, tripwire kontrak, branch layu; satu baris per hari | **satu identitas BACA saja** — WIF ke `github-watch@…` yang cuma memegang `roles/run.viewer`, ditambah `GITHUB_TOKEN` bawaan run (`contents: read`, `actions: read`) yang dipasang sebagai `GH_TOKEN` supaya `gh` di runner mau jalan. `id-token: write` ada di sini semata untuk menukar token WIF jadi token akses read-only; percobaan tulis dengan identitas itu menghasilkan **403** (terukur — lihat "Bukti kandang" di bawah). Lihat bagiannya di bawah |
 
 Pembagian ini disengaja. `deploy.yml` dulu punya job `test` sendiri — salinan gerbang yang lebih
 lemah (tanpa `tsc`, tanpa tripwire, tanpa tes DB). Salinan itulah yang membuat run #14 hijau
@@ -171,16 +171,21 @@ Isinya tiga hal:
    memberi commit terakhir yang benar-benar seharusnya ter-deploy, lalu dibandingkan dengan run
    `deploy.yml` (event `push`) terakhir yang selesai. Merah kalau run itu gagal, atau kalau SHA-nya
    bukan yang diharapkan dan tidak ada deploy yang sedang berjalan.
-3. **Tripwire kontrak** terhadap sumber `main` hari itu, dan daftar branch yang tip-nya lebih tua
+3. **Drift cloud** (F8, sejak 2026-10-05): membaca `status.traffic`,
+   `status.latestReadyRevisionName`/`latestCreatedRevisionName` dan
+   `spec.template.spec.serviceAccountName` kedua service lewat identitas **baca** `github-watch@…`.
+   Vonisnya: MERAH kalau traffic bukan satu target 100% di revisi `Ready` terbaru (dibaca ulang
+   +20 s dulu supaya jendela deploy tidak dituduh produksi rusak), MERAH kalau service tidak lagi
+   berjalan di `portfolio-runtime@…`, KUNING kalau ada revisi yang belum `Ready` **dan** KUNING kalau
+   cloud/kredensial tidak terbaca. KUNING tertulis di rangkuman, tidak pernah diam-diam hijau.
+4. **Tripwire kontrak** terhadap sumber `main` hari itu, dan daftar branch yang tip-nya lebih tua
    dari 7 hari (informasi saja, tidak ada yang dihapus).
 
-Yang **tidak** bisa dibuktikannya, dan itu pilihan, bukan kelalaian: Watch tidak punya kredensial
-GCP, jadi ia tidak membaca `status.traffic`. Kalau seseorang mem-pin traffic dengan tangan
-(kegagalan yang benar-benar terjadi di run #16), production bisa tetap serve revisi lama sementara
-Watch hijau — soalnya commit yang di-serve memang masih punya run deploy hijau. Yang menutup celah
-itu hanya `cloudrun.sh serving` di dalam `deploy.yml`. Menambah pemeriksaan itu ke workflow terjadwal
-berarti memberi akses cloud ke jalur tanpa ulasan PR; itu keputusan §6, bukan sesuatu yang kusisipkan
-sendiri.
+Yang masih **tidak** dibuktikan Watch, kutulis apa adanya: (a) ia tidak bisa memastikan artefak yang
+ter-serve adalah build dari commit yang kamu kira — `status.traffic` cuma memberi *nama* revisi,
+digestnya dibaca `deploy.yml` di dalam run-nya sendiri; (b) tidak ada `issues: write` (keputusan 4a,
+hold sampai ≥ 8 baris `schedule`); (c) sisi negatifnya (pin traffic ke revisi lama → Watch harus
+MERAH) baru dibuktikan terhadap `gcloud` **stubs** di laptop, belum pernah terhadap produksi nyata.
 
 `issues: write` juga sengaja tidak dipasang. Alarmnya adalah run merah + notifikasi default GitHub.
 
@@ -210,7 +215,7 @@ Perbaikannya tiga, dan ketiganya punya bukti keluaran alat:
 
 | Perubahan | Kenapa |
 |---|---|
-| `env: GH_TOKEN: ${{ github.token }}` di job `watch` | token bawaan run, scope-nya persis `permissions:` workflow (`contents: read`, `actions: read`). Ini bukan kredensial cloud: tidak ada `id-token`, tidak ada WIF, dan token mati sendiri saat run selesai |
+| `env: GH_TOKEN: ${{ github.token }}` di job `watch` | token bawaan run, scope-nya persis `permissions:` workflow (`contents: read`, `actions: read`) dan mati sendiri saat run selesai. Kalimat aslinya ("bukan kredensial cloud: tidak ada `id-token`, tidak ada WIF") benar pada 2026-10-04 dan **tidak lagi benar sejak F8** (2026-10-05): `id-token: write` sekarang ada, khusus untuk identitas BACA `github-watch@…` — lihat "Bukti kandang" |
 | langkah drift memisahkan `rc != 0` dari "daftar run kosong" | pesan sebelumnya ("daftar run deploy.yml kosong") menuduh pemicu deploy hilang padahal yang gagal adalah `gh api`. Sekarang: `gh api gagal (rc=…): <stderr>` vs `tidak ada satu pun run deploy.yml dengan event=push` |
 | langkah *Branch layu* tidak lagi melaporkan `0 branch` saat `gh` gagal | ini false-clean yang paling berbahaya di antara ketiganya: stderr `gh` tercetak di log, tapi barisnya tetap `INFO\|0 branch > 168 jam`. Sekarang daftar ref diambil lebih dulu; kalau rc != 0 atau kosong, barisnya `KUNING\|daftar ref cabang tidak terbaca (rc=…)` — tetap tidak gerbang (langkah ini informasi saja), tapi tidak lagi mengaku bersih |
 
@@ -280,17 +285,82 @@ aslinya — `$PATH` runner dan aturan `gh` soal kredensial. Hanya run sungguhan 
 membuktikannya, dan itu sebabnya jendela observasi E8 dihitung dari run pertama di runner, bukan
 dari hari penulisannya.
 
-## Postur IAM (diverifikasi ulang 2026-10-04 16:45 & 16:52 UTC, lalu 2026-10-05 01:47 & 02:12 UTC)
+### F8 — drift cloud, angkanya dari runner (2026-10-05 02:43 UTC)
+
+PR #18 (`ee52c1e`) hijau `go`/`web`/`api`, merge `3a88e25`, lalu Watch di-`workflow_dispatch` dari
+`main`: **run #4 = `success`** (run id 37256510503). Pertama kalinya workflow terjadwal membaca state
+cloud, jadi yang dikutip di bawah log run-nya, bukan log laptopku:
+
+```text
+02:43:37  access_token_scopes: https://www.googleapis.com/auth/cloud-platform     ← langkah auth@v3
+02:43:51  portfolio-be: sa=portfolio-runtime@… traffic=portfolio-be-00021-kmb=100
+02:43:52  portfolio-fe: sa=portfolio-runtime@… traffic=portfolio-fe-00020-f4n=100
+02:43:55  cloud-sa/portfolio-be|HIJAU|portfolio-runtime@config-agentic-ubuntu.iam.gserviceaccount.com
+02:43:55  cloud-traffic/portfolio-be|HIJAU|100% di portfolio-be-00021-kmb
+02:43:55  cloud-sa/portfolio-fe|HIJAU|…
+02:43:55  cloud-traffic/portfolio-fe|HIJAU|100% di portfolio-fe-00020-f4n
+          baris harian: rows=17 merah=0
+```
+
+Satu kalimat yang tidak boleh dibaca salah: token aksesnya ber-scope `cloud-platform` (itu memang
+bentuk token WIF), dan yang membatasinya adalah **peran IAM** — `github-watch@…` cuma
+`roles/run.viewer`. Bedanya tidak diasumsikan; diukur di sub-bagian berikutnya.
+
+Sisi negatif diukur dengan `gcloud` **stubs**: skrip langkahnya diekstrak apa adanya dari YAML
+(`python3` + `yaml.safe_load`, ambil key `run`) lalu dijalankan 6× — sekali terhadap produksi nyata,
+lima kali terhadap JSON yang dimutasi.
+
+| mutasi | vonis yang muncul | gerbang run |
+|---|---|---|
+| traffic di `00011-5z8` padahal ready `00021-kmb` (persis skenario run #16) | `cloud-traffic` MERAH ×2 | merah |
+| traffic 50/50 ke dua revisi | `cloud-traffic` MERAH ×2 | merah |
+| `serviceAccountName` = `486641216758-compute@…` | `cloud-sa` MERAH ×2 (`cloud-traffic` tetap HIJAU) | merah |
+| `latestCreated=00022-xxx` belum Ready | `cloud-traffic` HIJAU + `cloud-revisi` KUNING ×2 | hijau |
+| `gcloud describe` rc=3, stderr kredensial ditolak | `cloud-drift` KUNING ×2, tidak ada vonis lain | hijau |
+
+**0 false-clean** dari lima mutasi. Yang belum diukur: pin traffic sungguhan ke revisi lama di
+produksi — itu menyentuh routing nyata dan masih menunggu izinmu.
+
+### Bukti kandang — identitas baca ini ditolak saat mencoba menulis (2026-10-05 02:48 UTC)
+
+Klaim "cuma `run.viewer`" baru berarti kalau percobaan tulis benar-benar ditolak. Dijalankan sekali di
+branch buangan `chore/bukti-kandang-watch` (commit `9824e86`, **tidak digabung**): dispatch Watch →
+**run #5 = `success`**.
+
+```text
+02:48:31  target no-op: portfolio-be-00022-w7f=100
+02:48:33  update-traffic rc=1 :: Updating traffic...failed … ERROR: (gcloud.run.services.update-traffic)
+          PERMISSION_DENIED: Permission 'run.service…'
+02:48:35  secrets describe rc=1 :: ERROR: (gcloud.secrets.describe) PERMISSION_DENIED: Permission
+          'secretmanager.secrets.get' denied on resource (or it may not exist)
+          leash/update-traffic|HIJAU|ditolak 403 PERMISSION_DENIED sebagaimana diharapkan
+          leash/secret-describe|HIJAU|ditolak 403 PERMISSION_DENIED sebagaimana diharapkan
+```
+
+Kedua percobaan dipilih supaya tetap aman **seandainya** lolos: `update-traffic` memakai revisi yang
+sedang melayani traffic dengan persen 100 (no-op), dan pada secret yang dicoba hanya `describe`
+(metadata) — bukan `versions access`, yang bisa mencetak `portfolio-database-url` ke log run. Tidak ada
+nilai secret yang dibaca atau dicetak di mana pun, hari ini maupun sebelumnya.
+
+Kontrol negatif, supaya 403 di atas tidak bisa berarti "metodenya memang mati": perintah
+`update-traffic` yang sama, dari laptopku, dengan identitasku sendiri → **`rc=0`**. Yang membedakan
+identifikasi, bukan caranya. Apa yang disentuh kontrol itu, diukur sesudahnya: `status.traffic` tetap
+`portfolio-be-00022-w7f` @100, `latestCreated == latestReady`, dan tidak ada revisi baru (00022 tetap
+terbaru, dibuat 02:44:25 oleh deploy #26). Yang berubah hanya `metadata.generation=35` dan
+`lastModifier` = email operator — panggilanku tercatat sebagai modifikasi walaupun routingnya sama.
+
+## Postur IAM (diverifikasi ulang 2026-10-04 16:45 & 16:52 UTC, 2026-10-05 01:47, 02:12, 02:56 UTC)
 
 | Principal | Peran | Catatan |
 |---|---|---|
 | `github-cd@config-agentic-ubuntu.iam.gserviceaccount.com` | `run.admin`, `artifactregistry.writer`, `cloudsql.client`, `iam.serviceAccountUser`, `secretmanager.secretAccessor` (project-level) | dipakai workflow lewat Workload Identity Federation. Kunci: **hanya 1 `SYSTEM_MANAGED`** — kunci statis `USER_MANAGED` yang ada di baseline §1 TODO.md (valid sampai 2028-09-22) sudah tidak ada |
-| `portfolio-runtime@config-agentic-ubuntu.iam.gserviceaccount.com` | `artifactregistry.reader` **pada repo `portfolio-app` saja**, `logging.logWriter`, `monitoring.metricWriter` (project-level), `secretmanager.secretAccessor` **per-secret pada 5 secret** | dibuat 2026-10-05 02:10 UTC (fase F4). **Belum dipakai apa pun** — kedua service masih jalan di SA compute di bawah; pemindahannya adalah F5 dan masuk lewat `deploy.yml`. Tidak memegang `editor`, `cloudsql.client`, `run.admin`, atau `iam.serviceAccountUser` (terukur: `kosong (benar)`) |
-| `486641216758-compute@developer.gserviceaccount.com` | **`roles/editor` + `roles/pubsub.publisher` se-proyek** | SA runtime kedua service. Ini **hutang**, bukan desain: dokumen ini pernah mengklaim SA hanya memegang `secretmanager.secretAccessor` pada 5 secret `portfolio-*`. Klaim itu salah dan tidak cocok dengan `gcloud projects get-iam-policy`. **Satu kalimatk sendiri juga salah dan sudah dikoreksi 2026-10-05**: baris ini dulu menulis `spec.template.spec.serviceAccountName` *kosong → default compute SA*; keluaran `gcloud run services describe --format=json` justru menunjukkan field itu **diisi eksplisit** dengan email yang sama di kedua service — jadi yang berubah bukan perilaku default, melainkan nilai yang bisa kusediakan lewat `deploy.yml` |
+| `portfolio-runtime@config-agentic-ubuntu.iam.gserviceaccount.com` | `artifactregistry.reader` **pada repo `portfolio-app` saja**, `logging.logWriter`, `monitoring.metricWriter` (project-level), `secretmanager.secretAccessor` **per-secret pada 5 secret** | dibuat 2026-10-05 02:10 UTC (F4) dan **SEJAK F5 dipakai**: `spec.template.spec.serviceAccountName` kedua service = SA ini, terukur lagi 02:46 UTC sesudah deploy run #26 (`3a88e25`) → `portfolio-be-00022-w7f` @100 dan `portfolio-fe-00021-hmv` @100, connector `portfolio-connector` masih terpasang di backend. `logWriter` terbukti (entri `run.googleapis.com/stdout` baru muncul setelah deploy); `metricWriter` **belum** terukur. Tidak memegang `editor`, `cloudsql.client`, `run.admin`, `iam.serviceAccountUser` (terukur: `kosong (benar)`) |
+| `github-watch@config-agentic-ubuntu.iam.gserviceaccount.com` | **`roles/run.viewer` saja** (project-level) + `roles/iam.workloadIdentityUser` pada SA-nya sendiri, member `principalSet://…/github-pool/attribute.repository/ArkanFzi/website-porto2` | identitas F8 untuk `watch.yml`. Tidak ada `secretAccessor`, tidak ada write — dan itu diukur **dua arah** pada 02:48 UTC: `update-traffic` → 403, `secrets describe` → 403, perintah yang sama dengan identitas operator → `rc=0`. Granularitas binding sepanjang yang disediakan provider (`attributeMapping` tidak memetakan `sub`/`environment`) |
+| `486641216758-compute@developer.gserviceaccount.com` | **`roles/editor` + `roles/pubsub.publisher` se-proyek** | **BUKAN lagi** SA runtime kedua service sejak F5 (02:28 UTC) — yang tinggal memakainya dua VM Compute yang berjalan (terukur 02:47 UTC): `agentic-watchdog-vm`, scope **`cloud-platform`** → di sini `editor` project-level adalah kuasa nyata; `hermes-openclaw-vm`, 7 scope sempit (devstorage.read_only, logging.write, monitoring.write, pubsub, service.management.readonly, servicecontrol, trace.append) → tanpa `cloud-platform`, jadi `editor` praktis tidak terpakai. Karena itu F6 (cabut `editor`) **butuh katamu**, bukan langkah senyap. Catatan hutang yang tetap berlaku: `pubsub.publisher` dibiarkan karena penerbit pesannya belum terukur; dan klaim lama di baris ini ("field `serviceAccountName` kosong") sudah kukoreksi — field itu diisi eksplisit dengan email yang sama di kedua service, dan sekarang berisi `portfolio-runtime@…` |
 | `allUsers` | `roles/run.invoker` pada **kedua service** | situs memang publik; binding-nya di IAM service, bukan project |
 | `985349644251-compute@developer.gserviceaccount.com` | `roles/cloudbuild.builds.builder` di `cicd-personal-arkan` saja | `run.admin`/`iam.serviceAccountUser`/`vpcaccess.user`/`editor` + akses 5 secret di `config-agentic-ubuntu` sudah dicabut saat pipeline Cloud Build dimatikan |
 
-Tiga perintah yang menghasilkan tabel di atas, supaya klaimnya bisa diulang orang lain:
+Lima perintah yang menghasilkan tabel di atas, supaya klaimnya bisa diulang orang lain:
 
 ```bash
 # peran project-level per principal
@@ -303,16 +373,29 @@ for s in portfolio-be portfolio-fe; do gcloud run services get-iam-policy $s \
 # kunci SA: yang tersisa hanya SYSTEM_MANAGED
 gcloud iam service-accounts keys list \
   --iam-account=github-cd@config-agentic-ubuntu.iam.gserviceaccount.com --format=json
+# identitas baca Watch: peran project-level + apa yang boleh menukarnya
+gcloud projects get-iam-policy config-agentic-ubuntu --format=json \
+  | jq -r '.bindings[] | select(.members[]? | test("github-watch")) | "\(.role) <- \(.members|join(","))"'
+gcloud iam service-accounts get-iam-policy \
+  github-watch@config-agentic-ubuntu.iam.gserviceaccount.com --format=json \
+  | jq -c '[.bindings[]? | {r:.role, m:.members}]'
+# bahwa kedua service sudah pindah dari SA compute (F5) — keluarannya dua baris email
+for s in portfolio-be portfolio-fe; do gcloud run services describe $s --platform managed \
+  --region us-central1 --format='value(spec.template.spec.serviceAccountName)'; done
 ```
 
 `--flatten="bindings[].members"` bersama `--format='value(members)'` mencetak kolom kosong;
 gcloud menyimpan anggota di field bertype (`members.serviceAccount`, `members.user`), jadi jalur
 `--format=json | jq` di atas adalah satu-satunya yang memberi angka yang bisa dipercaya.
 
-Sweep yang masih terbuka (dicatat, belum dikerjakan): ganti SA runtime default-compute dengan SA
-khusus yang hanya memegang `secretmanager.secretAccessor` pada 5 secret `portfolio-*`. Selama
-`roles/editor` project-level masih melekat di SA yang sama dengan `allUsers → run.invoker`, satu
-kerentanan di container frontend punya jalan keluar dari batas aplikasi.
+Sweep yang masih terbuka (dicatat, belum dikerjakan): `roles/editor` masih melekat pada
+`486641216758-compute@…`, dan SA itu masih dipakai dua VM yang berjalan — itu F6, dan ia kutinggalkan
+sebagai keputusanmu, bukan sebagai langkah senyap (angka blast-radiusnya di §8 F6 `TODO.md`).
+Satu kalimat lama di paragraf ini juga perlu dicabut sebagian: "satu kerentanan di container frontend
+punya jalan keluar dari batas aplikasi" **tidak lagi berlaku untuk Cloud Run** sejak F5 (02:28 UTC) —
+container itu tidak lagi berjalan di SA yang memegang `editor`. Yang masih berlaku adalah versi
+VM-nya: `agentic-watchdog-vm` ber-scope `cloud-platform` dengan `editor` project-level di belakangnya,
+dan `hermes-openclaw-vm` tidak (7 scope sempit, tanpa `cloud-platform`).
 
 ## Pipeline Cloud Build sudah dimatikan
 
