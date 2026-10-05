@@ -131,6 +131,12 @@ jobs:
       # Skema tidak lagi dibuat sebagai efek samping start. Langkah ini mengunci tiga hal:
       # boot di DB kosong harus GAGAL dan menyebut tabel mana yang kurang; -migrate membuat
       # skema tanpa butuh secret aplikasi; dan -migrate tidak menanam data apa pun.
+      - name: Audit — tidak ada error gorm atau listen yang dibuang
+        working-directory: go-backend
+        run: |
+          go run ./cmd/audit-ignored .
+          echo "audit rc=0: nol panggilan yang membuangnya *gorm.DB / r.Run"
+
       - name: Skema dibuat eksplisit, bukan sebagai efek samping start
         working-directory: go-backend
         env:
@@ -332,6 +338,74 @@ jobs:
           echo "DELETE lagi => $again"; [ "$again" = "404" ] || { echo "hapus tidak idempoten"; exit 1; }
           cacat=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $T" "$A/bukan-uuid")
           echo "DELETE id cacat => $cacat"; [ "$cacat" = "400" ] || { echo "id cacat lolos ke DB"; exit 1; }
+
+      # Bagian terakhir job api: dia sengaja mematikan postgres service, jadi dia dijalankan
+      # setelah semua kontrak lain selesai. Dua hal yang dikunci: kegagalan DB tidak pernah
+      # menyamar jadi 200, dan bind yang gagal tidak pernah keluar dengan rc=0.
+      - name: DB mati menjawab 500, bind gagal tidak keluar nol
+        working-directory: go-backend
+        env:
+          DATABASE_URL: host=127.0.0.1 user=postgres dbname=portfolio_db port=5432 sslmode=disable TimeZone=UTC
+          JWT_SECRET: ${{ steps.fixtures.outputs.jwt }}
+          ADMIN_USER: portfolio-admin
+          ADMIN_PASS: ${{ steps.fixtures.outputs.adminpass }}
+        run: |
+          set -uo pipefail
+          A=http://127.0.0.1:8080
+
+          # --- bind yang gagal: instance kedua dibunuh pelan oleh gin, bukan rc=0 ---
+          set +e
+          out=$(/tmp/portfolio-be 2>&1); rc=$?
+          set -e
+          echo "instance kedua, port 8080 sudah dipakai => rc=$rc"
+          echo "$out" | tail -1
+          [ "$rc" != "0" ] || { echo "bind gagal tapi keluar nol: container sakit akan terlihat sehat"; exit 1; }
+          echo "$out" | grep -qi 'address already in use' || { echo "rc!=0 tapi bukan sebab bind"; exit 1; }
+
+          # --- baseline sehat, di run yang sama, sebelum DB kumatikan ---
+          tok=$(curl -fsS -X POST -H 'Content-Type: application/json' \
+            -d "{\"username\":\"$ADMIN_USER\",\"password\":\"$ADMIN_PASS\"}" $A/api/login | jq -r .token)
+          check() {
+            m=$1; p=$2; d=$3; want=$4; args=()
+            [ -n "$d" ] && args+=(-H 'Content-Type: application/json' -d "$d")
+            [ -n "${tok:-}" ] && args+=(-H "Authorization: Bearer $tok")
+            code=$(curl -sS -o /tmp/ckbody -w '%{http_code}' -X "$m" "${args[@]}" "$A$p")
+            echo "$m $p => $code :: $(head -c 80 /tmp/ckbody)"
+            [ "$code" = "$want" ] || { echo "  harap $want"; fail=1; }
+          }
+          fail=0
+          for p in certificates experience; do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' "$A/api/$p")
+            echo "GET /api/$p saat DB hidup => $code"; [ "$code" = "200" ] || fail=1
+          done
+          [ "$fail" = "0" ] || { echo "baseline sehat gagal, sisa uji tidak berarti"; exit 1; }
+
+          # --- matikan Postgres: kegagalan harus terdengar, bukan disenyapkan ---
+          pg=$(docker ps -q --filter ancestor=postgres:15)
+          [ -n "$pg" ] || { echo "kontainer postgres service tidak ketemu"; exit 1; }
+          docker stop "$pg" > /dev/null
+          echo "postgres dimatikan ($pg)"
+          sleep 2
+
+          uuid=11111111-1111-4111-8111-111111111111
+          check GET /api/certificates '' 500
+          check GET /api/experience '' 500
+          check POST /api/certificates '{"title":"t","issuer":"i","date":"2026"}' 500
+          check POST /api/experience '{"role":"r","company":"c","period":"2026"}' 500
+          check DELETE "/api/certificates/$uuid" '' 500
+          check DELETE "/api/experience/$uuid" '' 500
+          check POST /api/contact '{"name":"audit db mati","email":"audit@example.test","subject":"Audit : db mati","body":"pesan"}' 500
+          check GET /api/admin/contact '' 500
+          # validasi id terjadi sebelum DB disentuh: tetap 400 walaupun DB sudah mati
+          check DELETE /api/certificates/bukan-uuid '' 400
+          check DELETE /api/experience/bukan-uuid '' 400
+
+          code=$(curl -sS -o /tmp/ckbody -w '%{http_code}' "$A/api/health")
+          echo "GET /api/health saat DB mati => $code :: $(cat /tmp/ckbody)"
+          [ "$code" = "503" ] || { echo "health tidak melaporkan db error"; fail=1; }
+
+          [ "$fail" = "0" ] || { echo "ada kegagalan DB yang masih menyamar"; exit 1; }
+          echo "semua jalur menjawab kegagalan DB dengan 500/503, tidak ada 200 palsu"
 
       - name: Log backend saat gagal
         if: failure()
