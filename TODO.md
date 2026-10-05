@@ -33,6 +33,14 @@ M10 membangun gerbangnya supaya klaim "stable" punya dasar.
 > **diisi eksplisit**, bukan kosong. Keputusan 2a dengan begitu sudah jadi keadaan dunia, dan tagihan
 > sebenarnya berpindah ke **drill pemulihan yang 0×**. Hitungan branch juga kukoreksi: bukan "10 cabang"
 > tapi **13 ancestor + 2 unik**. Tidak ada yang dieksekusi di luar pengukuran read-only.
+>
+> **Update 2026-10-05 02:15 UTC:** F1, F2, F3, F4 **selesai dengan angka** (§8 "Hasil terukur F1–F4").
+> Yang paling penting: **E4 jadi hijau**. Setelah `cancel-in-progress: false` cuma terpasang sejak
+> kemarin, sekarang ada dua run (#23, #24) yang membuktikan run kedua `pending` 215 s lalu mulai
+> **2 s** sesudah yang pertama selesai, tanpa satu pun dibatalkan. Cabang: `ls-remote --heads`
+> **16 → 2**, dengan bundle tertanggal dan pemulihan yang **dites**, bukan dijanjikan. Proteksi:
+> `strict: true`. SA runtime baru sudah dibuat tapi **belum dipakai apa pun** — F5 (pindah service)
+> dan F6 (cabut `editor`) masih terbuka, dan justru itu yang berbahaya.
 
 ---
 
@@ -251,9 +259,9 @@ lewat file baseline, bukan melupakannya.
 | 1 | Izin drill rollback | **Diberikan dan selesai.** Drill jalan di produksi (run #18), bukan di service baru; jendela rusak 63 detik, hanya `/api/cv`. Lihat §7 P5 |
 | 2 | Branch protection `main` | **Diberikan dan terpasang.** `required_status_checks.contexts = ["go","web","api"]`, `strict` tetap `false` (kompensasinya: `ci.yml` ikut tersulut `push: main`) |
 | 3 | Cabut kunci statis `github-cd` | **Sudah tidak relevan — dan bukan karena aku.** `gcloud iam service-accounts keys list` kini hanya mengembalikan 1 kunci `SYSTEM_MANAGED`; kunci `USER_MANAGED` (valid sampai 2028-09-22) yang tercatat di §1 sudah tidak ada saat diperiksa ulang 16:45 UTC. Aku tidak menghapusnya dan tidak bisa memastikan siapa yang menghapus — kalau itu kamu, bagus; kalau bukan, itu pertanyaan sendiri. |
-| 4 | Runtime SA tanpa `roles/editor` | **Terbuka.** Diverifikasi: `486641216758-compute@developer.gserviceaccount.com` masih `roles/editor` + `roles/pubsub.publisher` se-proyek, dan kedua service publik (`allUsers → run.invoker`) jalan di SA itu. Sudah dicatat sebagai hutang di `DEPLOY.md` |
-| 5 | `watch.yml` membuat issue otomatis | **Terpasang seperti rencana awalnya.** `issues: write` **tidak** diberi, jadi Watch hanya menulis satu baris per hari + membuat run merah; alarmnya notifikasi default GitHub untuk workflow terjadwal yang gagal. Terbukti di runner: run #2 `success` (`merah=0`), run #3 `success` (`rows=13 merah=0`), run #1 `failure` dengan satu MERAH |
-| 6 | `staging`, `chore/bughunter-ci` | **Terbuka.** `origin` = 13 cabang (hitungan `GET /git/refs/heads`, 17:45 UTC). Angka lama di baris ini ("`chore/bughunter-ci` ahead 1 / behind 5") sudah basi: `git rev-list --left-right --count origin/main...origin/<b>` kini memberi **ahead 1 / behind 22** untuk `chore/bughunter-ci` (tip `bd38b93`, 97 jam) dan **ahead 0 / behind 30** untuk `staging` (tip `1f2486b`, 267 jam — satu-satunya yang dihitung *layu* oleh Watch). `deploy.yml` di kedua branch itu tetap regression. Branch yang kubuat untuk fase-fase di atas (`chore/gerbang-ci`, `chore/gerbang-ci-v2`, `chore/proteksi-main`, `chore/gerbang-deploy-p4`, `fix/traffic-alokasi-eksplisit`, `fix/watch-gh-token`, `drill/cv-response`, `revert/drill-cv`, `docs/rekonsiliasi-p7`, `chore/watch-p6`) juga belum dihapus — PR-nya sudah merged, jadi isinya aman di `main`. Watch tidak menghapus apa pun: langkah *Branch layu* hanya menghitung |
+| 4 | Runtime SA tanpa `roles/editor` | **Setengah jalan, dan sengaja dipisah.** Diverifikasi 2026-10-05 01:47 UTC: `486641216758-compute@developer.gserviceaccount.com` masih `roles/editor` + `roles/pubsub.publisher` se-proyek dan **masih** yang melayani request di kedua service. F4 sudah selesai: `portfolio-runtime@…` dibuat dengan grant seperlunya saja (reader pada repo AR `portfolio-app`, logWriter, metricWriter, secretAccessor per-secret pada 5 secret) dan **belum dipakai apa pun** — angka lengkapnya di §8 F4. F5 (pindah service) dan F6 (cabut `editor`) masih terbuka; keduanya tidak kubarengkan dalam satu PR supaya kalau merah, penyebabnya terbaca |
+| 5 | `watch.yml` membuat issue otomatis | **Hold atas keputusanmu (4a), sampai 8 hari baris `schedule` terkumpul.** `issues: write` tetap tidak diberi, jadi Watch hanya menulis baris harian + membuat run merah; alarmnya notifikasi default GitHub. Status terukur 02:12 UTC: workflow `state=active`, 3 run selesai (#1 `failure`, #2 & #3 `success`, `rows=13 merah=0`) — **tetapi ketiganya `workflow_dispatch`**, dan run `event=schedule` di repo masih **0** karena cron `37 2 * * *` baru jatuh tempo 02:37 UTC. Re-check paling cepat 2026-10-12 |
+| 6 | `staging`, `chore/bughunter-ci` | **Selesai (F1).** `git ls-remote --heads origin` **16 → 2**: 13 branch yang sudah jadi ancestor `main` (termasuk `staging` `1f2486b`) dihapus bersama `chore/bughunter-ci` `bd38b93` yang isinya dibuang. Sebelum hapus: `porto2-branch-backup-2026-10-05.bundle` (6.768.151 byte, `sha256:85677cee…`) dan pemulihan dites di repo sementara — `staging` kembali ke `1f2486b`, `chore/bughunter-ci` ke `bd38b93`. Yang **kutahan** atas nama keputusanmu: `chore/gerbang-ci` `e3ce49d`, ahead 2 commit (PR #1, isinya sudah tersuperseded oleh PR #2 — 7 file yang disentuhnya semua ADA di `main`, `ci.yml` beda 20 baris). Hitungan "10 cabang" yang kupakai kemarin salah, angka yang benar 13 + 2 |
 
 ---
 
@@ -455,7 +463,7 @@ yang kutulis 20 menit sebelumnya.
 | E1 | Workflow jalan di setiap PR | **hijau** | 19 run `ci.yml` = 12 `pull_request` + 7 `push` (18 `success`, 1 `failure` = run #4 untuk `9d0a3f1`, yang memang kerusakan percobaan di E2). `pull_request` untuk `98a7057`, `e3ce49d`, `f07fddb`, `b487c0f`, `9d0a3f1`, `6b56d38`, `14859ce`, `4bcce94`, `ef804fc`, `16c2cfa`, `bbb9f3f`, `697e3a0` |
 | E2 | Kerusakan memblokir merge | **hijau** | PR #4 `blocked`, HTTP 405, 0 run `deploy.yml` untuk `9d0a3f1` |
 | E3 | PR tidak mungkin menyentuh produksi | **hijau (struktural)** | `ci.yml`: `permissions: contents: read`, tidak ada `id-token` sama sekali |
-| E4 | Cancel tidak meninggalkan deploy setengah jalan | **merah — belum diuji** | `cancel-in-progress: false` terpasang dan `actionlint` bersih, tapi belum ada dua push berjarak < 60 s yang membuktikan run kedua `queued` |
+| E4 | Cancel tidak meninggalkan deploy setengah jalan | **hijau (mekanisme: `workflow_dispatch` ×2, bukan `push` ×2 — lihat §8 F3)** | 02:00 UTC: dua dispatch berjarak **27 s** pada `main` `b45c298`. Run #23 job `02:00:28→02:04:24` `success`; run #24 `created 02:00:51` tapi **`pending` 215 s** lalu job `02:04:26→02:07:41` `success` — mulai **2 s** sesudah #23 selesai, `cancelled=false` pada keduanya. Artefak live sesudahnya `portfolio-be-00020-vqd=100` / `portfolio-fe-00019-npr=100`, satu revisi baru per run per service, health `{"db":"ok","status":"ok"}` dari domain publik dan `run.app`, `/` 40.699 byte tanpa `Application error`. Varian "dua push dengan konten berbeda" masih belum ter-exercise (kedua run sama SHA) |
 | E5 | Rollback pernah dieksekusi dan memulihkan | **hijau** | run #18 langkah 13 `success`, langkah 14 `success`, traffic terukur kembali ke `be-00013-s97`/`fe-00012-947` |
 | E6 | Smoke bisa gagal | **hijau** | run #18 `"/api/cv tidak mengembalikan PDF"` pada HTTP 200 — `curl -f` tidak akan melihatnya |
 | E7 | Dokumen tidak memicu deploy | **hijau — dua pengukuran** | (1) merge PR #9 (`f218564`, hanya `README.md`/`DEPLOY.md`/`TODO.md`) → `deploy.yml` run count **0** untuk SHA itu, `ci.yml` push run #14 `success`. (2) merge PR #13 (`7d7217b`, juga dokumen saja) → `deploy.yml` **0 run**, `watch.yml` 0 run, `ci.yml` push run #23 `success`, dan `gcloud run services describe` tetap `portfolio-be-00018-fsc` / `portfolio-fe-00017-wqb` @100% — merge dokumen tidak mengubah apa pun yang melayani request. Kontrasnya terukur di hari yang sama: PR #10/#11/#12 yang menyentuh `.github/workflows/**` memicu deploy run #20, #21, #22 — ketiganya `success`. `paths-ignore: ['**.md','docs/**']` + `actionlint` bersih |
@@ -535,7 +543,91 @@ memakai alat yang baru valid setelah F8.
 3. **"ya" terakhir untuk F7** (create + delete clone berbayar) dan, kalau kau mau bukti negatif E11,
    **untuk drill pin-traffic** di F8 — itu menyentuh traffic produksi kelasnya dengan P5 yang sudah kamu izinkan.
 
-### Angka yang tidak akan kubebereskan di M12 (biar tidak kelihatan lupa)
+### Hasil terukur F1–F4 (2026-10-05, 01:55 – 02:12 UTC)
+
+Urutan yang jalan: F1 → F2 → F3 → F4. F3 didahulukan dari F4 karena butuh `deploy.yml` kosong
+perubahan lain supaya serialisasinya terbaca bersih.
+
+**F1 — branch.** Bundle dibuat **lebih dulu**: `porto2-branch-backup-2026-10-05.bundle`, 6.768.151
+byte, `sha256:85677cee…f9be28a`, `git bundle verify` → *"The bundle records a complete history"*,
+16 ref. Jalan baliknya tidak diklaim, dites: di repo bare sementara, `staging` pulih ke `1f2486b`
+dan `chore/bughunter-ci` ke `bd38b93` — persis SHA yang dicatat sebelum hapus.
+`git push origin --delete` untuk **14** ref (13 ancestor `main` + `chore/bughunter-ci` yang dibuang).
+`git ls-remote --heads origin`: **16 → 2** (`main` `b45c298` + `chore/gerbang-ci` yang kutahan
+karena ahead 2). Koreksi hitungan lama: yang aman dihapus **13 ancestor**, bukan "10 cabang".
+
+Satu kesalahan urutan yang kuperbaiki di tengah jalan: perintah bundle pertama **tidak pernah
+selesai** — `git checkout main` menolak karena `TODO.md` masih ada perubahan belum ter-commit, dan
+seluruh rantai `&&` berhenti di situ. Aku sempat menulis "14 ref terhapus, heads = 2" sebelum
+mengukurnya; realitanya saat itu heads masih 17 dan bundle belum ada. Angka di atas semua hasil
+pengukuran ulang setelahnya, dan kalimatku yang mendahului pengukuran itu kutandai di sini supaya
+tidak menyamar sebagai bukti.
+
+**F2 — `strict: true` (E14 hijau).** Sebelum/sesudah, satu field yang berubah:
+
+| | `strict` | `contexts` | `enforce_admins` | `approvals` | force-push | delete |
+|---|---|---|---|---|---|---|
+| sebelum | `false` | `["go","web","api"]` | `true` | `0` | `false` | `false` |
+| sesudah | **`true`** | `["go","web","api"]` | `true` | `0` | `false` | `false` |
+
+Dua hal yang saya tidak duga dan sekarang tercatat di `DEPLOY.md`: `PUT /branches/main/protection`
+pada repo personal menuntut key `restrictions` tapi menolak isi `users`/`teams` (jalan buntu), dan
+penyebab 422 sebenarnya `dismissal_restrictions` yang kutempel sendiri; sementara endpoint sempit
+`PUT …/protection/required_status_checks` **404** walau `GET` pada path yang sama **200**.
+
+**F3 — E4 hijau, dengan mekanisme yang berbeda dari rencana.** Rencananya "dua push berjarak < 60 s".
+Yang kukerjakan: **dua `workflow_dispatch` pada `main` berjarak 27 s** — karena `strict: true` baru
+saja dipasang, dua PR beruntun akan memaksa PR kedua rebase + menunggu CI (~4 menit) sebelum boleh
+di-merge, dan celah 4 menit itu justru keluar dari jendela yang diuji. `deploy.yml` sudah punya
+`workflow_dispatch` dan trigger itu membaca file dari branch yang dipilih, jadi serialisasi yang
+diuji kelompok `concurrency` -nya identik.
+
+| | run #23 | run #24 |
+|---|---|---|
+| `created_at` | 02:00:24 | **02:00:51 (+27 s)** |
+| job `deploy` mulai | 02:00:28 | **02:04:26** |
+| job selesai | 02:04:24 | 02:07:41 |
+| conclusion | `success` | `success` |
+| `cancelled` | **`false`** | **`false`** |
+| langkah dijalankan | 17 | 17 |
+
+Run #24 tercatat `pending` selama **215 s** (02:00:51 → 02:04:26) dan mulai **2 s** setelah job #23
+selesai: tepat perilaku `cancel-in-progress: false` yang dijanjikan. #23 tidak pernah `cancelled` —
+dan ini yang membedakan dari run #13 (diduga dibatalkan di batas deploy) yang jadi alasan E4 ditulis.
+Rantai artefak ikut terukur, bukan disimpulkan: sebelum `be-00018-fsc`/`fe-00017-wqb`; sesudah
+**`portfolio-be-00020-vqd=100`** (digest `sha256:9af65fd…`) dan **`portfolio-fe-00019-npr=100`**
+(digest `sha256:ee8c019…`). Setiap service menambah **satu** revisi per run (be: 00019 `sha256:255d7d4…`
+lalu 00020 `sha256:9af65fd…`) — dua run, dua revisi, tidak ada yang setengah jalan. Digest berbeda
+untuk tree yang sama (kedua run memakai SHA `b45c298`) mengonfirmasi ulang catatan "build tidak
+reproducible" di §7: digest mengikat revisi ke satu run, bukan ke konten.
+Verifikasi pasca-deploy: `{"db":"ok","status":"ok"}` dari domain publik **dan** dari URL `run.app`,
+halaman `/` 40.699 byte, `Application error` muncul **0** kali.
+
+Yang **tidak** terbukti oleh bentuk tes ini, kutulis supaya tidak menyesatkan: kedua run punya
+`head_sha` sama, jadi kasus "run kedua queue padahal membawa konten yang lebih baru" tidak
+ter exercised. Invarian yang diuji (serialisasi + tidak ada pembatalan + artefak live = hasil run
+terakhir) sudah terbukti; varian push-dua-konten akan tercatat sendiri kalau terjadi.
+
+Bonus E7 pengukuran keempat: merge PR #15 (dokumen saja) → `main = b45c298` → **0 run `deploy.yml`**
+untuk SHA itu, `ci.yml` `push` jalan.
+
+**F4 — SA runtime (E9-pre hijau, efek produksi 0).** `portfolio-runtime@config-agentic-ubuntu.iam.gserviceaccount.com`
+(`uniqueId 115631008968905750981`, tidak disabled). Yang terpasang, dibaca ulang satu per satu:
+
+| Grant | Cakupan | Terbukti |
+|---|---|---|
+| `roles/artifactregistry.reader` | **repo AR `portfolio-app` saja**, bukan se-proyek | `artifacts repositories get-iam-policy` → 1 member |
+| `roles/logging.logWriter` | project | ada di `projects get-iam-policy` |
+| `roles/monitoring.metricWriter` | project | ada di `projects get-iam-policy` |
+| `roles/secretmanager.secretAccessor` | **per-secret**, 5 secret `portfolio-*` | 5 / 5 |
+
+Yang **tidak** dimilikinya, diukur sebagai peniadaan (bukan diasumsikan): `editor`, `cloudsql.client`,
+`run.admin`, `iam.serviceAccountUser`, `secretAccessor` project-level → keluaran pemeriksaan:
+`kosong (benar)`. `cloudsql.client` memang tidak dibutuhkan: backend mencapai Cloud SQL lewat
+**private IP `10.112.0.2`** via connector `portfolio-connector` dengan `vpc-access-egress=all-traffic`
+dan **tanpa** volume `cloudsql` — terukur dari `run services describe`.
+
+### Yang tidak kubebereskan di M12 (biar tidak kelihatan lupa)
 
 `roles/editor` pada `…@cloudservices.gserviceaccount.com` (SA milik Google, bukan kita); `roles/pubsub.publisher`
 pada SA compute (pemakainya belum terukur); build image yang tidak reproducible (§7 "Catatan jujur" #5 —

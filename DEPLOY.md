@@ -28,13 +28,49 @@ Required status checks (dipasang 2026-10-04, setelah `ci.yml` hidup — urutan i
 "jebakan" di [TODO.md](TODO.md#4-jebakan-yang-sudah-diantisipasi)):
 
 ```
-contexts: ["go", "web", "api"]   strict: false   approvals: 0   dismiss_stale_reviews: true
+contexts: ["go", "web", "api"]   strict: true   approvals: 0   dismiss_stale_reviews: true
 ```
 
 Nama context-nya `go`/`web`/`api` (nama job), bukan `CI / go`; diverifikasi lewat
-`GET /repos/…/commits/{sha}/check-runs` sebelum disimpan, bukan ditebak. `strict` masih `false`,
-itu sebabnya `ci.yml` juga tersulut `push: main`: merge commit (`b6ad3ce`, `4629fa2`, `a74e014`,
-`39eae21`) ikut diverifikasi setelah masuk, walau PR-nya di-setujui pada SHA yang lebih lama.
+`GET /repos/…/commits/{sha}/check-runs` sebelum disimpan, bukan ditebak.
+
+`strict` diubah `false → true` pada **2026-10-05 02:00 UTC** atas permintaan eksplisit. Cara
+memasangnya bukan satu panggilan bersih, dan catatan ini ada supaya orang berikutnya tidak
+membuang waktu di lubang yang sama: `PUT /repos/…/branches/main/protection` pada repo milik
+akun personal (bukan organisasi) berada dalam jalan buntu — tanpa key `restrictions` API membalas
+`"restrictions" wasn't supplied`, sedangkan `restrictions` apa pun yang berisi `users`/`teams`
+membalas `Only organization repositories can have users and team restrictions`. Yang ternyata
+bukan `restrictions` penyebabnya, Melainkan `dismissal_restrictions: {}` yang kutempel di dalam
+`required_pull_request_reviews`; bentuk minimal di bawah diterima **HTTP 200**:
+
+```bash
+# dibaca dulu, lalu dikirim kembali dengan hanya strict yang berubah
+curl -sS -H "Authorization: Bearer $TOK" -H "Accept: application/vnd.github+json" \
+  "$API/repos/$R/branches/main/protection" > protection-sebelum.json
+jq -c '{required_status_checks:{strict:true,contexts:.required_status_checks.contexts},
+         enforce_admins:.enforce_admins.enabled,
+         required_pull_request_reviews:{dismiss_stale_reviews:.required_pull_request_reviews.dismiss_stale_reviews,
+           require_code_owner_reviews:.required_pull_request_reviews.require_code_owner_reviews,
+           required_approving_review_count:.required_pull_request_reviews.required_approving_review_count},
+         allow_force_pushes:.allow_force_pushes.enabled, allow_deletions:.allow_deletions.enabled,
+         restrictions:null}' protection-sebelum.json > body.json
+curl -sS -X PUT -H "Authorization: Bearer $TOK" -H "Accept: application/vnd.github+json" \
+  -H "Content-Type: application/json" -d @body.json \
+  "$API/repos/$R/branches/main/protection"
+# verifikasi (keluaran 2026-10-05 02:00 UTC): strict=true, contexts=["go","web","api"], enforce_admins=true
+curl -sS -H "Authorization: Bearer $TOK" -H "Accept: application/vnd.github+json" \
+  "$API/repos/$R/branches/main/protection" | jq '{strict:.required_status_checks.strict,
+       contexts:.required_status_checks.contexts, admins:.enforce_admins.enabled}'
+```
+
+`PUT /branches/main/protection/required_status_checks` (endpoint yang lebih sempit, secara teori
+hanya menyentuh satu blok) **`404`** di repo ini meski `GET` pada path yang sama mengembalikan
+`200` — jadi satu-satunya jalur tulis yang terbukti jalan adalah `PUT /protection` penuh.
+
+Efek `strict: true`: PR wajib sudah di-rebase ke head `main` sebelum boleh di-merge, jadi celah
+"merge disetujui pada SHA yang lebih lama" tertutup. `ci.yml` tetap tersulut `push: main` — bukan
+lagi sebagai kompensasi, sekarang sebagai lapisan kedua (kalau ada push langsung yang suatu saat
+lolos, gerbangnya tetap jalan).
 
 Bukti gerbang ini benar-benar menutup (bukan sekadar terpasang): PR #4 (`spasi/uji-gerbang`,
 `9d0a3f1`) dengan sengaja rusak → `go: failure`, `web: failure`, `api: failure`,
@@ -176,7 +212,7 @@ Perbaikannya tiga, dan ketiganya punya bukti keluaran alat:
 |---|---|
 | `env: GH_TOKEN: ${{ github.token }}` di job `watch` | token bawaan run, scope-nya persis `permissions:` workflow (`contents: read`, `actions: read`). Ini bukan kredensial cloud: tidak ada `id-token`, tidak ada WIF, dan token mati sendiri saat run selesai |
 | langkah drift memisahkan `rc != 0` dari "daftar run kosong" | pesan sebelumnya ("daftar run deploy.yml kosong") menuduh pemicu deploy hilang padahal yang gagal adalah `gh api`. Sekarang: `gh api gagal (rc=…): <stderr>` vs `tidak ada satu pun run deploy.yml dengan event=push` |
-| langkah *Branch layu* tidak lagi melaporkan `0 branch` saat `gh` gagal | ini false-clean yang paling berbahaya di antara ketiganya: stderr `gh` tercetak di log, tapi barisnya tetap `INFO|0 branch > 168 jam`. Sekarang daftar ref diambil lebih dulu; kalau rc != 0 atau kosong, barisnya `KUNING|daftar ref cabang tidak terbaca (rc=…)` — tetap tidak gerbang (langkah ini informasi saja), tapi tidak lagi mengaku bersih |
+| langkah *Branch layu* tidak lagi melaporkan `0 branch` saat `gh` gagal | ini false-clean yang paling berbahaya di antara ketiganya: stderr `gh` tercetak di log, tapi barisnya tetap `INFO\|0 branch > 168 jam`. Sekarang daftar ref diambil lebih dulu; kalau rc != 0 atau kosong, barisnya `KUNING|daftar ref cabang tidak terbaca (rc=…)` — tetap tidak gerbang (langkah ini informasi saja), tapi tidak lagi mengaku bersih |
 
 Reheksal ulang keempat jalur, dengan `gh` shim yang benar-benar berfungsi:
 `drift|HIJAU|run #20 hijau untuk f5fdcf1, tidak ada deploy lain di atasnya` +
@@ -244,12 +280,13 @@ aslinya — `$PATH` runner dan aturan `gh` soal kredensial. Hanya run sungguhan 
 membuktikannya, dan itu sebabnya jendela observasi E8 dihitung dari run pertama di runner, bukan
 dari hari penulisannya.
 
-## Postur IAM (diverifikasi ulang 2026-10-04, 16:45 dan 16:52 UTC)
+## Postur IAM (diverifikasi ulang 2026-10-04 16:45 & 16:52 UTC, lalu 2026-10-05 01:47 & 02:12 UTC)
 
 | Principal | Peran | Catatan |
 |---|---|---|
 | `github-cd@config-agentic-ubuntu.iam.gserviceaccount.com` | `run.admin`, `artifactregistry.writer`, `cloudsql.client`, `iam.serviceAccountUser`, `secretmanager.secretAccessor` (project-level) | dipakai workflow lewat Workload Identity Federation. Kunci: **hanya 1 `SYSTEM_MANAGED`** — kunci statis `USER_MANAGED` yang ada di baseline §1 TODO.md (valid sampai 2028-09-22) sudah tidak ada |
-| `486641216758-compute@developer.gserviceaccount.com` | **`roles/editor` + `roles/pubsub.publisher` se-proyek** | SA runtime kedua service (`spec.template.spec.serviceAccountName` kosong → default compute SA). Ini **hutang**, bukan desain: dokumen ini pernah mengklaim SA hanya memegang `secretmanager.secretAccessor` pada 5 secret `portfolio-*`. Klaim itu salah dan tidak cocok dengan `gcloud projects get-iam-policy` |
+| `portfolio-runtime@config-agentic-ubuntu.iam.gserviceaccount.com` | `artifactregistry.reader` **pada repo `portfolio-app` saja**, `logging.logWriter`, `monitoring.metricWriter` (project-level), `secretmanager.secretAccessor` **per-secret pada 5 secret** | dibuat 2026-10-05 02:10 UTC (fase F4). **Belum dipakai apa pun** — kedua service masih jalan di SA compute di bawah; pemindahannya adalah F5 dan masuk lewat `deploy.yml`. Tidak memegang `editor`, `cloudsql.client`, `run.admin`, atau `iam.serviceAccountUser` (terukur: `kosong (benar)`) |
+| `486641216758-compute@developer.gserviceaccount.com` | **`roles/editor` + `roles/pubsub.publisher` se-proyek** | SA runtime kedua service. Ini **hutang**, bukan desain: dokumen ini pernah mengklaim SA hanya memegang `secretmanager.secretAccessor` pada 5 secret `portfolio-*`. Klaim itu salah dan tidak cocok dengan `gcloud projects get-iam-policy`. **Satu kalimatk sendiri juga salah dan sudah dikoreksi 2026-10-05**: baris ini dulu menulis `spec.template.spec.serviceAccountName` *kosong → default compute SA*; keluaran `gcloud run services describe --format=json` justru menunjukkan field itu **diisi eksplisit** dengan email yang sama di kedua service — jadi yang berubah bukan perilaku default, melainkan nilai yang bisa kusediakan lewat `deploy.yml` |
 | `allUsers` | `roles/run.invoker` pada **kedua service** | situs memang publik; binding-nya di IAM service, bukan project |
 | `985349644251-compute@developer.gserviceaccount.com` | `roles/cloudbuild.builds.builder` di `cicd-personal-arkan` saja | `run.admin`/`iam.serviceAccountUser`/`vpcaccess.user`/`editor` + akses 5 secret di `config-agentic-ubuntu` sudah dicabut saat pipeline Cloud Build dimatikan |
 
@@ -339,11 +376,30 @@ kalau trigger tidak lagi membutuhkannya.
 - **Cloud SQL `portfolio-pg`** (diverifikasi ulang 16:52 UTC): Postgres 15, tier `db-f1-micro`,
   `availabilityType=ZONAL` (tanpa HA), IP **PRIVATE** saja, backup harian **enabled** — 7 backup
   tersimpan, semuanya `SUCCESSFUL`; terbaru mulai `2026-10-04T04:50:41Z` selesai `04:52:13Z` (91 s).
-  **PITR ternyata OFF**: `settings.pointInTimeRecoveryEnabled` absen di keluaran API, begitu pula
-  `gcPitrRetentionSettings` dan `retainedBackups`. Baseline §1 TODO.md menulis "PITR on,
-  retainedBackups 7" — keduanya tidak terbukti; "7" hanya kebetulan cocok dengan jumlah baris
-  `backups list`, dan waktu `03:00Z` di baris itu adalah epoch dari *id* backup, bukan
-  `endTime`-nya. Restore drill: **0×**. Konsekuensinya: tanpa PITR, hanya ada snapshot harian —
-  pulih ke titik di tengah hari tidak mungkin, dan maksimum satu hari data bisa hilang.
+  **PITR: AKTIF — dan kalimatku kemarin ("PITR ternyata OFF") salah.** Diperiksa ulang 2026-10-05
+  01:47 UTC, `gcloud sql instances describe portfolio-pg --format=json` mengeluarkan
+  `pointInTimeRecoveryEnabled=true`, `replicationLogArchivingEnabled=true`,
+  `transactionLogRetentionDays=7`, `retainedBackups=7`, `backupTier=STANDARD`, jendela `03:00`.
+  Sebab kesalahanku murni cara membaca, dan jebakan ini layak dicatat karena bisa menipu siapa pun:
+  field-nya ada di `settings.backupConfiguration.pointInTimeRecoveryEnabled`, **tidak** bersarang
+  satu level lebih dalam. Path keliru mengembalikan `null`, dan `null` itu kutafsirkan sebagai
+  "mati", padahal yang mati hanya query-ku:
+
+  ```bash
+  # dua pembacaan berdampingan pada instance yang sama, 2026-10-05 01:47 UTC
+  gcloud sql instances describe portfolio-pg --project=config-agentic-ubuntu --format=json \
+    | jq -c '.settings.backupConfiguration.settings.pointInTimeRecoveryEnabled // "absent"'
+  #   -> "absent"   (path yang kupakai kemarin: salah, dan 'absent' bukan 'off')
+  gcloud sql instances describe portfolio-pg --project=config-agentic-ubuntu --format=json \
+    | jq -c '.settings.backupConfiguration.pointInTimeRecoveryEnabled'
+  #   -> true       (path benar)
+  ```
+
+  Jadi baseline §1 TODO.md ("PITR on, retainedBackups 7") lebih dekat ke realita daripada koreksiku
+  sendiri, dan koreksiku itulah yang harus dicabut. Yang **tetap** belum terbukti: **restore drill
+  0×**. PITR aktif adalah konfigurasi, bukan pemulihan; sampai satu clone-from-timestamp benar-benar
+  dibuat dan diukur (fase F7 di TODO.md §8), klaim "kalau data rusak bisa dipulihkan ke titik X"
+  masih narasi. Yang sudah terukur hari ini: backup harian ada, arsip log transaksi aktif, retensi
+  7 hari.
 - Kalau butuh men-deploy tanpa menunggu merge: `workflow_dispatch` di `deploy.yml` — tapi ingat ia
   memakai SHA ref yang dipilih, dan `main` tetap tidak boleh menerima push langsung.
