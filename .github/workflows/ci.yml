@@ -128,6 +128,46 @@ jobs:
         working-directory: go-backend
         run: go build -o /tmp/portfolio-be .
 
+      # Skema tidak lagi dibuat sebagai efek samping start. Langkah ini mengunci tiga hal:
+      # boot di DB kosong harus GAGAL dan menyebut tabel mana yang kurang; -migrate membuat
+      # skema tanpa butuh secret aplikasi; dan -migrate tidak menanam data apa pun.
+      - name: Skema dibuat eksplisit, bukan sebagai efek samping start
+        working-directory: go-backend
+        env:
+          DATABASE_URL: host=127.0.0.1 user=postgres dbname=portfolio_db port=5432 sslmode=disable TimeZone=UTC
+        run: |
+          # DATABASE_URL dipakai biner (pgx menerima TimeZone); psql memakai conninfo sendiri
+          # karena libpq menolak opsi itu: "invalid connection option \"TimeZone\"".
+          PSQL='host=127.0.0.1 user=postgres dbname=portfolio_db port=5432 sslmode=disable'
+          T() { psql "$PSQL" -tAc "select count(distinct table_name) from information_schema.tables where table_schema = current_schema() and table_name in ('certificates','experiences','contact_messages')"; }
+
+          [ "$(T)" = "0" ] || { echo "DB uji tidak kosong: $(T) tabel sudah ada"; exit 1; }
+          echo "tabel sebelum apa pun: $(T)/3"
+
+          set +e
+          out=$(/tmp/portfolio-be 2>&1); rc=$?
+          set -e
+          echo "boot di DB kosong => rc=$rc"
+          echo "$out" | tail -1
+          [ "$rc" != "0" ] || { echo "backend diam-diam bermigrasi saat start"; exit 1; }
+          echo "$out" | grep -q 'tabel belum ada' || { echo "boot gagal tanpa menyebut sebabnya"; exit 1; }
+          [ "$(T)" = "0" ] || { echo "boot yang gagal malah membuat tabel"; exit 1; }
+
+          # -migrate: langkah ini sengaja TIDAK punya JWT_SECRET/ADMIN_PASS di env di atas.
+          /tmp/portfolio-be -migrate
+          /tmp/portfolio-be -migrate
+          echo "tabel setelah -migrate dua kali: $(T)/3"
+          [ "$(T)" = "3" ] || { echo "-migrate tidak menyiapkan seluruh skema"; exit 1; }
+
+          echo "baris setelah -migrate: certificates=$(psql "$PSQL" -tAc 'select count(*) from certificates') experiences=$(psql "$PSQL" -tAc 'select count(*) from experiences')"
+          [ "$(psql "$PSQL" -tAc 'select count(*) from certificates')" = "0" ] || { echo "-migrate masih menanam seed"; exit 1; }
+
+          # Fixture uji ditanam oleh uji, bukan oleh aplikasi.
+          psql "$PSQL" -qc "
+            insert into certificates (title, issuer, date, created_at, updated_at) values ('fixture ci', 'issuer ci', '2026', now(), now());
+            insert into experiences (role, company, period, created_at, updated_at) values ('fixture ci', 'company ci', '2026', now(), now());"
+          echo "fixture ditanam: certificates=$(psql "$PSQL" -tAc 'select count(*) from certificates') experiences=$(psql "$PSQL" -tAc 'select count(*) from experiences')"
+
       - name: Jalankan backend terhadap Postgres nyata
         working-directory: go-backend
         env:
