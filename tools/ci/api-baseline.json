@@ -5,7 +5,6 @@
     "DELETE /api/certificates/:p",
     "DELETE /api/experience/:p",
     "GET /api/admin/projects",
-    "GET http://localhost:8080/api/certificates",
     "POST /api/admin/projects",
     "POST /api/admin/sync-github",
     "POST /api/certificates",

@@ -14,7 +14,7 @@ export default function CVLayout() {
   const [certificates, setCertificates] = useState<Certificate[]>([]);
 
   useEffect(() => {
-    fetch('http://localhost:8080/api/certificates')
+    fetch("/api/certificates")
       .then(res => res.ok ? res.json() : [])
       .then(data => setCertificates(data))
       .catch(err => console.error("Failed to fetch certificates", err));
