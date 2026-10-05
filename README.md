@@ -44,8 +44,13 @@ Yang masih mati persis seperti tertulis: lima rute `/api/admin/projects` dan emp
 `http://localhost:8080` secara hardcoded — origin itu tidak ada di dalam container frontend.
 Perbaikan produk (kontak, admin, CV, `seedData()` yang ikut jalan di produksi, `AutoMigrate` saat
 container start) dijadwalkan sebagai **M11** — kontak, inbox admin, CV dan jalur start sudah mendarat
-(PR #22, #24, #25, plus langkah ini); yang tersisa email (butuh kredensial) dan 13 error gorm yang
-diabaikan. Gerbang CI/CD-nya (M10) sudah lebih dulu dibangun, lihat [TODO.md](TODO.md).
+(PR #22, #24, #25, #27, #29); yang tersisa cuma email, dan itu menunggu kredensial `EMAIL_USER`/
+`EMAIL_PASS`. Termasuk di dalamnya: **13 error gorm yang dibuang itu sekarang nol**, diukur oleh
+`go-backend/cmd/audit-ignored` (13 → 6 → 0 pada `c78cb19` / `0204b70` / `bf11c2d`) dan dikunci jadi langkah
+CI yang bisa merah, bersama satu `r.Run` yang dulu keluar dengan `rc=0` walaupun portnya sudah dipakai.
+Akibat yang bisa dirasakan: `GET /api/certificates`, `GET /api/experience`, kedua `POST`/`DELETE`-nya dan
+inbox admin menjawab **500** kalau DB gagal — sebelum PR #29 yang sama itu menjawab `200 + null` atau
+`201` dengan `id=""`. Gerbang CI/CD-nya (M10) sudah lebih dulu dibangun, lihat [TODO.md](TODO.md).
 
 ---
 
@@ -168,6 +173,7 @@ BACKEND_URL=http://localhost:8080 npm run dev
 cd nextjs-frontend && npm run lint && npx tsc --noEmit
 node tools/ci/api-contract-check.mjs          # ratchet kontrak API (harus sesuai baseline)
 cd go-backend && gofmt -l . && go vet ./...   # gofmt harus kosong
+go run ./cmd/audit-ignored .                  # rc=0: nol error gorm / r.Run yang dibuang
 ```
 
 ---

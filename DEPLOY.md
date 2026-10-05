@@ -93,7 +93,11 @@ checks are failing."** `main` tidak bergerak dan SHA rusak itu tidak pernah puny
    - langkah 0: revisi yang serve == revisi hasil run ini, untuk **kedua** layanan;
    - `GET /api/health` → `.status=="ok" and .db=="ok"` (DB benar-benar terpasang);
    - `GET /api/certificates` / `/api/experience` → array berisi objek dengan key lengkap. Ini penting
-     karena `main.go` mengabaikan error GORM di 13 titik, jadi `200 + null` adalah kegagalan nyata;
+     karena dulu `main.go` mengabaikan error GORM di 13 titik, jadi `200 + null` adalah kegagalan nyata
+     yang lolos dari kode status. Sejak PR #29 angka itu **nol** — diukur `go-backend/cmd/audit-ignored`
+     (13 → 6 → 0) dan dijaga langkah `Audit` + `DB mati menjawab 500…` di `ci.yml` — tapi cek bentuk isi
+     di deploy **tetap dibutuhkan**, karena alat itu menjaga kode, bukan menjaga Postgres produksi:
+     kegagalan DB yang muncul setelah image dibangun tetap hanya kelihatan di respons.
    - `GET /` → > 5 KB dan tidak mengandung `Application error` (halaman error Next.js);
    - `GET <fe>/api/health` dan `<fe>/api/certificates` → rantai rewrite fe→be hidup;
    - `GET <fe>/api/cv` → magic byte `%PDF-` (jalur Puppeteer, ~16 s cold, 774 803 byte).
