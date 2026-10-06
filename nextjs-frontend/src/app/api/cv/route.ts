@@ -43,11 +43,15 @@ export async function GET() {
             headers: {
                 'Content-Type': 'application/pdf',
                 'Content-Disposition': 'attachment; filename="CV_M_Arkan_Fauzi.pdf"',
+                // Satu render PDF menyita headless browser; tanpa cache header, setiap klik
+                // "Download CV" memicu puppeteer penuh di container yang sama.
+                'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=60',
             },
         });
     } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         console.error('PDF Generation Error:', error);
-        return NextResponse.json({ error: 'Failed to generate PDF', details: errorMessage }, { status: 500 });
+        // Alasan internals (error.message) sering berisi path dan port loopback: berguna di log,
+        // bukan untuk dikirim ke pengunjung.
+        return NextResponse.json({ error: 'Failed to generate PDF' }, { status: 500 });
     }
 }
