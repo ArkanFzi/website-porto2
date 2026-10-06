@@ -2333,10 +2333,82 @@ dan deploy by digest, jadi versi live selalu yang terbaru.
 "applied within approximately one day". Per **2026-10-06T16:09Z** hitungannya masih **33 backend /
 32 frontend**, Repository Size masih 10636,582 MB — jadi belum ada satu byte pun yang benar-benar
 terhapus, dan klaim "N6 selesai" belum boleh ditulis tanpa pembacaan besok (target: 23/23, digest live
-masak ada, `/api/cv` tetap PDF). Kalau hitungannya tidak turun, yang kubaca bukan "kebijakan gagal" tapi
+masih ada, `/api/cv` tetap PDF). Kalau hitungannya tidak turun, yang kubaca bukan "kebijakan gagal" tapi
 "penghapusan belum dijadwalkan" — dan itu yang akan kulaporkan apa adanya.
 
 **Yang sengaja tidak kukerjakan (di luar scope, atas katamu).** Guard AR di CI. Dua alasan: `github-watch`
 cuma punya `roles/run.viewer` sehingga tidak bisa membaca AR sama sekali (kalau mau, tempatnya di
 `deploy.yml`, bukan `watch.yml`), dan tidak ada yang terancam — AR 0,12% dari biaya, tanpa kuota, tanpa
 jalur deploy yang bergantung pada jumlah versi.
+
+## 11. Antrean eksekusi — lima PR terbuka, dan apa yang terjadi di tiap merge (ditulis 2026-10-06 16:20 UTC)
+
+Bagian ini rencana kerja, bukan hasil. Yang **sudah kuukur** cuma fakta di "gerbang" dan "konflik" di bawah;
+sisa angkanya akan ditulis dari log run setelah tiap merge, dan kalau tidak cocok dengan ramalan di sini
+yang berubah adalah bagiannya, bukan klaimnya.
+
+**Gerbang yang berlaku di `main`** (dibaca dari `branches/main/protection`): required contexts =
+**`go`, `api`, `web`**, `strict: true` (cabang wajib setara `main` sebelum boleh merge),
+`required_approving_review_count: 0`, `enforce_admins` ada. **GitGuardian bukan required check** —
+itu sebabnya netral di #46 tidak memblokir merge. Job baru `pdf` (#46) dan `vuln` (#47) juga **belum
+required**; dia jalan dan hijau tapi tidak menahan siapa pun.
+
+**Satu koreksi sebelum daftar.** Aku sempat melaporkan GitGuardian #46 "selesai" seolah itu hasil baik.
+Check run-nya `completed` dengan kesimpulan **`neutral`**, `title: "Could not complete scanning of your
+commits"`, `summary: "…Some resources do not exist on GitHub. Please retry."`, `annotations: 0`,
+mulai 08:46:20Z → selesai 09:06:22Z. **Pemindaiannya tidak pernah jalan**, bukan "bersih". Karena dia
+tidak required, merge tetap sah; tapi kalimat "GitGuardian hijau" untuk #46 salah dan tidak boleh
+ditulis ulang. Yang benar: `go`, `api`, `web`, **`pdf`** hijau di #46; GitGuardian tidak terukur.
+
+**Konflik: tidak ada, dan itu diuji bukan ditebak.** Kelima cabang dicoba merge berurutan di cabang
+buang (`git merge --no-ff` sungguhan, lalu cabang buang dihapus): **bersih semua** —
+`fix/validasi-admin-dan-galat-fe` → `feb8789`, `ci/migrate-lewat-image` → `75f10a8`,
+`ci/pdf-dari-image` → `fdffba8`, `ci/gerbang-kerentanan` → `b61a9fc`, `docs/koreksi-rantai-alarm` →
+`5cf9a29`. Alasan strukturnya: #43/#45/#46 tiga-tiganya menyentuh `.github/workflows/ci.yml` tapi
+hunk-nya terpisah jauh (sisip di baris 247; sunting 92 + 174; sambung di ujung 447), dan **hanya #44**
+yang menyentuh `TODO.md`, jadi tidak ada dua PR yang berkelahi di ekor yang sama — itu juga sebabnya
+§10 dan §11 ini kutulis di cabang #44, bukan di `main` langsung.
+
+**Urutan, dan harga tiap langkah.** `deploy.yml` jalan di `push` ke `main` dengan
+`paths-ignore: ["**.md", "docs/**"]`, `concurrency: deploy-production-main`,
+`cancel-in-progress: false`, timeout 30 menit. Jadi:
+
+| # | PR | isi | deploy produksi? |
+|---|---|---|---|
+| 1 | **#43** | `fix(admin)`: validasi tulis, batas body 1 MB, rute mati 404, galat FE | **ya** (menyentuh `go-backend/`, `nextjs-frontend/`) |
+| 2 | retry GitGuardian #46 | bukan merge; cuma minta check suite dijalankan ulang | tidak |
+| 3 | **#45** | `fix(image)`: `ENTRYPOINT` supaya `-migrate` tercapai lewat image | **ya** (`Dockerfile` + `ci.yml`) |
+| 4 | **#46** | `ci(pdf)`: uji `/api/cv` lewat image frontend, bukan magic byte saja | **ya** (`ci.yml`) |
+| 5 | **#47** | `ci(vuln)`: gerbang baseline kerentanan + dependabot | **ya** (`scan.yml`, `dependabot.yml`, `tools/ci/`) |
+| 6 | **#44** | `docs(alarm)` + §10 + §11 | **tidak** — keempat file kena `paths-ignore` |
+
+Empat deploy produksi untuk langkah 1–5, satu untuk #44 = nol. Deploy tidak bisa dihindari dengan
+menyusun ulang PR karena isinya memang kode produksi/CI; `cancel-in-progress: false` berarti mereka
+**antre**, tidak saling batalkan — tiap merge berikutnya menambah ±20 menit ke antrian, jadi
+menggabungkan semuanya sekaligus itu bukan ide.
+
+**Kenapa #46 di posisi 4, bukan belakangan.** Dependabot menjadwalkan npm **Senin 03:33 UTC** dan gomod
+**03:36 UTC** (`day: monday`, `timezone: UTC`, `open-pull-requests-limit: 3` per ekosistem → maksimal
+6 PR terbuka, bukan 3 total). PR bumpan dependabot menjalankan CI dari cabang basis, dan aku ingin
+bump `next`/`puppeteer` pertama itu **sudah** tertangkap job `pdf` — kenaikan versi di dua paket itulah
+yang pernah merusak `standalone` tracing dan tidak pernah kelihatan di lint. Tenggat nyatanya: #46 sudah
+di `main` sebelum **2026-10-12 03:33 UTC**. `scan.yml` dijadwalkan 03:17 UTC, jadi urutan hari Senin
+yang sah: scan menyatakan keadaan → bot menawarkan perbaikan → `pdf` membuktikan perbaikan itu.
+
+**Setiap langkah dipantau, bukan dianggap lulus.** Setelah tiap merge: baca run `deploy.yml` untuk SHA
+merge itu (bukan run terakhir yang kebetulan hijau), lalu baca ulang produksi — `/api/health` 200,
+`/api/cv` diawali `%PDF-`, dan digest live kedua service. Kalau ada yang merah, antrean berhenti di situ
+dan yang dilaporkan adalah penyebab dari log, bukan dugaan.
+
+**Langkah 7, besok (bukan hari ini): verifikasi N6 benar-benar mengeksekusi penghapusan.**
+Setelah ±15:32 UTC + satu jendela "approximately one day": `versions list` diharapkan **backend 33 → 23**
+dan **frontend 32 → 23**, Repository Size turun dari 10636,582 MB ke ordo ±8,2 GB, digest
+`sha256:0a9528af…` (be) dan `sha256:6d26e722…` (fe) **masih ada**, `/api/health` 200, `/api/cv` tetap PDF.
+Nomor 23/23 itu hasil simulasi `olderThan: 259200s` + `keepCount: 5` di atas daftar hari ini — kalau
+nyata berbeda, yang ditulis adalah angka nyata dan alasannya, bukan angka ramalan. Task #6 baru boleh
+berstatus selesai setelah pembacaan ini.
+
+**Langkah 8, setelah daftar di atas tutup: separuh kedua permintaan awal.**
+"…jika sudah tidak ada maka kita langsung perbaiki bugs di website-porto2 langsung." Bug yang tersisa
+itu pekerjaan sebenarnya, dan N1–N7 tidak mengerjakan satu pun darinya. Tidak ada langkah 9 yang
+direncanakan dari sini; apa yang muncul dari bugs itu nanti yang menentukan.
