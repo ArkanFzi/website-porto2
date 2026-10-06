@@ -92,7 +92,7 @@ jobs:
   api:
     name: api
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     services:
       pg:
         image: postgres:15
@@ -173,6 +173,58 @@ jobs:
             insert into certificates (title, issuer, date, created_at, updated_at) values ('fixture ci', 'issuer ci', '2026', now(), now());
             insert into experiences (role, company, period, created_at, updated_at) values ('fixture ci', 'company ci', '2026', now(), now());"
           echo "fixture ditanam: certificates=$(psql "$PSQL" -tAc 'select count(*) from certificates') experiences=$(psql "$PSQL" -tAc 'select count(*) from experiences')"
+
+      # Image produksi adalah yang benar-benar dijalankan Cloud Run, dan `-migrate` satu-satunya jalan
+      # menyiapkan skema. Langkah di atas cuma menguji biner hasil `go build` — biner selalu mau menerima
+      # flag; yang belum teruji adalah apakah flag itu BISA SAMPAI lewat image. Dengan CMD ["./main"],
+      # `docker run <image> -migrate` malah mencari program bernama "-migrate" dan mati di exec NOT_FOUND.
+      - name: Image produksi — flag -migrate tercapai, dan kontainer tetap melayani
+        env:
+          DATABASE_URL: host=127.0.0.1 user=postgres dbname=portfolio_db port=5432 sslmode=disable TimeZone=UTC
+          JWT_SECRET: ${{ steps.fixtures.outputs.jwt }}
+          ADMIN_USER: portfolio-admin
+          ADMIN_PASS: ${{ steps.fixtures.outputs.adminpass }}
+        run: |
+          docker build -t portfolio-be:ci go-backend
+
+          PSQL='host=127.0.0.1 user=postgres dbname=portfolio_db port=5432 sslmode=disable'
+          # Satu statement per -c: psql membungkus `-c` dalam satu transaksi, dan `create database`
+          # menolak di dalam transaksi (jebakan yang sama menjatuhkan langkah lain hari ini).
+          psql "$PSQL" -qc 'create database portfolio_img'
+          PI='host=127.0.0.1 user=postgres dbname=portfolio_img port=5432 sslmode=disable'
+          IMG_URL="host=127.0.0.1 user=postgres dbname=portfolio_img port=5432 sslmode=disable TimeZone=UTC"
+          TI() { psql "$PI" -tAc "select count(distinct table_name) from information_schema.tables where table_schema = current_schema() and table_name in ('certificates','experiences','contact_messages')"; }
+          [ "$(TI)" = "0" ] || { echo "portfolio_img tidak kosong: $(TI)"; exit 1; }
+
+          set +e
+          out=$(docker run --rm --network host -e DATABASE_URL="$IMG_URL" portfolio-be:ci 2>&1); rc=$?
+          set -e
+          echo "image tanpa argumen di DB kosong => rc=$rc"
+          echo "$out" | tail -1
+          [ "$rc" != "0" ] || { echo "image diam-diam bermigrasi saat start"; exit 1; }
+          echo "$out" | grep -q 'tabel belum ada' || { echo "image gagal tanpa menyebut tabel yang kurang"; exit 1; }
+          [ "$(TI)" = "0" ] || { echo "boot image yang gagal malah membuat tabel"; exit 1; }
+
+          # Inti N2: flag lewat image, TANPA override --entrypoint. Dua kali jalan = idempoten.
+          docker run --rm --network host -e DATABASE_URL="$IMG_URL" portfolio-be:ci -migrate
+          docker run --rm --network host -e DATABASE_URL="$IMG_URL" portfolio-be:ci -migrate
+          echo "tabel setelah -migrate lewat image: $(TI)/3"
+          [ "$(TI)" = "3" ] || { echo "-migrate tidak tercapai dari image (ENTRYPOINT belum terpasang?)"; exit 1; }
+          [ "$(psql "$PI" -tAc 'select count(*) from certificates')" = "0" ] || { echo "-migrate dari image menanam seed"; exit 1; }
+
+          # Entrypoint yang berubah tidak boleh mengubah cara kontainer melayani.
+          cid=$(docker run -d --network host -e DATABASE_URL="$DATABASE_URL" -e JWT_SECRET="$JWT_SECRET" \
+            -e ADMIN_USER="$ADMIN_USER" -e ADMIN_PASS="$ADMIN_PASS" portfolio-be:ci)
+          code=000
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /tmp/img-health.json -w '%{http_code}' http://127.0.0.1:8080/api/health || true)
+            [ "$code" = "200" ] && break
+            sleep 1
+          done
+          docker rm -f "$cid" > /dev/null
+          echo "health dari image: $code $(head -c 120 /tmp/img-health.json)"
+          [ "$code" = "200" ] || { echo "image tidak melayani setelah perubahan entrypoint"; exit 1; }
+          grep -q '"db":"ok"' /tmp/img-health.json || { echo "image melayani tapi tidak terhubung ke DB"; exit 1; }
 
       - name: Jalankan backend terhadap Postgres nyata
         working-directory: go-backend
