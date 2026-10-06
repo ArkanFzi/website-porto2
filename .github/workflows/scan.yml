@@ -1,0 +1,112 @@
+name: Scan
+
+# Workflow pembanding kerentanan. Dia BUKAN salah satu status check wajib (go/web/api/pdf ada di
+# ci.yml, dan ci.yml sengaja tidak memasang `paths:` karena check yang di-skip mengunci PR dengan
+# branch protection). Di sini `paths:` justru aman dan perlu: tidak ada alasan menjalankan
+# `npm ci` + `govulncheck` untuk perubahan README.
+#
+# `schedule` ada karena kerentanan terbit tanpa ada yang menyentuh kode: angka yang jadi baseline
+# hari ini (3 GO + 60 GHSA) berasal dari basis-data advisori GitHub per 2026-10-06, bukan dari
+# commit kita. Tanpa jadwal, temuan baru tidak akan terlihat sampai ada PR yang kebetulan mengubah
+# lockfile.
+#
+# Batas yang perlu diketahui sejak awal: cron GitHub HANYA dijalankan dari branch default. Jadi
+# sebelum PR ini mendarat di main, jadwalnya belum aktif — dan kalau nanti ada PR yang mengubah
+# daftar baseline, yang memvalidasinya adalah trigger `pull_request` di bawah, bukan cron.
+#
+# Merah di sini berarti "ada temuan yang belum pernah diputuskan", bukan "ada kerentanan".
+# Perbedaannya penting: yang kedua sudah benar sejak workflow ini ditulis.
+
+on:
+  schedule:
+    - cron: "17 3 * * 1" # Senin ~03:17 UTC, jam kerja WIB siang
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "nextjs-frontend/package.json"
+      - "nextjs-frontend/package-lock.json"
+      - "go-backend/go.mod"
+      - "go-backend/go.sum"
+      - "tools/ci/vuln-baseline.json"
+      - "tools/ci/vuln-check.mjs"
+      - ".github/workflows/scan.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scan-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  vuln:
+    name: vuln
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.3
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: nextjs-frontend/package-lock.json
+
+      - name: Setup Go
+        uses: actions/setup-go@0aaccfd150d50ccaeb58ebd88d36e91967a5f35b6 # v5.4.0
+        with:
+          go-version-file: go-backend/go.mod
+
+      - name: npm audit — hanya dependensi produksi
+        working-directory: nextjs-frontend
+        run: |
+          npm ci
+          # --omit=dev: yang di-deploy ke Cloud Run adalah image produksi. Diukur 2026-10-06:
+          # produksi = 15 paket terdampak (0 low, 2 moderate, 12 high, 1 critical); seluruh pohon
+          # termasuk dev = 26 (1 low, 3 moderate, 21 high, 1 critical). Yang dibandingkan baseline
+          # adalah ID GHSA-nya, dan produksi saja menyumbang 60 ID unik pada 12 paket — metadata npm
+          # menghitung paket terdampak, bukan banyaknya advisori.
+          # `|| true` BUKAN penyembunyian: npm keluar nonzero kalau ada temuan apa pun, dan hari ini
+          # memang ada. Keputusan merah/hijau pindah ke perbandingan baseline di langkah terakhir;
+          # langkah ini hanya menjamin berkasnya ada dan berbentuk benar.
+          npm audit --omit=dev --json > /tmp/audit.json || true
+          # Bentuknya yang menjaga, bukan rc npm: tanpa dua assert di bawah, audit yang MATI (endpoint
+          # advisori tidak terjangkau -> npm mencetak objek error tanpa .vulnerabilities, atau stdout
+          # kosong) akan terbaca sebagai "nol temuan, hijau". Sekarang dia merah.
+          jq -e '.vulnerabilities | type=="object"' /tmp/audit.json > /dev/null
+          jq -e '.metadata.vulnerabilities | has("total")' /tmp/audit.json > /dev/null
+          jq -r '"audit produksi: \(.metadata.vulnerabilities | to_entries | map("\(.key)=\(.value)") | join(" "))"' /tmp/audit.json
+
+      - name: govulncheck — hanya yang benar-benar dipanggil kode
+        working-directory: go-backend
+        run: |
+          # rc=3 berarti ada temuan yang terpanggil; itu keadaan hari ini (x/text, quic-go, pgx).
+          # Sama seperti npm di atas: rc-nya bukan vonis, keluarannya yang jadi bahan perbandingan.
+          go run golang.org/x/vuln/cmd/govulncheck@latest ./... > /tmp/govuln.txt 2>&1 || true
+          n=$(grep -c '^Vulnerability #' /tmp/govuln.txt || true)
+          echo "govulncheck: $n kerentanan terpanggil, id: $(grep -oE 'GO-[0-9]{4}-[0-9]+' /tmp/govuln.txt | sort -u | tr '\n' ' ')"
+          # Ketiadaan sama sekali Blok Symbol bisa berarti "bersih" ATAU "scan mati di tengah jalan".
+          # Yang kedua tidak boleh lolos jadi hijau; grep di bawah memastikan berkasnya memang keluaran
+          # govulncheck, bukan kosong karena gagal unduh modul.
+          grep -Eq 'Symbol Results|No vulnerabilities found|==== Symbol Results ====' /tmp/govuln.txt || {
+            echo "keluaran govulncheck tidak dikenali; 20 baris pertama:"
+            head -20 /tmp/govuln.txt
+            exit 1
+          }
+
+      - name: Bandingkan dengan baseline
+        run: node tools/ci/vuln-check.mjs --govuln=/tmp/govuln.txt --audit=/tmp/audit.json
+
+      - name: Ringkasan saat gagal
+        if: failure()
+        run: |
+          echo "=== govulncheck (blok simbol) ==="
+          sed -n '/Symbol Results/,$p' /tmp/govuln.txt 2>/dev/null | head -40 || true
+          echo "=== npm audit (ringkasan) ==="
+          jq -r '.metadata.vulnerabilities' /tmp/audit.json 2>/dev/null || true
+          echo "=== baseline ==="
+          jq -c '{go: (.go|length), npm: (.npm|length), diukur}' tools/ci/vuln-baseline.json 2>/dev/null || true
+          echo "Regenerasi sadar kalau pergeserannya memang kamu setujui:"
+          echo "  node tools/ci/vuln-check.mjs --govuln=<file> --audit=<file> --emit-baseline"
