@@ -608,6 +608,14 @@ yang tinggal satu adalah **count +1** di `GET /api/admin/contact`, dan itu hanya
    bilang cabut, aku jalankan dan ukur; kalau kamu bilang amankan dulu, satu-satunya jalan yang jujur
    adalah menghidupkan logging pembacaan secret selama seminggu.
 
+5. **GitGuardian: satu keputusan kebijakan, bukan satu bug.** Dua insiden lama ternyata nyata dan punya commit
+   (`98a7057` 15:32:39 UTC, `4c5e6d0` 06:02:28 UTC), keduanya `failure`, dan **merge tetap jalan** karena
+   required contexts cuma `["go","web","api"]`. Tidak ada kredensial sungguhan yang bocor (rinciannya di blok
+   investigasi), tapi bentuk keputusannya: **(1)** buat string tes di `ci.yml:336` berhenti berbentuk kredensial
+   — kecil, lokal, bisa kuerjakan sekarang; atau **(2)** masukkan `GitGuardian Security Checks` ke required
+   contexts — merah benar-benar memblokir, tapi false positive ikut memblokir semua PR. Aku tidak memilih
+   sendiri karena (2) mengubah kebijakan merge semua orang.
+
 **Butiran baru yang keluar setelah F9 langkah (1) mendarat — rate limit `POST /api/contact`.** Endpoint ini
 sekarang adalah **tulis DB tanpa autentikasi** yang terbuka di internet. Tiga pilihan yang kubaca: **(i)**
 batas per IP di middleware gin — murah dan nyata, tapi in-memory jadi hilang saat scale-to-zero; **(ii)**
@@ -1798,12 +1806,60 @@ sah dari laptop untuk membaca `contact_messages` tanpa tokenmu, dan butir "count
 punya-mu: **login ke `/admin/dashboard`**, pastikan `4e8d174a-d5ab-4130-8454-d5e71fe917bf` muncul, sekalian
 hapus baris probe `b693e544-3001-…` dan 5 baris seed warisan (§8 butir a dan d).
 
-**Timbul baru, keluar dari screenshot kotak masukmu, bukan dari pekerjaan ini:** GitGuardian mengirim
+**Satu lead keluar dari screenshot kotak masukmu, bukan dari pekerjaan ini:** GitGuardian mengirim
 **"ArkanFzi/website-porto2 — 1 internal incident detected"** dua kali — `Generic Password` pada
-2026-10-05 06:02:28 UTC dan `Username Password` pada 2026-10-04 15:32:39 UTC — sementara check `GitGuardian
-Security Checks` di CI hijau pada setiap run. Hijau di CI dan insiden di email bukan hal yang sama, dan itu
-persis tipe kalimat yang tidak boleh dibiarkan menggantung. Dijadwalkan sebagai penyelidikan berikutnya
-(izinmu keluar 2026-10-06, setelah rekap ini mendarat).
+2026-10-05 06:02:28 UTC dan `Username Password` pada 2026-10-04 15:32:39 UTC. Kalimat pertamaku tentang ini
+("check GitGuardian hijau pada setiap run") **salah**, dan blok investigasi di bawah mengoreksinya dengan
+angka.
+
+### Investigasi GitGuardian — dua email itu nyata, dan klaim pertamaku tentangnya salah (2026-10-06, 00:58 – 01:04 UTC)
+
+**Koreksi duluan, karena ini yang paling mahal.** Aku menulis "check `GitGuardian Security Checks` di CI hijau
+pada setiap run". Tidak. Yang terukur dari `commits/{sha}/check-runs`:
+
+| commit | waktu (committer, +07) | verdict GitGuardian | judul check-run |
+| --- | --- | --- | --- |
+| `98a7057` | 2026-10-04 22:32:39 = **15:32:39 UTC** | **failure** | `1 secret uncovered!` |
+| `e3ce49d` (commit yang justru *memperbaiki*) | 22:36:12 | **failure** | `2 secrets uncovered!` |
+| `f07fddb` | 22:38:42 | success | `No secrets detected ✅` |
+| `4c5e6d0` (langkah F9 (3)) | 2026-10-05 13:02:28 = **06:02:28 UTC** | **failure** | `1 secret uncovered!` |
+
+Dua angka UTC di baris 1 dan 4 **persis** waktu kedua email. Jadi email itu bukan backlog yang mengambang —
+keduanya punya commit, dan keduanya bisa ditunjuk.
+
+**Kenapa merah tetap bisa masuk.** `GET /branches/main/protection/required_status_checks` hari ini:
+`{"strict":true,"contexts":["go","web","api"]}`. **`GitGuardian Security Checks` tidak ada di daftar itu.**
+Buktinya bukan teori: PR #24 (head `4c5e6d0`, check GitGuardian `failure`) di-merge pada
+2026-10-05T06:56:28Z, sehari setelah proteksi dipasang. Gerbangnya menyala, dan tidak ada yang memblokir.
+
+**Apa yang sebenarnya ditandai — dan apa yang tidak.**
+
+- `98a7057` menyimpan literal `ci-only-password` / `ci-only-jwt-secret` / `ci-only-admin-pass` di `ci.yml`.
+  Branch-nya `chore/gerbang-ci`, **PR #2 tidak pernah di-merge** (`merged_at = null`), dan
+  `git log origin/main -S'ci-only-admin-pass'` → **kosong**. Nilai itu tidak pernah masuk riwayat `main`.
+  Yang masuk dari jalur itu adalah `f07fddb`, dan commit itulah yang GitGuardian sebut `No secrets detected ✅`.
+- `4c5e6d0` — yang ini **memang masuk `main`** — menandai satu string: `"password\":\"tidak-terdaftar\"` di
+  `ci.yml:336`, yaitu sandi salah yang dipakai assertion "login dengan sandi salah harus 401". Bukan kredensial;
+  tapi bentuknya persis yang dicari detector, dan ia **masih ada di HEAD**, jadi akan menyalakan GitGuardian
+  lagi setiap kali blok itu tersentuh.
+- Yang tidak ditandai apa pun: repo ini **public** dengan `secret_scanning` + `secret_scanning_push_protection`
+  **enabled**, dan `GET /repos/…/secret-scanning/alerts` → **0 alert**. GitHub sendiri tidak akan menangkap
+  bentuk *generic password*: `secret_scanning_non_provider_patterns` = **disabled**,
+  `secret_scanning_validity_checks` = **disabled**. Jadi "0 alert dari GitHub" dan "1 secret dari GitGuardian"
+  keduanya benar dan tidak saling meniadakan.
+- Nilai produksi tidak pernah lewat jalur itu sama sekali: scan literal di tree HEAD untuk
+  `(password|passwd|secret|api[_-]?key|access[_-]?token|bearer) = "<literal>"` di luar lockfile → **0**
+  hit; `ADMIN_USER`/`ADMIN_PASS`/`JWT_SECRET` di `ci.yml` hari ini semuanya di-generate
+  (`openssl rand -hex`, `ci.yml:124-125`) dan yang asli ada di Secret Manager.
+
+**Vonis.** Tidak ada kredensial sungguhan yang pernah bocor, dan tidak ada yang perlu dirotasi karena alasan ini.
+Yang nyata adalah **satu celah kebijakan**: sebuah check bisa `failure` di PR dan merge tetap jalan, karena yang
+dibutuhkan hanya `go`/`web`/`api`. Itu keputusanmu, bukan task-ku — dua opsi yang tersedia:
+
+1. **Bikin string itu berhenti berbentuk kredensial** (mis. `"$ADMIN_PASS-salah"` dari fixture yang sudah ada,
+   seperti baris 223 yang lolos) → GitGuardian diam tanpa mengubah kebijakan apa pun. Kecil, lokal, bisa kuerjakan.
+2. **Tambahkan `GitGuardian Security Checks` ke required contexts** → merah benar-benar memblokir, tapi setiap
+   false positive ikut memblokir merge, dan itu mengubah kebijakan semua PR. Tidak kukerjakan tanpa katamu.
 
 ### Yang tidak kubebereskan di M12 (biar tidak kelihatan lupa)
 
