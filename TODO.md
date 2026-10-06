@@ -2232,3 +2232,111 @@ satu koreksi besar di dokumen ini. Nilainya nyata tapi jauh di bawah yang kuklai
 **Angka PR #43** (perbaikan bug, jalur terpisah dari bagian ini): run `51860055524` `success` — `go`, `api`,
 `web` hijau, GitGuardian hijau; langkah baru `Kontrak validasi tulis (kosong, kepanjangan, body besar, rute mati)`
 lolos di GitHub, bukan hanya di harness lokal. Baseline kontrak `dead_paths` 9 → **0**.
+
+## 10. N6 — Artifact Registry: temuanku salah sebab, dan tulisannya sudah dieksekusi (2026-10-06, 15:20 – 16:10 UTC)
+
+**Yang kutuliskan sebagai N6:** "Artifact Registry tidak punya kebijakan pembersihan → tumbuh tanpa batas."
+**Salah.** Kebijakannya **sudah ada**, dua-duanya, dengan id yang jelas:
+
+```
+keep-recent-5        = KEEP   mostRecentVersions.keepCount = 5
+delete-older-than-3d = DELETE olderThan = 259200s, tagState = ANY
+```
+
+Yang membuatnya tidak pernah mengerjakan apa pun: `cleanupPolicyDryRun` **menyala**. Kebijakan dalam mode
+dry run itu laporan yang tidak pernah dibaca siapa pun — dia menghitung apa yang *akan* dihapus dan
+tidak menghapus apa pun, selamanya. Jadi temuan yang benar bukan "tidak ada kebijakan", tapi
+**"kebijakan ada tapi non-aktif, dan tidak ada satu pun yang diberi tahu"**.
+
+**Keadaan yang kuukur sebelum menulis apa pun.**
+
+| paket | versi | jumlah `imageSizeBytes` |
+|---|---|---|
+| `backend` | 33 | 745,54 MB |
+| `frontend` | 32 | 10945,25 MB |
+| penjumlahan | 65 | 11690,79 MB |
+| **Repository Size (terukur AR)** | — | **10636,582 MB** |
+
+Selisih 1054,21 MB antara penjumlahan per-versi dan ukuran repository = layer yang **di-dedup**. Angka ini
+penting karena dia membatalkan klaim berikutnya: kebijakan yang sama, kalau dinyalakan, secara nominal
+membuang **10 versi backend (225,63 MB) + 9 versi frontend (2206,32 MB) ≈ 2,43 GB** — tapi karena dedup,
+yang benar-benar kembali ke storage **tidak bisa diketahui sebelum penghapusan terjadi**, dan angka
+atasnya 2,43 GB. Pertumbuhan harian yang kuukur dari tabel push (2026-09-23 … 2026-10-06) ≈ 1 GB/hari,
+puncak 4,43 GB pada 10-05.
+
+**Tulisannya, satu perintah.** `gcloud artifacts repositories set-cleanup-policies portfolio-app
+--project=config-agentic-ubuntu --location=us-central1 --no-dry-run` → rc=0, `Dry run is disabled.`
+Terekam di audit log sebagai `UpdateRepository` pada **2026-10-06T15:32:29.780Z**,
+`permission: artifactregistry.repositories.update`, `granted: true`, isi permintaan
+`cleanupPolicyDryRun: false` beserta kedua kebijakan dikirim ulang utuh (read-modify-write, jadi
+kebijakannya tidak tertimpa kosong).
+
+**Tiga pembacaan untuk membuktikan mati-nya dry run** (bukan dari gema perintah tulis):
+(1) `list-cleanup-policies` mencetak `Dry run is disabled.`; (2) `describe --format=json` menampilkan
+kedua kebijakan dan **tanpa** key `cleanupPolicyDryRun` sama sekali — key hilang = false; (3) audit log
+di atas.
+
+**Empat belokan yang kubayar di jalan ke sana**, ditulis supaya tidak dibelokkan ulang:
+(a) **"gcloud GA tidak bisa mematikan dry run" — salah.** `--no-dry-run` ada. Aku menyimpulkan tidak ada
+karena `--help` (GA/beta/alpha) tidak menampilkan flag cleanup apa pun; yang membuktikan adalah surface
+definition CLI-nya sendiri: `lib/surface/artifacts/repositories/set_cleanup_policies.yaml` →
+`arg_name: dry-run / api_field: repository.cleanupPolicyDryRun / type: bool / default: null`,
+`command_type: UPDATE`, `update.read_modify_update: true`. Bentuk `--dry-run=false` **ditolak**
+(`ignored explicit argument 'false'`) — flag bool di surface ini cuma punya bentuk `--no-`.
+(b) **Rute REST mentok**: discovery `v1` dan `v1beta2` tidak mengekspos sub-sumber `cleanupPolicies`,
+jadi "coba PATCH langsung" bukan jalur yang sah lewat alat yang kupakai.
+(c) **Rute file `--policy` dibuang** setelah tiga penolakan beruntun: objek → `Policy file must contain a
+list of policies`; array tanpa `name` → `Key "name" not found`; setelah `id`→`name` →
+`Invalid action "DELETE"`. Bentuk yang diterima surface itu tidak kubuktikan, dan aku tidak butuh bukti
+itu karena (a) sudah cukup.
+(d) **Loop ukuran sempat menghasilkan `null`** untuk 65 baris karena aku memecah pada `"@sha256:"`
+sedangkan nama versi AR memakai `/versions/sha256:`; `--show-tags`/`--show-untagged` bukan flag yang ada,
+dan `--format=json` memberi `metadata.tags: null`, jadi ukuran harus `versions describe` satu-satu.
+
+**Pertanyaan "resource-ku habis?" — dan jawabannya bukan tentang Artifact Registry.**
+Aku sempat menjawab "yang habis itu uang", dan itu juga perlu dikoreksi. Dari BigQuery FOCUS export
+(`gcp_billing_export_focus_018EEB_36C206_679B7E`, filter `DATE(ChargePeriodStart)` — kolom `ChargeDate`
+tidak ada): total list Rp483.530 sejak hari tagih pertama 2026-09-20, kredit free trial terserap
+**Rp411.886**, effective cost ≈ **Rp0**. Composisinya:
+
+| layanan | biaya (Rp, list) |
+|---|---|
+| Compute Engine | 253.339 |
+| Networking | 127.375 |
+| Cloud SQL | 96.961 |
+| Cloud Run | 4.197 |
+| Vertex | 1.060 |
+| **Artifact Registry** | **596** |
+
+Artifact Registry = **0,12%** dari semuanya. SKU penyimpanan `8502-299A-ABAF` ≈ Rp494/GiB-bulan list, jadi
+menyalakan penghapusan (±2,43 GB) maupun membiarkannya tumbuh itu delta-nya **≈ Rp266/hari ≈ 0,9% dari
+burn** — di bawah noise. Burn Rp30.600–33.800/hari itu datang dari **dua VM yang menyala**:
+`hermes-openclaw-vm` (e2-medium) dan `agentic-watchdog-vm` (e2-micro), us-central1-a. Risikonya bukan
+"kehabisan kredit" tapi **kredit hangus di akhir trial** (±90 hari → sekitar 19 Des 2026): yang Rp411.886
+itu tidak hilang, tapi sisa burn setelahnya berubah jadi tagihan riil, ordo Rp2,8 juta. Yang **tidak bisa
+kuukur dari CLI**: saldo kredit dan tanggal hangus sebenarnya — itu hanya ada di Console → Billing → Credits.
+
+**Batas kebijakan, supaya tidak salah berharap.** AR punya **dua** batas umur (`olderThan: 3d`) dan satu
+batas jumlah (`keep-recent-5`); dia **tidak** punya batas ukuran. `gcloud alpha services quota list
+--service=artifactregistry.googleapis.com --consumer=projects/config-agentic-ubuntu` hanya mengembalikan
+metrik laju permintaan (`project_region_requests/writes/deletes/upstream_host_reads/repo_management/
+prewarm_operations` + `user_*`) — **tidak ada kuota storage maupun jumlah versi**. Artinya pembersihan ini
+bukan penyelamat kuota; dia hanya mengikat steady-state repository di ±9 GiB ≈ **3 hari deploy**.
+
+**Produksi sehat sesudah menulis** (dibaca ulang, bukan disimpulkan): `/api/health` 200
+`{"db":"ok","status":"ok"}`; `/api/cv` 200, 783.896 byte, diawali `%PDF-`; digest yang sedang dipakai
+Cloud Run — `be sha256:0a9528af…`, `fe sha256:6d26e722…` — tetap **peringkat #1** di daftarnya, jadi
+`keep-recent-5` melindunginya. Itu bukan kebetulan yang aman: setiap deploy push `$IMG:${{ github.sha }}`
+dan deploy by digest, jadi versi live selalu yang terbaru.
+
+**Yang masih terbuka, dan itu memang bagian dari rencana.** Penghapusan AR **asinkron**; dokumentasinya
+"applied within approximately one day". Per **2026-10-06T16:09Z** hitungannya masih **33 backend /
+32 frontend**, Repository Size masih 10636,582 MB — jadi belum ada satu byte pun yang benar-benar
+terhapus, dan klaim "N6 selesai" belum boleh ditulis tanpa pembacaan besok (target: 23/23, digest live
+masak ada, `/api/cv` tetap PDF). Kalau hitungannya tidak turun, yang kubaca bukan "kebijakan gagal" tapi
+"penghapusan belum dijadwalkan" — dan itu yang akan kulaporkan apa adanya.
+
+**Yang sengaja tidak kukerjakan (di luar scope, atas katamu).** Guard AR di CI. Dua alasan: `github-watch`
+cuma punya `roles/run.viewer` sehingga tidak bisa membaca AR sama sekali (kalau mau, tempatnya di
+`deploy.yml`, bukan `watch.yml`), dan tidak ada yang terancam — AR 0,12% dari biaya, tanpa kuota, tanpa
+jalur deploy yang bergantung pada jumlah versi.
