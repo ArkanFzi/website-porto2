@@ -353,6 +353,52 @@ identifikasi, bukan caranya. Apa yang disentuh kontrol itu, diukur sesudahnya: `
 terbaru, dibuat 02:44:25 oleh deploy #26). Yang berubah hanya `metadata.generation=35` dan
 `lastModifier` = email operator — panggilanku tercatat sebagai modifikasi walaupun routingnya sama.
 
+## Rantai alarm portfolio (diukur 2026-10-06 06:40 – 07:35 UTC)
+
+Konfigurasi yang berdiri sekarang (terverifikasi lewat **baca ulang** `GET alertPolicies`, bukan dari gema
+PATCH — salinan JSON-nya ada di `docs/evidence/`):
+
+| policy | pemicu | channel |
+|---|---|---|
+| `portfolio-be-down` | MQL `uptime_check/check_passed` pada `portfolio-be-uptime-3lw7E4A0E40` (tcp 443), `val() < 1`, `duration:120s` | `agentic-alerts-pubsub` **+** `watchdog-heartbeat-email` |
+| `portfolio-fe-down` | MQL idem pada `portfolio-fe-uptime-1mf-3XMJoKI`, `duration:120s` | idem (2 channel) |
+| `portfolio-5xx` | `conditionThreshold` pada **log metric** `logging.googleapis.com/user/portfolio-5xx`, `resource.type=cloud_run_revision`, `ALIGN_SUM` per `300s`, ambang **> 3**, `duration:300s` | idem (2 channel) |
+| `Agentic Watchdog heartbeat hilang` | `conditionAbsent` pada log metric `logging.googleapis.com/user/agentic-watchdog-heartbeat` (`gce_instance`), hilang **900s** | email saja (1 channel) |
+| `watchdog-vm-down` | MQL `compute/instance/uptime` == 0 pada instance `3411766485018421527`, `duration:0s` | email saja (1 channel) |
+
+**Cara mengukur, dan bentuk query yang menipu.** Rantainya terhitung **hidup**: bucket harian 30 hari
+menunjukkan **9–233 publish/hari** pada topic `agentic-alerts` dan **9–233 ack/hari** pada
+`agentic-alerts-sub`, cocok 1:1; `pull_message_operation_count` (unary) cuma 0–7/hari → konsumennya
+streaming pull. Angka yang sama keluar dengan `86400s`; dengan `604800s` API yang sama **membalas 0 tanpa
+error**, dan dua kesimpulan salah ("antrean tidak pernah dibaca", "tidak pernah ditulis") lahir dari situ.
+
+```bash
+# bentuk yang benar untuk metrik DELTA Pub/Sub
+--data-urlencode 'aggregation.alignmentPeriod=86400s' --data-urlencode 'aggregation.perSeriesAligner=ALIGN_SUM'
+# JANGAN: alignmentPeriod=604800s (pekanan) -> 0 hening. Cross-check ke metrik lawan (publish vs ack)
+# dan ke bucket 60s sebelum percaya sebuah nol.
+```
+
+**Yang tidak bisa dibuktikan dari API di proyek ini.** Riwayat notifikasi: seluruh jalur `monitoring/v1`
+membalas 404 HTML (`notificationChannels`, `notifications`, `incidents`, `uptimeCheckConfigs`) — daftar
+channel hanya bisa lewat `gcloud alpha monitoring channels`, dan `verificationStatus` email terbaca
+`VERIFIED` di sana. Identitas konsumen/penerbit: operasi data-plane Pub/Sub **tidak** masuk Cloud Audit
+Logs (0 baris `protoPayload.serviceName="pubsub.googleapis.com"` untuk 9 ack yang terjadi pada menit yang
+sama). Satu-satunya saksi bahwa jalur email benar-benar mengirim adalah kotak masuk penerima, dan itu
+dikonfirmasi manual pada 07:35 UTC.
+
+**Rehearsal yang aman untuk diulang** (yang kupakai 06:52–07:00 UTC, sudah dibongkar lagi): buat uptime
+check ke host yang tidak resolve (`tcpCheck.port=443`, `period:60s`, `STATIC_IP_CHECKERS`) + satu policy
+dengan MQL identik `portfolio-be-down` tapi `duration:0s`. Tunggu baris checker OPEN (6 baris dalam 40 s),
+lalu ukur `send_message_operation_count` naik sebanyak jumlah insiden dan ack mengikutinya. `DELETE` kedua
+resource. Dua hal yang ditolak API dan perlu diingat: `alertStrategy.autoClose` **minimal 30 menit**
+(1200s ditolak), dan `documentation.mimeType` harus `text/markdown`.
+
+**Guard yang belum ada.** `notificationChannels` ketiga policy bisa kembali jadi 1 dan tidak ada satu pun
+workflow yang merah: `github-watch@` cuma memegang `roles/run.viewer`, jadi `watch.yml` buta terhadap
+Monitoring. Butuh satu binding **read-only** `roles/monitoring.viewer` untuk memasang assertion itu —
+TODO.md §9.6 butir 10.
+
 ## Postur IAM (diverifikasi ulang 2026-10-04 16:45 & 16:52 UTC, 2026-10-05 01:47, 02:12, 02:56, 04:13 UTC)
 
 | Principal | Peran | Catatan |

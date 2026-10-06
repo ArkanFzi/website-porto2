@@ -2096,6 +2096,14 @@ benar — itu mengukur hal yang lain.
 8. **Putuskan `chore/gerbang-ci`** (butir §6 yang masih terbuka) dan boleh-tidaknya **20** branch dihapus.
 9. **A0 susulan** sesudah 14:00 UTC: kalau `event=schedule` masih **1**, F10 dicoret. Aku yang ukur di sesi
    berikutnya; tidak perlu kamu sentuh.
+10. **Bolehkah `github-watch@config-agentic-ubuntu.iam.gserviceaccount.com` memegang
+    `roles/monitoring.viewer`?** Satu binding **read-only**. Tanpa itu, tidak ada assertion yang bisa menjaga
+    channel email yang kupasang hari ini — `notificationChannels` ketiga policy bisa kembali jadi 1 dan
+    **tidak ada satu pun workflow yang merah**, karena `watch.yml` hari ini cuma bisa membaca Cloud Run
+    (`roles/run.viewer`).
+11. **Eksperimen atribusi konsumen (§9.8):** cabut `roles/pubsub.subscriber` dari `hermes-openclaw@` selama
+    satu jendela alarm, lalu lihat ack. Ini yang menutup hutang prune §8 F6. Aku tidak mengerjakannya sendiri
+    karena kalau ternyata hermes yang menyedot, rantai alarm putus selama jendela pengamatan.
 
 ### 9.7 Alat ukur yang ikut di repo: `docs/verify/browser-probe.mjs`
 
@@ -2141,3 +2149,84 @@ Yang perlu diketahui supaya angkanya tidak disalah baca:
   `tsc --noEmit -p <tsconfig dengan include tanpa .next>` → **rc=0**; `npm run lint` → **0 errors,
   11 warnings** (semua warning sudah ada sebelumnya). CI tidak pernah melihat ini karena checkout-nya
   bersih, tanpa `.next`.
+
+### 9.8 Rantai alarm: dua kesimpulan salahku sendiri, dan angka yang membatalkannya (2026-10-06, 06:40 – 07:35 UTC)
+
+**Klaim yang dicabut.** Sesi kemarin menuliskan **N3**: "rantai alarm produksi berakhir di antrean yang
+tidak pernah dibaca", dibuktikan dengan **nol** entri `Subscription.Pull` di Cloud Audit Logs 30 hari.
+Hari ini aku menggali "koreksi" yang lebih keras: "bukan cuma tidak dibaca — tidak pernah ditulis sama
+sekali" (`send_message_operation_count` 0, `ack_message_count` 0, `pull_message_operation_count` 0 dalam
+30 hari). **Keduanya salah.** Rantainya hidup dan sibuk.
+
+**Satu penyebab, dan itu penyebabku, bukan produksi.** Semua angka nol itu keluar dari satu bentuk query:
+`aggregation.alignmentPeriod=604800s` (pekanan) + `ALIGN_SUM` pada metrik bertipe DELTA milik Pub/Sub.
+API-nya **membalas 0 tanpa error apa pun** — bukan "tidak ada data", tapi nol yang looks like a measurement.
+Dengan bucket harian (`86400s`) angkanya begini:
+
+| hari | publish ke `agentic-alerts` | ack di `agentic-alerts-sub` | unary pull |
+|---|---|---|---|
+| 2026-09-26 | 9 | 9 | 1 |
+| 09-27 | 43 | 43 | 5 |
+| 09-28 | **233** | 233 | 0 |
+| 09-29 | 116 | 116 | 0 |
+| 09-30 | 65 | 66 | 0 |
+| 10-01 … 10-05 | 57, 43, 41, 59, 62 | 57, 43, 41, 59, 62 | 0 |
+| 10-06 (s/d 07:05) | 71 | 72 | 7 |
+
+Ack ≈ publish **hari per hari**, dan unary pull nyaris nol → konsumennya streaming pull. Jadi kalimat yang
+benar: antreannya **dibaca**, dan `pull_message_operation_count` yang nol itu bukan bukti "tidak ada yang
+menyedot" — dia hanya tidak menghitung streaming.
+
+**Aturan yang kutanam supaya temuan hantu seperti ini tidak terulang.** (1) Pada metrik Pub/Sub ber-type
+DELTA, `alignmentPeriod` **maksimum 86400s**; jangan pernah pakai pekanan/bulanan. (2) Sebuah nol harus
+dibaca silang dari metrik lawannya (publish vs ack) dan pada bucket 60s sebelum dipercaya. (3) Absennya
+entri di Cloud Audit Logs **bukan** bukti negatif untuk operasi data-plane — Pub/Sub tidak meng-audit
+`publish`/`ack`/`pull` kecuali data-access logging dinyalakan, dan hari ini dia tidak menyala: 9 ack
+terukur terjadi pada menit yang sama, `gcloud logging read` untuk `protoPayload.serviceName=
+"pubsub.googleapis.com"` tetap **0 baris**.
+
+**Drill yang kukerjakan (sesuai "ukur dua kali"), dan hasilnya.** Setelah patch, satu insiden dipicu lewat
+jalur yang sama persis dengan produksi (uptime checker → kondisi → channel):
+
+| langkah | angka |
+|---|---|
+| cek `drill-rantai-alarm-2F2YjRZiiDs` (host yang tidak resolve, `tcpCheck:443`, `period:60s`, `STATIC_IP_CHECKERS`) | dibuat 06:52 UTC |
+| policy `drill-rantai-alarm-portfolio`, kondisi MQL identik dengan `portfolio-be-down`, `duration:0s`, dua channel | dibuat 06:56 UTC |
+| insiden OPEN | **6 baris** checker: 4 @ 06:57:51, 2 @ 06:58:27 |
+| publish ke topic | **6** pada bucket `06:59:58` (`code=success`) |
+| ack | ikut naik (06:58:31=2, 06:59:31=4) |
+| email | **mendarat** di `arkanfauzi.sekawanmedia@gmail.com` — disaksikan penerima, karena API notifikasi tidak bisa kupakai (lihat "batas bukti") |
+| pembongkaran | `DELETE` policy dan `DELETE` cek = HTTP 200; tersisa 5 policy + 2 cek produksi, terverifikasi |
+
+Dua penolakan API yang layak dicatat karena bentuknya tidak intuitif: `alertStrategy.autoClose` **1200s
+ditolak** ("at least 30 minutes"), dan `documentation.mimeType` harus `text/markdown`, bukan `TEXT/MARKDOWN`.
+
+**Perubahan produksi yang benar-benar terjadi hari ini, semuanya tercatat.** 3 `PATCH alertPolicies`
+(updateMask `notificationChannels`) → `portfolio-be-down`, `portfolio-fe-down`, `portfolio-5xx` sekarang
+`channels=pubsub+email`, `enabled=true`, terverifikasi lewat **baca ulang** (bukan dari gema respons PATCH).
+Salinan sebelum/sesudah ikut di repo: `docs/evidence/alert-policies-sebelum-email-channel.json`
+(7.061 byte) dan `docs/evidence/alert-policies-sesudah-email-channel.json` (7.310 byte) — keduanya hasil
+`GET alertPolicies?pageSize=100`, jadi bisa dibedakan dari `creationRecord`/`mutationRecord` per policy.
+Letak di `docs/` juga berarti dia tidak memicu deploy (`deploy.yml` mengabaikan `docs/**`).
+Selain itu: 2 resource drill dibuat lalu dihapus, 2 publish manual ke topic (langsung
+ter-ack konsumen), 1 subscription probe fan-out dibuat dan dihapus. Tidak ada perubahan kode atau IAM lain.
+
+**Batas bukti yang kubiarkan terbuka, dan jawabannya cuma satu eksperimen.** Heartbeat tiap 5 menit dari
+instance `3411766485018421527` = `agentic-watchdog-vm` (SA `agentic-watchdog@`), isinya
+`{alive:true, beatMs:5, pubsubSubscriber:true, queueLength:0, uptimeSec:98118, whatsappConnected:true}`
+(terakhir 07:22:21.979Z). Itu menguatkan bahwa konsumen ada di VM itu — tapi tetap **self-report**, dan
+ack tidak menyebut identitas. Karena data-plane tidak ter-audit dan API notifikasi `v1` mati di proyek ini
+(semua jalur 404: `notificationChannels`, `notifications`, `incidents`, `uptimeCheckConfigs`), pertanyaan
+§8 F6 "VM mana yang menyedot `agentic-alerts-sub`" **belum terjawab**, dan hutang grant pubsub di kedua SA
+tetap berdiri. Eksperimen yang menutupnya satu perintah dan bisa dibatalkan — cabut
+`roles/pubsub.subscriber` dari `hermes-openclaw@`, amati satu jendela alarm: ack terus datang → hermes
+inert dan prune aman; ack berhenti → `add-iam-policy-binding` lagi. Risikonya jelas: kalau ternyata hermes
+yang menyedot, rantai putus selama jendela pengamatan. **Itu keputusanmu, bukan yang kukerjakan diam-diam.**
+
+**Reframing yang harus kutelan.** Item "konsumen buntu" di urutan kerja kita tidak memperbaiki apa pun yang
+rusak; yang terjadi adalah **menambah jalur kedua** (pubsub → email terverifikasi) pada tiga policy, plus
+satu koreksi besar di dokumen ini. Nilainya nyata tapi jauh di bawah yang kuklaim kemarin.
+
+**Angka PR #43** (perbaikan bug, jalur terpisah dari bagian ini): run `51860055524` `success` — `go`, `api`,
+`web` hijau, GitGuardian hijau; langkah baru `Kontrak validasi tulis (kosong, kepanjangan, body besar, rute mati)`
+lolos di GitHub, bukan hanya di harness lokal. Baseline kontrak `dead_paths` 9 → **0**.
