@@ -2049,9 +2049,19 @@ benar — itu mengukur hal yang lain.
   sudah ditutup/di-merge — **perilaku platform, bukan yang kuukur di repo ini**. **37 branch lokal** belum
   kusensus statusnya; itu bagian lain dari D1 kalau kamu mau bersih-bersih juga di sisi itu.
 - **D2 — bukti yang belum ada.** `metricWriter` terpasang di 3 SA tapi aksinya belum pernah terlihat;
-  varian E4 "dua konten berbeda dalam 60 detik" belum diprovokasi; cabang `gagal kirim email` punya **0**
-  eksekusi test (hanya 2 cabang lain yang terbukti jalan); dan **tidak ada verifikasi browser** untuk
-  `/admin/dashboard` maupun `/cv-layout` — yang terukur baru status code dan header, bukan yang dirender.
+  varian E4 "dua konten berbeda dalam 60 detik" belum diprovokasi; dan **tidak ada verifikasi browser**
+  untuk `/admin/dashboard` maupun `/cv-layout` — yang terukur baru status code dan header, bukan yang
+  dirender. Satu butir D2 sudah **tertutup di PR ini**: sensus cabang `switch` hasil `SendEmail`
+  (`main.go:389-396`) ternyata bukan "2 dari 3 terbukti jalan" seperti yang kutulis tadi, dan angkanya
+  lebih spesifik dari itu —
+  | Cabang | Sebelum PR ini | Sekarang |
+  |---|---|---|
+  | `dilewati` (`ErrNotConfigured`) | dipositifkan di CI (`ci.yml:294-298`) **dan** di level paket (`TestSendEmailTanpaKredensialBerhentiSebelumSMTP`, 3 sub-case) | tetap |
+  | `gagal kirim` (`default:`) | hanya diasumsikan **tidak** muncul (`ci.yml:289-293` `exit 1` kalau ia muncul) — belum pernah dipositifkan di mana pun | `TestAutentikasiDitolakBukanErrNotConfigured` — premisnya diuji positif lewat penolakan `535` dari stub in-process |
+  | `terkirim` (`err == nil`) | terjadi **sekali di produksi** (POST 2026-10-06 00:51 UTC), 0 kali di CI | `TestServerMenerimaPesanKembalikanNil` |
+  Yang masih terbuka dan sekarang jadi tapi-tunggal yang jelas: **0 test handler** (setelah PR ini tetap
+  2 file test, keduanya di `mailer/`) — menutup `switch` di dalam goroutine butuh harness Postgres, bukan
+  tambahan kecil.
 - **D3 (opsional) — drill negatif E11** lewat pin traffic. Itu menyentuh produksi kelas yang sama dengan
   P5, tapi izin P5 bukan izin ini; butuh "ya" sendiri.
 
