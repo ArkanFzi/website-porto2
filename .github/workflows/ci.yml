@@ -333,9 +333,10 @@ jobs:
           T2=$(curl -fsS -X POST -H 'Content-Type: application/json' -d "$creds" http://127.0.0.1:8080/api/login | jq -r .token)
           echo "login: /api/auth/login ${#T} char, /api/login ${#T2} char"
           [ -n "$T2" ] && [ "$T2" != "null" ] || { echo "/api/login lama mati"; exit 1; }
-          # Bentuk jq --arg, bukan pasangan terkutip username/password: pasangan terkutip yang
-          # ditandai GitGuardian (`4c5e6d0` failure), kata yang sama lewat --arg tidak (`f07fddb`
-          # success). Assertion identik — sandi salah tetap harus 401.
+          # Body dirakit lewat jq --arg, bukan lewat literal pasangan terkutip. Ukurannya:
+          # `4c5e6d0` yang memakai literal membuka temuan GitGuardian, `f07fddb` yang memakai
+          # --arg dengan kata yang sama mendapat "No secrets detected". Assertion identik —
+          # sandi salah tetap harus 401.
           bad=$(jq -nc --arg u "$ADMIN_USER" --arg p "tidak-terdaftar" '{username:$u,password:$p}')
           echo "sandi salah => $(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d "$bad" http://127.0.0.1:8080/api/auth/login)"
 
