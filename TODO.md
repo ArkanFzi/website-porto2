@@ -2000,7 +2000,9 @@ yang di bawah ini **tidak kukerjakan** sebelum butirnya dijawab: B1–B3, C1–C
 | Revisi yang melayani | `portfolio-be-00031-xtr` @100 (hasil Deploy #35) · `portfolio-fe-00030-phn` @100 |
 | E7 pengukuran **(11)** | merge `b68183d` (PR #39, dokumen saja) → `CI` **#78 `success`**, run `Deploy to Cloud Run` **0**, revisi yang melayani tidak berubah |
 | Build tidak reproducible, kasus frontend | `29757ca` mengubah **nol** file frontend; digest FE tetap berubah: `12bd7e2b…` → `ec59a79e…` (§7 "Catatan jujur" #5 + perluasannya) |
-| **A0** — fire cron `37 2 * * *` hari ini | diukur dua kali: 02:37:11 dan 02:44:24 UTC → `total_count=7`, baris `event=schedule` **tetap 1**. **Belum** terbukti gagal: fire kemarin baru tiba 6 jam 58 menit setelah menit cron-nya |
+| **A0** — fire cron `37 2 * * *` hari ini | diukur **enam** kali: 02:37:11, 02:44:24, 02:51, 02:59:42, 03:20:51, 03:31:31 UTC → `total=7`, baris `event=schedule` **tetap 1** pada setiap pengukuran. **Belum** terbukti gagal: fire kemarin baru tiba 6 jam 58 menit setelah menit cron-nya, jadi batas bawah "sudah lewat jadwal" baru sah ±14:00 UTC |
+| Verifikasi browser (puppeteer headless, tanpa menyentuh server) | `/cv-layout` **2433** karakter teks ter-render, `/api/certificates=200`, `linkLokal=0`; `/admin/dashboard` tanpa token = **hanya** gerbang login (**80** karakter: `System Override / Enter Elaris Noir credentials / Username / Password / Access Dashboard`, `inputPwd=1`, **0** panggilan API); dengan `localStorage.admin_token` palsu → `/api/admin/contact=401` lalu jatuh ke gerbang yang sama, 80 karakter. **Semua angka baris ini diulang 03:3x UTC lewat alat yang sekarang ikut di repo** (`node docs/verify/browser-probe.mjs`, §9.7) — run scratch pertama membaca 82, bedanya whitespace tepi, dan yang kukutip sekarang adalah yang reproduksibel |
+| `GET /api/cv` di produksi, tanpa token, diukur dua kali | **200** dalam **5,888 s** lalu **200** dalam **4,566 s**, masing-masing **783 896 B**, keduanya `%PDF-1.4` — jadi tidak ada hasil yang di-cache; tiap panggilan = satu render browser nyata. Batas kontainer: FE `containerConcurrency=80`, `timeout=300`, **1 Gi / 1000m**; BE `80/300/512Mi/1000m` |
 | Census branch | `22` remote; **16** sudah jadi ancestor `main`; 6 bukan: `ci/deshape-tanpa-riwayat-noda`, `docs/gitguardian-clean-room`, `feat/f9-3c-reply-to` (ketiganya 0 commit unik — sudah squash), `docs/f9-penutup` (2), `chore/gerbang-ci` (2), `ci/deshape-string-sandi-ci` (2, dan ini branch PR **#36 yang kututup tanpa merge**) · **37** branch lokal |
 | Migrasi di jalur deploy | `grep -c migrate .github/workflows/deploy.yml` = **0**, padahal `-migrate` ada di `main.go:151` |
 | Permukaan secret yang terbaca CI | `grep -c 'secrets\.' ci.yml` = **0** · `grep -c 'google-github-actions/auth' ci.yml` = **0** (klausa terakhir E13, masih hijau setelah #37/#38) |
@@ -2016,8 +2018,9 @@ benar — itu mengukur hal yang lain.
 
 | | Isi | Status |
 |---|---|---|
-| **A0** | Baca hasil fire cron 02:37 UTC | **1/1 → tetap 1** pada 02:44 UTC. Ulangi setelah **14:00 UTC**: kalau masih 1, F10 **dihapus** dari daftar (cron tidak layak jadi dasar alarm), bukan di-hold; kalau jadi 2, hold sampai 2026-10-13 |
-| **A1** | PR dokumen ini: E7 **(11)**, revisi produksi pasca #38/#37, tabel 401 dua origin, koreksi tanggal F10, §9 | branch `docs/sisa-kerja-m12` |
+| **A0** | Baca hasil fire cron 02:37 UTC | **tetap 1/7** pada enam pengukuran (02:37 → 03:31:31 UTC). Ulangi setelah **14:00 UTC**: kalau masih 1, F10 **dihapus** dari daftar (cron tidak layak jadi dasar alarm), bukan di-hold; kalau jadi 2, hold sampai 2026-10-13 |
+| **A1** | PR dokumen ini: E7 **(11)**, revisi produksi pasca #38/#37, tabel 401 dua origin, koreksi tanggal F10, §9 | sudah merge (`bad34e5`) |
+| **A2** | Verifikasi browser `/admin/dashboard` + `/cv-layout`, dan pengukuran C4 yang tadinya "belum ada angka" | PR ini — angkanya di §9.0, akibatnya ditulis di **C1**, **C3**, **C4** dan menutup butir browser di **D2** |
 
 ### 9.3 Batch 1 — butuh satu katamu, bukan keputusan desain
 
@@ -2031,10 +2034,10 @@ benar — itu mengukur hal yang lain.
 
 | | Soal | Angka yang membatasi | Rekomendasiku |
 |---|---|---|---|
-| **C1** | `POST /api/contact` tidak dibatasi, dan tiap POST = 1 SMTP sungguhan | `201` dalam **28,75 ms**, SMTP **3,171 s** jalan di belakangnya lewat `go func()` (`main.go:388`) — jadi permintaan lambat tidak menahan request, tapi kuota SMTP **habis** tanpa menahan apa pun. Rate limit per-IP **tidak bisa langsung** dipasang di backend: pengunjung menembus rewrite Next (`next.config.ts:10`), jadi BE tidak melihat socket pengunjung; `x-forwarded-for` bisa diisi sendiri oleh pengirim, dan bentuk rantai yang sampai ke BE **belum kukukur** | **(iii) dulu**: ukur bentuk `x-forwarded-for` yang benar-benar diterima BE (1 request, nol perubahan kode), baru pilih (i) bucket per-IP di gin atau (ii) serahkan ke kuota Cloud Run. Memasang limiter tanpa tahu IP siapa yang dibaca = pagar yang salah alamat |
+| **C1** | Permukaan publik tanpa batas ada **dua**, dan yang kedua baru kelihatan setelah verifikasi browser: (a) `POST /api/contact` tiap kali = 1 SMTP sungguhan, (b) `GET /api/cv` = 1 render Chrome per panggilan, tanpa autentikasi dan tanpa cache | (a) `201` dalam **28,75 ms**, SMTP **3,171 s** jalan di belakangnya lewat `go func()` (`main.go:388`) — permintaan lambat tidak menahan request, tapi kuota SMTP **habis** tanpa menahan apa pun. Rate limit per-IP **tidak bisa langsung** dipasang: pengunjung menembus rewrite Next (`next.config.ts:10`), BE tidak melihat socket pengunjung, `x-forwarded-for` bisa diisi sendiri, dan bentuk rantai yang sampai ke BE **belum kukukur**. (b) `GET /api/cv` **200/5,888 s** lalu **200/4,566 s**, **783 896 B** keduanya — bukan hasil cache; handler-nya meluncurkan puppeteer lalu men-*fetch* dirinya sendiri lewat loopback (`src/app/api/cv/route.ts:22`, navigasinya di `:25`), jadi **satu render menempati 2 slot** `containerConcurrency=80` (1 render = 2 slot → kapasitas render ≈ **40** sekaligus, dan `timeout=300` berarti satu render yang menggantung menahan slotnya 5 menit). Ini **deduksi dari dua angka yang terukur, bukan load test** — aku tidak menghujani produksi dengan request. Dua catatan yang menahan diri supaya tidak melebih-lebihkan: `/api/github-profile` dan `/api/github-repos` juga memanggil GitHub tanpa token (`route.ts:8` baris `Authorization` dikomentari), **tapi** keduanya pakai `next: { revalidate: 3600 / 600 }`, jadi kuota GitHub per-IP kontainer tidak dipakai ulang tiap kunjungan — permukaannya jauh lebih kecil daripada `/api/cv`; dan 500-nya `/api/cv` menyertakan `details: errorMessage` (`route.ts:51`) yang bentuknya adalah message puppeteer, jadi kalau render gagal klien melihat `http://127.0.0.1:<port>/cv-layout` — loopback, bukan secret, tapi satu-satunya rute FE yang memantulkan error internal ke pengunjung (dibaca dari kode, belum kumunculkan dengan merusak produksi) | **(iii) dulu, dan pisahkan dua butirnya.** (a) ukur bentuk `x-forwarded-for` yang benar-benar diterima BE (1 request, nol perubahan kode) sebelum memilih gin-bucket atau kuota Cloud Run — memasang limiter tanpa tahu IP siapa yang dibaca = pagar salah alamat. (b) `/api/cv` **jauh lebih murah diperbaiki daripada contact**: kontennya tidak berubah-ubah, jadi satu `Cache-Control` publik / dedup in-flight sudah menghapus 2-slot-per-kunjungan, dan `details` cukup dibuang 1 baris. Pola header-nya **sudah ada di repo ini** (`src/app/api/github-repos/route.ts:39` memasang `public, s-maxage=600, stale-while-revalidate=60`), jadi (b) bukan desain baru, cuma meniru yang sudah jalan. Yang (b) tidak perlu pengukuran lanjutan |
 | **C2** | Form tidak punya kolom subject; subject disintesis di FE | `Contact.tsx:24` → `Visionary Project : <nama>`; `main.go:388` mem prepend `"Contact Form: "`. Subject produksi hari ini: **`Contact Form: Visionary Project : <nama pengunjung>`**. Dan `subject` **tidak** wajib di backend (`main.go:362` hanya cek name/email/body), jadi `{"email":…,"body":…}` langsung dari curl menghasilkan subject `Contact Form: ` kosong | **Biarkan, sebagai keputusan sadar.** Menambah input subject = permukaan validasi baru (cap 500 rune sudah ada di `main.go:372`) untuk inbox yang cuma kamu baca. Dokumentasinya sudah jujur: README baris "Form kontak" menyebut subject **dibakar** di `Contact.tsx:24` dan "bukan pilihan pengunjung" — jadi tidak ada yang perlu dikoreksi di sana, yang tersisa cuma pilihan produk |
-| **C3** | Cangkang `/admin/dashboard` 200 publik + JWT di `localStorage` | 200/200 terukur di 9.0; semua datanya 401. `localStorage` berarti token terbaca oleh XSS apa pun yang mendarat di halaman itu | **200 tetap** (halaman login memang harus terbuka). Yang jadi soal cuma `localStorage` → **pindah ke cookie `HttpOnly`** kalau kamu pernah membuka admin dari jaringan yang bukan milikmu. Pekerjaan FE+BE+`deploy.yml` sendiri, belum masuk M12, dan jangan dicampur Batch 1 |
-| **C4** | DB mati → `500` (sejak #29, sebelumnya `200 + null`): apa yang dirender FE ke pengunjung? | Belum ada angka. Yang terukur baru sisi API-nya: `GET /api/certificates` **200** saat DB hidup | **Jangan diputuskan sekarang.** Ukur dulu: matikan DB lokal, buka `/` di browser, baca apa yang muncul. Satu sesi kerja, dan setelah itu butir ini punya dasar |
+| **C3** | Cangkang `/admin/dashboard` 200 publik + JWT di `localStorage` | 200/200 terukur di 9.0; semua datanya 401. **Sekarang ada bukti yang dirender, bukan cuma status code** (03:2x UTC, puppeteer ke produksi, server tidak kusentuh): tanpa token, `/admin/dashboard` menampilkan **hanya** gerbang login — `80` karakter teks (`System Override / Enter Elaris Noir credentials / Username / Password / Access Dashboard`), **1** input bertipe password, **0** panggilan API, jadi tidak ada satu pun baris data yang ikut ter-render. Dengan `localStorage.admin_token` (kunci sebenarnya, `src/lib/auth.ts:3` — bukan `token`, itu yang bikin probes pertamaku jadi hasil nol) yang kupalsukan, halaman memanggil `/api/admin/contact=401` lalu **jatuh kembali ke gerbang yang sama, 80 karakter**. `localStorage` berarti token terbaca oleh XSS apa pun yang mendarat di halaman itu | **200 tetap** — dan pengukuran di kolom tengah memperkuat itu: yang terbuka cuma form login, tidak ada isi. Yang jadi soal tinggal `localStorage` → **pindah ke cookie `HttpOnly`** kalau kamu pernah membuka admin dari jaringan yang bukan milikmu. Pekerjaan FE+BE+`deploy.yml` sendiri, belum masuk M12, dan jangan dicampur Batch 1 |
+| **C4** | DB mati → `500` (sejak #29, sebelumnya `200 + null`): apa yang dirender FE ke pengunjung? | **Sudah ada angkanya, dan saranku di kolom ini sendiri tadi salah sasaran.** Suruhanku "buka `/` di browser, baca apa yang muncul" tidak akan menghasilkan apa-apa: `/` **tidak** memanggil `/api/certificates` sama sekali (terukur: 2 panggilan di beranda = `github-profile` + `github-repos`, panjang teks **1761** baseline vs **1759** saat kumock 500 — selisihnya cuma animasi loading). Konsumen yang sebenarnya ada di `src/app/dossier/certificates/page.tsx:27`, `src/app/cv-layout/page.tsx:17`, `src/components/Dossier/DataCards.tsx:239`, `src/app/admin/page.tsx:45`. Diukur di dua yang pertama, **mock di sisi klien** (`setRequestInterception`: `/api/certificates` → `500`, dan → koneksi di-*abort*) supaya produksi tidak dikutak-atik: `/dossier/certificates` **554 → 231** karakter; `/cv-layout` **2433 → 2338**; `barisError = []` pada **ketiga** kondisi, dan angka 231 muncul **identik** untuk 500 maupun koneksi yang putus. Artinya: bagian itu **menghilang diam-diam**, dan pengunjung tidak bisa membedakan "server bilang gagal" dari "tidak ada data" — tepat kebalikan dari yang dikejar #29 di sisi API (`200+null` → `500` supaya kegagalan terlihat). Mekanismenya terbaca di kode, dan identik di kedua tempat: `src/app/dossier/certificates/page.tsx:28` dan `src/app/cv-layout/page.tsx:18` sama-sama `.then(r => r.ok ? r.json() : [])` — **galat dipetakan ke array kosong**, jadi 500 dan "kosong" tidak pernah sampai ke render | **Sekarang butirnya punya dasar, tapi tetap keputusanmu** — dan angkanya menunjuk satu arah: DB-mati sudah 500 di API, **UI-nya tidak pernah membacanya**. Kalau yang kamu mau adalah konsistensi dengan #29, kerjanya kecil dan jelas: `res.ok` **sudah** diperiksa, cuma hasilnya dibuang — ganti `: []` itu dengan satu state galat yang dirender di tempat grid (2 file publik: `dossier/certificates/page.tsx`, `cv-layout/page.tsx`; ada konsumen ketiga di `src/app/admin/page.tsx:45` tapi di sana yang melihat galatnya kamu sendiri, jadi bukan prioritas). Kalau yang kamu mau justru "pengunjung tidak boleh lihat galat infrastruktur", maka perilaku hari ini sudah benar dan butir ini ditutup sebagai **keputusan sadar**, bukan dibiarkan menggantung sebagai lubang |
 | **C5** | Skema berversi belum masuk jalur deploy | `-migrate` ada di `main.go:151`; `grep -c migrate deploy.yml` = **0**; `AutoMigrate` sudah dibuang dari start (F9(5)) — jadi **sekarang** tidak ada satu pun jalan otomatis membuat kolom, termasuk jalan yang benar | **Pasang sebelum perubahan skema kedua.** Kalau ada satu kolom baru yang harus sampai ke produksi, ini bukan opsional lagi — saat itu terjadi tanpa gerbang, "kolom tidak ada" baru terbaca sebagai 500 di produksi |
 | **B4** (izin, bukan desain) | Cabut grant berlebih | **6** binding `roles/secretmanager.secretAccessor` pada SA compute (`portfolio-database-url`, `portfolio-admin-pass`, `portfolio-admin-email`, `portfolio-cors-origins`, `portfolio-jwt-secret`, `gog-keyring-password`) — inert sejak F4/F5; `roles/pubsub.publisher` project-level pada **kedua** SA VM padahal 2 topic sudah punya binding topic-level; `gs://ai-agent-triage-batch-1790307337` tanpa grant | **Cabut 6 `secretAccessor` itu lebih dulu.** Runtime sudah terbukti memakai `secretKeyRef` milik SA khusus (env BE = 8 entri, 2 di antaranya `EMAIL_`), jadi yang dilepas memang yang tidak dipakai — dan itu satu-satunya sisa yang menguasakan **nilai**, bukan sekadar bentuk. Prune pubsub: tunggu seminggu audit, jangan sekalian |
 | **C6** | Jadikan GitGuardian required context? | Required contexts = `go`,`web`,`api`; GitGuardian **tidak** memblokir. Verdict-nya membaca **riwayat commit PR**, bukan pohon akhir, jadi tidak bisa dibersihkan dengan commit susulan. Tiga percobaan: `9e49a14` **failure**, `ed0aee6` **failure**, `20c16ea` **success** — dua kegagalan terakhir disebabkan **komentarku sendiri** yang kebetulan berbentuk pasangan kunci:nilai | **Tidak.** Yang dibutuhkan bukan gerbang, tapi menghapus **bentuk** yang memicu detektornya — dan itu sudah: 2 literal dibuang (#38), `grep -c 'secrets\.' ci.yml` = **0**. Required context akan memaksa tiap PR bernoda-di-riwayat di-`rebase` jadi 1 commit, dan itu justru **menghapus jejak clean-room** yang dipakai membuktikan klaim ini |
@@ -2048,20 +2051,32 @@ benar — itu mengukur hal yang lain.
   Riwayat `20c16ea` tidak hilang meski branch-nya dihapus: GitHub menyimpan ref PR untuk PR yang
   sudah ditutup/di-merge — **perilaku platform, bukan yang kuukur di repo ini**. **37 branch lokal** belum
   kusensus statusnya; itu bagian lain dari D1 kalau kamu mau bersih-bersih juga di sisi itu.
-- **D2 — bukti yang belum ada.** `metricWriter` terpasang di 3 SA tapi aksinya belum pernah terlihat;
-  varian E4 "dua konten berbeda dalam 60 detik" belum diprovokasi; dan **tidak ada verifikasi browser**
-  untuk `/admin/dashboard` maupun `/cv-layout` — yang terukur baru status code dan header, bukan yang
-  dirender. Satu butir D2 sudah **tertutup di PR ini**: sensus cabang `switch` hasil `SendEmail`
+- **D2 — bukti yang belum ada.** Tinggal **dua** yang masih belum: `metricWriter` terpasang di 3 SA tapi
+  aksinya belum pernah terlihat, dan varian E4 "dua konten berbeda dalam 60 detik" belum diprovokasi.
+  Butir ketiga — **tidak ada verifikasi browser** untuk `/admin/dashboard` maupun `/cv-layout`, yang
+  terukur baru status code dan header bukan yang dirender — **tertutup di PR ini** (A2). Satu butir lain
+  tertutup di PR #41: sensus cabang `switch` hasil `SendEmail`
   (`main.go:389-396`) ternyata bukan "2 dari 3 terbukti jalan" seperti yang kutulis tadi, dan angkanya
   lebih spesifik dari itu —
-  | Cabang | Sebelum PR ini | Sekarang |
+  | Cabang | Sebelum #41 | Sesudah #41 |
   |---|---|---|
   | `dilewati` (`ErrNotConfigured`) | dipositifkan di CI (`ci.yml:294-298`) **dan** di level paket (`TestSendEmailTanpaKredensialBerhentiSebelumSMTP`, 3 sub-case) | tetap |
   | `gagal kirim` (`default:`) | hanya diasumsikan **tidak** muncul (`ci.yml:289-293` `exit 1` kalau ia muncul) — belum pernah dipositifkan di mana pun | `TestAutentikasiDitolakBukanErrNotConfigured` — premisnya diuji positif lewat penolakan `535` dari stub in-process |
   | `terkirim` (`err == nil`) | terjadi **sekali di produksi** (POST 2026-10-06 00:51 UTC), 0 kali di CI | `TestServerMenerimaPesanKembalikanNil` |
-  Yang masih terbuka dan sekarang jadi tapi-tunggal yang jelas: **0 test handler** (setelah PR ini tetap
+  Yang masih terbuka dan sekarang jadi tapi-tunggal yang jelas: **0 test handler** (setelah #41 pun tetap
   2 file test, keduanya di `mailer/`) — menutup `switch` di dalam goroutine butuh harness Postgres, bukan
   tambahan kecil.
+  **Yang tertutup di PR ini (A2)** — verifikasi browser, dijalankan ke produksi lewat
+  `docs/verify/browser-probe.mjs` (§9.7), server tidak diubah:
+  | Yang dirender | Angka | API yang dipanggil |
+  |---|---|---|
+  | `/cv-layout` | **2433** karakter, `jumlahImg=1`, `linkLokal=0`, `consoleErr=[]` | `/api/certificates=200` |
+  | `/admin/dashboard`, tanpa token | **80** karakter = gerbang login saja, `inputPwd=1` | **0** panggilan |
+  | `/admin/dashboard`, `admin_token` palsu | tetap **80** karakter — kembali ke gerbang yang sama | `/api/admin/contact=401` |
+  | `/dossier/certificates` | **554** baseline → **231** saat `/api/certificates`→500 → **231** saat koneksi putus; `barisError=[]` di ketiganya | `200` / `500` / — |
+  Baris terakhir itu bukan hiasan: ia menjawab **C4** dengan angka, dan menunjukkan bahwa yang diukur lewat
+  status code (#29) **tidak** pernah sampai ke pengunjung — 500 dan "kosong" menghasilkan halaman yang sama
+  panjangnya, karakter per karakter.
 - **D3 (opsional) — drill negatif E11** lewat pin traffic. Itu menyentuh produksi kelas yang sama dengan
   P5, tapi izin P5 bukan izin ini; butuh "ya" sendiri.
 
@@ -2073,9 +2088,56 @@ benar — itu mengukur hal yang lain.
 3. **Hapus baris**: probe `b693e544-3001-…` + **5** baris seed warisan. Butuh DELETE ber-JWT.
 4. **"kirimi"** untuk 1 POST pembuktian `Reply-To` (B3).
 5. **"ya"** untuk drill clone F7 (B1, berbayar).
-6. **Jawab C1–C6** — tiap jawaban langsung jadi satu PR, bukan satu milestone.
+6. **Jawab C1–C6** — tiap jawaban langsung jadi satu PR, bukan satu milestone. Sejak PR ini **C1, C3 dan
+   C4 sudah punya angka**, jadi yang tersisa benar-benar pilihan, bukan rasa penasaran: C1(a) masih butuh
+   1 request pengukuran, C1(b)+C4 tidak butuh apa-apa lagi, C5/C6/B4 sudah bulat rekomendasinya.
 7. **Cabut 6 `secretAccessor` SA compute** + putuskan prune pubsub (B4). Bisa lewat aku kalau diizinkan,
    bisa lewat console sendiri.
 8. **Putuskan `chore/gerbang-ci`** (butir §6 yang masih terbuka) dan boleh-tidaknya **20** branch dihapus.
 9. **A0 susulan** sesudah 14:00 UTC: kalau `event=schedule` masih **1**, F10 dicoret. Aku yang ukur di sesi
    berikutnya; tidak perlu kamu sentuh.
+
+### 9.7 Alat ukur yang ikut di repo: `docs/verify/browser-probe.mjs`
+
+Angka render di §9.0, **C3** dan **C4** dihasilkan alat ini, jadi ditulis ulang kalau nanti berubah.
+
+```
+node docs/verify/browser-probe.mjs /cv-layout
+node docs/verify/browser-probe.mjs /dossier/certificates
+node docs/verify/browser-probe.mjs --mock=/api/certificates:500 /dossier/certificates
+node docs/verify/browser-probe.mjs --mock=/api/certificates:putus /dossier/certificates
+node docs/verify/browser-probe.mjs /admin/dashboard
+node docs/verify/browser-probe.mjs --token=palsu /admin/dashboard
+```
+
+Yang perlu diketahui supaya angkanya tidak disalah baca:
+
+- **Ia tidak mengubah apa pun di server.** Mock dipasang lewat `setRequestInterception` di dalam Chrome,
+  jadi `/api/certificates` yang "500" itu **tidak pernah** sampai ke backend — DB produksi tetap hidup,
+  dan tidak ada baris `contact_messages` yang bertambah karena probe ini.
+- `puppeteer` diambil dari `nextjs-frontend/node_modules` lewat `createRequire` yang menunjuk
+  `nextjs-frontend/package.json`; dipanggil dari root repo tanpa itu → `ERR_MODULE_NOT_FOUND`.
+  Jalan di host ini dengan `/usr/bin/google-chrome` (`headless: 'new'`, `--no-sandbox`), dan `FE_URL`
+  bisa ditimpa lewat environment.
+- **`domcontentloaded` + jeda 7 s, bukan `networkidle`.** `/` tidak pernah idle (`FotoDiriFix.png` >3 s),
+  jadi `networkidle0/2` membuat probe timeout tanpa mengukur apa pun — itu penyebab dua run pertamaku
+  menghasilkan `TimeoutError` untuk beranda, bukan penyebab halaman lambat.
+- `panjangTeks` = panjang `document.body.innerText` setelah `\n{2,}` dirapatkan. Angka ini **peka terhadap
+  whitespace tepi**: gerbang admin terbaca **82** di run scratch dan **80** di run alat ini, selisihnya
+  baris kosong, bukan konten. Yang dipakai sebagai bukti adalah bentuknya (hanya form login, `inputPwd=1`,
+  0 panggilan API), dan ±2 karakter itu kutulis supaya tidak tampak lebih presisi dari aslinya.
+- File ini ada di `docs/**`, dan `deploy.yml` mengabaikan `**.md` **dan** `docs/**` — jadi menambah alat
+  ukur ke repo **tidak** memicu build/deploy. Itu berbeda dari menaruhnya di `tools/`, yang akan memicu
+  satu run deploy penuh; pilihan letak ini memang sengaja (E7 arah "dokumen tidak menyentuh produksi").
+  Harga dari letak yang sama: **tidak ada satu pun job CI yang membaca `docs/`** — `ci.yml` menjalankan
+  lint/tsc/build dengan `working-directory: nextjs-frontend` (dan `go-backend`), jadi probe ini bisa rusak
+  tanpa ada yang tahu. Yang menjaganya cuma bahwa §9.0/C3/C4 mengutip angka yang dihasilkannya, dan
+  `node --check docs/verify/browser-probe.mjs` lolos.
+- **Cara memverifikasi tanpa menelan artefak lama:** `npx tsc --noEmit` di host ini **merah** sebelum
+  perubahan apa pun, karena `.next/types/validator.ts` (root-owned, 2026-10-02 09:19) masih memvalidasi
+  `src/app/api/contact/route.ts` — file yang **sudah tidak ada** di git (`git ls-files src/app/api/` =
+  `cv`, `github-profile`, `github-repos`). `.next` itu tidak kuhapus (punya root, dan dia satu-satunya
+  yang bisa dipakai membanding build lama). Angka yang benar didapat dengan mengecualikan artefak itu:
+  `tsc --noEmit -p <tsconfig dengan include tanpa .next>` → **rc=0**; `npm run lint` → **0 errors,
+  11 warnings** (semua warning sudah ada sebelumnya). CI tidak pernah melihat ini karena checkout-nya
+  bersih, tanpa `.next`.
