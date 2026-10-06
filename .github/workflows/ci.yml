@@ -447,3 +447,158 @@ jobs:
       - name: Hentikan backend
         if: always()
         run: kill "$(cat /tmp/be.pid)" 2>/dev/null || true
+
+  # N1: satu-satunya fitur yang butuh Chromium adalah /api/cv, dan Chromium itu hanya ada di IMAGE
+  # frontend (nextjs-frontend/Dockerfile: apk add chromium + PUPPETEER_EXECUTABLE_PATH) — tidak di
+  # runner, tidak di `npm run build`-nya job web. Sampai job ini ada, bukti "PDF masih bisa dibuat"
+  # baru muncul SETELAH mendarat di produksi: deploy.yml langkah verifikasi 5, atau watch.yml
+  # (cv-pdf) kalau produksi sudah sempat rusak. Job ini memindahkan bukti itu ke sebelum merge,
+  # dengan men-build Dockerfile yang sama dan membuka hasil PDF-nya betulan.
+  #
+  # Kenapa assertion harus mengekstrak teks, bukan berhenti di magic byte (diukur di host ini,
+  # image yang sama, backend yang sama, hanya jumlah baris sertifikat yang berbeda):
+  #   0 baris => /api/cv 200, 778.520 byte, awalan %PDF-
+  #   1 baris => /api/cv 200, 783.301 byte, awalan %PDF-
+  # Keduanya lulus assertion "200 + %PDF- + ukuran minimum" berapa pun; watch.yml menuntut >=50000.
+  # Jadi PDF kosong dan PDF berisi tidak bisa dibedakan dari ukurannya. Yang membedakan cuma
+  # teksnya, dan itu yang dituntut di bawah.
+  pdf:
+    name: pdf
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      pg:
+        image: postgres:15
+        env:
+          POSTGRES_DB: portfolio_pdf
+          POSTGRES_USER: postgres
+          # trust, seperti job api: tujuannya supaya tidak ada kredensial literal di repo.
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.3
+
+      - name: Setup Go
+        uses: actions/setup-go@0aaccfd150d50ccaeb58ebd88d36e91967a5f35b6 # v5.4.0
+        with:
+          go-version-file: go-backend/go.mod
+
+      - name: Nilai uji acak, tidak disimpan di repo
+        id: fixtures
+        run: |
+          echo "jwt=$(openssl rand -hex 16)" >> "$GITHUB_OUTPUT"
+          echo "adminpass=$(openssl rand -hex 12)" >> "$GITHUB_OUTPUT"
+
+      # Backend melayani satu baris yang judulnya acak. Penanda acak dipakai supaya yang terbukti
+      # adalah "data ini lewat ke PDF", bukan "ada teks yang mirip-mirip sertifikat".
+      - name: Tanam satu sertifikat penanda, lalu jalankan backend
+        id: penanda
+        env:
+          DATABASE_URL: host=127.0.0.1 user=postgres dbname=portfolio_pdf port=5432 sslmode=disable TimeZone=UTC
+          JWT_SECRET: ${{ steps.fixtures.outputs.jwt }}
+          ADMIN_PASS: ${{ steps.fixtures.outputs.adminpass }}
+        run: |
+          set -uo pipefail
+          PSQL='host=127.0.0.1 user=postgres dbname=portfolio_pdf port=5432 sslmode=disable'
+          cd go-backend
+          go build -o /tmp/be-pdf .
+          /tmp/be-pdf -migrate
+
+          # Dua secret di atas bukan hiasan: requireEnv untuk JWT_SECRET dan ADMIN_PASS dipanggil
+          # sebelum listen (main.go:164 dan :166), jadi melayani tanpa keduanya keluar dengan
+          # "JWT_SECRET must be set". -migrate sendiri tidak menyentuh keduanya — itu sebabnya
+          # langkah "Skema dibuat eksplisit" di job api boleh menjalankannya tanpa secret.
+          # Nama pemakai sengaja tidak diisi: hanya dia yang punya nilai cadangan di backend,
+          # dan jalur PDF tidak pernah sampai ke perbandingan login.
+          m="ab$(openssl rand -hex 3)"
+          psql "$PSQL" -qc "insert into certificates (title, issuer, date, created_at, updated_at) values ('$m', 'penerbit pdf', '2026', now(), now())"
+          echo "penanda=$m" >> "$GITHUB_OUTPUT"
+          echo "baris sertifikat: $(psql "$PSQL" -tAc 'select count(*) from certificates') dengan judul $m"
+
+          /tmp/be-pdf > /tmp/be-pdf.log 2>&1 &
+          echo $! > /tmp/be-pdf.pid
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:8080/api/health > /dev/null 2>&1; then
+              echo "backend siap setelah ${i} percobaan"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "backend tidak naik dalam 40s:"
+          cat /tmp/be-pdf.log
+          exit 1
+
+      # BACKEND_URL menentukan ke mana rewrite /api/certificates pergi, dan nilai itu dibakar saat
+      # build — bukan dibaca saat kontainer jalan. Ini diukur, bukan disimpulkan: image yang dibangun
+      # dengan --build-arg BACKEND_URL=http://porto-be-test:8080 lalu dijalankan TANPA env apa pun
+      # tetap menjawab /api/certificates dari dalamnya, dan host itu muncul 9 kali di
+      # .next/required-server-files.json. Deploy mengerjakan keduanya (--build-arg lalu
+      # --set-env-vars); langkah ini ikut mengirim build arg karena itulah yang dipakai server.
+      - name: Build image frontend dari Dockerfile produksi
+        run: |
+          docker build -t porto-fe:ci --build-arg BACKEND_URL=http://127.0.0.1:8080 nextjs-frontend
+
+      - name: PDF dari image — Chromium nyata, data nyata, bukan cuma magic byte
+        env:
+          PENANDA: ${{ steps.penanda.outputs.penanda }}
+        run: |
+          set -euo pipefail
+          FE=http://127.0.0.1:3000
+          docker run -d --rm --name fe-pdf --network host porto-fe:ci > /dev/null
+
+          code=000
+          for i in $(seq 1 60); do
+            if [ "$(curl -s -o /dev/null -w '%{http_code}' "$FE/cv-layout" || true)" = "200" ]; then
+              break
+            fi
+            sleep 1
+          done
+          code=$(curl -s -o /dev/null -w '%{http_code}' "$FE/cv-layout" || true)
+          echo "GET /cv-layout => $code (siap setelah $i percobaan)"
+          [ "$code" = "200" ] || { echo "image frontend tidak melayani :3000"; docker logs fe-pdf 2>&1 | tail -30; exit 1; }
+
+          curl -fsS "$FE/api/certificates" -o /tmp/sert.json
+          sampai=$(jq --arg m "$PENANDA" '[.[].title] | index($m) != null' /tmp/sert.json)
+          echo "rewrite fe->be dari DALAM kontainer: $(jq 'length' /tmp/sert.json) baris, memuat penanda: $sampai"
+          [ "$sampai" = "true" ] || { echo "penanda tidak sampai ke frontend"; exit 1; }
+
+          code=$(curl -sS -o /tmp/cv.pdf -D /tmp/cv.h -w '%{http_code}' --max-time 180 "$FE/api/cv")
+          size=$(wc -c < /tmp/cv.pdf)
+          echo "GET /api/cv => $code, $size byte, awalan='$(head -c 5 /tmp/cv.pdf)'"
+          [ "$code" = "200" ] || { echo "bukan 200; body: $(head -c 300 /tmp/cv.pdf)"; exit 1; }
+          grep -qi '^content-type: application/pdf' /tmp/cv.h || { echo "header bukan application/pdf:"; cat /tmp/cv.h; exit 1; }
+          [ "$(head -c 5 /tmp/cv.pdf)" = "%PDF-" ] || { echo "magic byte bukan PDF"; exit 1; }
+
+          command -v pdftotext > /dev/null || sudo apt-get install -y --no-install-recommends poppler-utils
+          command -v pdftotext > /dev/null || { echo "pdftotext tetap tidak tersedia setelah install"; exit 1; }
+          pdftotext -layout /tmp/cv.pdf /tmp/cv.txt
+          if ! grep -qi "$PENANDA" /tmp/cv.txt; then
+            echo "PDF 200 dan $size byte, tapi teksnya tidak memuat penanda $PENANDA"
+            echo "=== 40 baris teks PDF ==="; head -40 /tmp/cv.txt
+            echo "=== log kontainer ==="; docker logs fe-pdf 2>&1 | tail -20
+            exit 1
+          fi
+          echo "penanda $PENANDA terbaca di teks PDF ($(wc -c < /tmp/cv.txt) byte teks): Chromium di dalam image benar-benar merender data"
+
+          docker rm -f fe-pdf > /dev/null
+          echo "fe-pdf dihentikan"
+
+      - name: Log saat gagal
+        if: failure()
+        run: |
+          echo "=== backend ==="
+          cat /tmp/be-pdf.log 2>/dev/null || true
+          echo "=== frontend ==="
+          docker logs fe-pdf 2>&1 | tail -60 || true
+          docker ps -a --format '{{.Names}} {{.Status}}' || true
+
+      - name: Hentikan backend
+        if: always()
+        run: kill "$(cat /tmp/be-pdf.pid)" 2>/dev/null || true
