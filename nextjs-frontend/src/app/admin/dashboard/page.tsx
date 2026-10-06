@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { authFetch } from "@/lib/auth";
+import { readApiError } from "@/lib/apiError";
 import { Mail, Trash2, Calendar } from "lucide-react";
 
 interface ContactMsg {
@@ -18,16 +19,28 @@ export default function DashboardPage() {
     const [messages, setMessages] = useState<ContactMsg[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    const [deleteError, setDeleteError] = useState("");
+    const [hidden, setHidden] = useState(0);
 
     const fetchMessages = async () => {
         try {
             setLoading(true);
+            setError("");
             const res = await authFetch("/api/admin/contact");
-            if (!res.ok) throw new Error("Failed to load messages");
-            const data = await res.json();
+            const data = await res.json().catch(() => null);
+            if (!res.ok || !Array.isArray(data)) {
+                setError(typeof data?.error === "string" ? data.error : "Failed to load messages");
+                return;
+            }
             setMessages(data);
+            // Inbox memotong pada 500 baris terbaru. Tanpa menyebut sisanya, admin yang punya
+            // 603 pesan mengira 500 teratas adalah seluruh kotak masuk.
+            const total = Number(res.headers.get("X-Total-Count"));
+            const returned = Number(res.headers.get("X-Returned-Count"));
+            setHidden(Number.isFinite(total) && Number.isFinite(returned) && total > returned ? total - returned : 0);
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Failed to load messages");
+            console.error(err);
+            setError("Failed to load messages");
         } finally {
             setLoading(false);
         }
@@ -41,9 +54,19 @@ export default function DashboardPage() {
         if (!confirm("Delete this message?")) return;
         try {
             const res = await authFetch(`/api/admin/contact/${id}`, { method: "DELETE" });
-            if (res.ok) setMessages((prev) => prev.filter((m) => m.id !== id));
+            if (!res.ok) {
+                // 400/404/500 selama ini hilang tanpa jejak: pesan masih terlihat di layar
+                // padahal sudah tidak ada (atau belum terhapus) di database.
+                setDeleteError((await readApiError(res)) ?? "Pesan tidak terhapus.");
+                return;
+            }
+            setDeleteError("");
+            // muat ulang, bukan buang dari array lokal: total & sisa yang terpotong ikut
+            // menyesuaikan, kalau tidak banner pemotongan langsung salah setelah satu hapus.
+            await fetchMessages();
         } catch (err) {
-            alert("Failed to delete message");
+            console.error(err);
+            setDeleteError("Pesan tidak terhapus: server tidak terjangkau.");
         }
     };
 
@@ -57,6 +80,16 @@ export default function DashboardPage() {
                 <Mail className="text-accent-primary" size={28} />
                 <h1 className="text-3xl font-bold text-white">Inbox</h1>
             </div>
+
+            {deleteError && (
+                <div className="text-red-400 p-4 bg-red-900/10 rounded-xl border border-red-900/30">{deleteError}</div>
+            )}
+
+            {hidden > 0 && !error && (
+                <div className="text-sm p-3 rounded-xl bg-amber-900/10 border border-amber-900/30 text-amber-200">
+                    Menampilkan {messages.length} pesan terbaru; {hidden} pesan lebih lama tidak dikirim server.
+                </div>
+            )}
 
             {error ? (
                 <div className="text-red-400 p-4 bg-red-900/10 rounded-xl">{error}</div>

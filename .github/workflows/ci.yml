@@ -299,6 +299,118 @@ jobs:
           gone=$(curl -fsS http://127.0.0.1:8080/api/certificates | jq --arg id "$id" '[.[] | select(.id==$id)] | length')
           [ "$gone" = "0" ] || { echo "hapus tidak berlaku: $gone"; exit 1; }
 
+      # Empat cacat yang dulu lolos tanpa suara: isian kosong tersimpan, id kiriman klien
+      # dipercaya, satu POST publik boleh menyerap body tanpa batas, dan rute admin yang tidak
+      # ada dijawab 401 sehingga authFetch membuang sesi admin yang masih sah.
+      - name: Kontrak validasi tulis (kosong, kepanjangan, body besar, rute mati)
+        env:
+          ADMIN_USER: portfolio-admin
+          ADMIN_PASS: ${{ steps.fixtures.outputs.adminpass }}
+        run: |
+          set -uo pipefail
+          A=http://127.0.0.1:8080
+          DSN="host=127.0.0.1 user=postgres dbname=portfolio_db"
+          q() { psql "$DSN" -tAc "$1"; }
+          x() { psql "$DSN" -qc "$1"; }
+          fail=0
+
+          T=$(curl -fsS -X POST -H 'Content-Type: application/json' \
+            -d "$(jq -nc --arg u "$ADMIN_USER" --arg p "$ADMIN_PASS" '{username:$u,password:$p}')" \
+            "$A/api/login" | jq -r .token)
+          [ "$T" != "null" ] && [ -n "$T" ] || { echo "login kontrak gagal"; exit 1; }
+          post() { curl -sS -o /tmp/vb -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer $T" --data-binary "@$1" "$2"; }
+
+          # kosong dan hanya-spasi keduanya 400, dan alasannya harus kalimat yang bisa dibaca
+          printf '%s' '{}' > /tmp/kosong.json
+          printf '%s' '{"title":"   ","issuer":"isian","date":"2026"}' > /tmp/spasi.json
+          printf '%s' '{"role":"   ","company":"isian","period":"2026"}' > /tmp/spasi-exp.json
+          rows0=$(q 'select count(*) from certificates')
+          for t in "/tmp/kosong.json|$A/api/certificates" "/tmp/spasi.json|$A/api/certificates" \
+                   "/tmp/kosong.json|$A/api/experience" "/tmp/spasi-exp.json|$A/api/experience"; do
+            f=${t%%|*}; u=${t##*|}
+            code=$(post "$f" "$u")
+            alasan=$(jq -r .error /tmp/vb)
+            echo "POST ${u#$A/api/} $(basename "$f") => $code :: $alasan"
+            [ "$code" = "400" ] || { echo "   harap 400"; fail=1; }
+            echo "$alasan" | grep -q 'wajib diisi' || { echo "   bukan alasan isian kosong"; fail=1; }
+          done
+          [ "$(q 'select count(*) from certificates')" = "$rows0" ] || { echo "isian kosong ikut tersimpan"; fail=1; }
+
+          # batas atas harus tepat pada angka yang dijanjikan, bukan asal menolak
+          jq -nc '{title:("a"*200),issuer:"CI",date:"2026"}' > /tmp/pas200.json
+          jq -nc '{title:("a"*201),issuer:"CI",date:"2026"}' > /tmp/lebih201.json
+          code=$(post /tmp/pas200.json "$A/api/certificates"); id200=$(jq -r .id /tmp/vb)
+          echo "title 200 char => $code"; [ "$code" = "201" ] || fail=1
+          code=$(post /tmp/lebih201.json "$A/api/certificates")
+          echo "title 201 char => $code :: $(jq -r .error /tmp/vb)"; [ "$code" = "400" ] || fail=1
+          [ "$(q 'select count(*) from certificates where length(title)>200')" = "0" ] || \
+            { echo "title kepanjangan tersimpan"; fail=1; }
+
+          # id dan waktu adalah milik server: dulu payload {id:...} boleh menentukan siapa
+          idpalsu=33333333-3333-4333-8333-333333333333
+          jq -nc --arg id "$idpalsu" '{id:$id,title:"kontrak id",issuer:"CI",date:"2026"}' > /tmp/denganid.json
+          code=$(post /tmp/denganid.json "$A/api/certificates")
+          idbaru=$(jq -r .id /tmp/vb)
+          echo "POST dengan id kiriman klien => $code, id balas=$idbaru"
+          [ "$idbaru" != "$idpalsu" ] || { echo "id kiriman klien masih dipercaya"; fail=1; }
+          [ "$(q "select count(*) from certificates where id='$idpalsu'")" = "0" ] || fail=1
+          [ "$(jq -r '.createdAt | length' /tmp/vb)" != "0" ] || { echo "createdAt tidak diisi server"; fail=1; }
+          curl -fsS -X DELETE -H "Authorization: Bearer $T" "$A/api/certificates/$idbaru" > /dev/null
+          curl -fsS -X DELETE -H "Authorization: Bearer $T" "$A/api/certificates/$id200" > /dev/null
+
+          # badan request dibatasi SEBELUM dibaca: container BE cuma 512Mi
+          head -c 2097152 /dev/zero | tr '\0' 'b' > /tmp/besar.txt
+          jq -nc --rawfile big /tmp/besar.txt '{name:"kontrak",email:"besar@example.test",subject:"s",body:$big}' > /tmp/body2mb.json
+          c0=$(q 'select count(*) from contact_messages')
+          code=$(curl -sS -o /tmp/vb -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
+            --data-binary @/tmp/body2mb.json "$A/api/contact")
+          echo "POST /api/contact body 2MB => $code :: $(head -c 60 /tmp/vb)"
+          [ "$code" = "413" ] || fail=1
+          [ "$(q 'select count(*) from contact_messages')" = "$c0" ] || { echo "body 2MB ikut tersimpan"; fail=1; }
+          jq -nc '{name:"kontrak",email:"paling-panjang@example.test",subject:"s",body:("c"*20000)}' > /tmp/sah20k.json
+          code=$(curl -sS -o /tmp/vb -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
+            --data-binary @/tmp/sah20k.json "$A/api/contact")
+          echo "pesan sah 20.000 char => $code (batas body tidak boleh memangkas fitur)"
+          [ "$code" = "201" ] || fail=1
+
+          # rute admin yang memang tidak ada harus 404 bagi token sah; 401 membuat authFetch
+          # menghapus token dan melempar admin keluar hanya karena mengklik menu mati
+          for m in GET POST PUT DELETE; do
+            sah=$(curl -sS -o /dev/null -w '%{http_code}' -X "$m" -H "Authorization: Bearer $T" "$A/api/admin/projects")
+            tanpa=$(curl -sS -o /dev/null -w '%{http_code}' -X "$m" "$A/api/admin/projects")
+            echo "$m /api/admin/projects => token sah: $sah, tanpa token: $tanpa"
+            [ "$sah" = "404" ] || { echo "   rute mati harus 404 untuk token sah"; fail=1; }
+            [ "$tanpa" = "401" ] || { echo "   rute mati harus 401 tanpa token"; fail=1; }
+          done
+          pub=$(curl -sS -o /dev/null -w '%{http_code}' "$A/api/tidak-ada")
+          echo "GET /api/tidak-ada tanpa token (publik) => $pub"; [ "$pub" = "404" ] || fail=1
+
+          # pemotongan inbox harus terlaporkan, bukan diam-diam: dulu Limit(500) membuat
+          # 603 pesan terlihat seperti 500 dan admin tidak pernah tahu ada yang tak terbaca
+          hdr() { tr -d '\r' < /tmp/hdr | awk -F': ' -v k="$1" 'tolower($1)==k {print $2}'; }
+          curl -fsS -D /tmp/hdr -H "Authorization: Bearer $T" "$A/api/admin/contact" -o /tmp/inbox.json
+          total=$(hdr x-total-count); returned=$(hdr x-returned-count); dipotong=$(hdr x-inbox-truncated)
+          echo "inbox: total=$total returned=$returned dipotong=$dipotong, psql=$(q 'select count(*) from contact_messages')"
+          [ "$total" = "$(q 'select count(*) from contact_messages')" ] || { echo "X-Total-Count bukan jumlah baris sebenarnya"; fail=1; }
+          [ "$returned" = "$(jq 'length' /tmp/inbox.json)" ] || { echo "X-Returned-Count bukan panjang body"; fail=1; }
+          [ "$dipotong" = "false" ] || { echo "dinilai terpotong padahal belum"; fail=1; }
+
+          x "insert into contact_messages (name,email,subject,body,created_at,updated_at)
+             select 'probe potong','potong@example.test','s','baris generated',now(),now()
+             from generate_series(1,600);"
+          curl -fsS -D /tmp/hdr -H "Authorization: Bearer $T" "$A/api/admin/contact" -o /tmp/inbox.json
+          total=$(hdr x-total-count); returned=$(hdr x-returned-count); dipotong=$(hdr x-inbox-truncated)
+          rows=$(q 'select count(*) from contact_messages')
+          echo "inbox setelah 600 baris ditanam: total=$total returned=$returned dipotong=$dipotong, psql=$rows"
+          [ "$total" = "$rows" ] || { echo "total tidak mengikuti jumlah baris sebenarnya"; fail=1; }
+          [ "$returned" = "500" ] || { echo "tidak memotong pada 500: $returned"; fail=1; }
+          [ "$dipotong" = "true" ] || { echo "pemotongan tidak dilaporkan ke admin"; fail=1; }
+          [ "$(jq 'length' /tmp/inbox.json)" = "500" ] || fail=1
+          x "delete from contact_messages where name='probe potong';"
+          [ "$fail" = "0" ] || { echo "ada kontrak validasi tulis yang gagal"; exit 1; }
+          echo "validasi tulis terkunci: kosong 400, 201 char 400, body 2MB 413, rute mati 404, pemotongan terlihat"
+
       - name: Kontrak kontak (form publik benar-benar menulis)
         run: |
           q() { psql "host=127.0.0.1 user=postgres dbname=portfolio_db" -tAc "$1"; }

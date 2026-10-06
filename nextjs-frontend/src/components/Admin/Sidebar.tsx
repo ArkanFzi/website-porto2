@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Inbox, Briefcase, LogOut } from "lucide-react";
+import { Inbox, LogOut } from "lucide-react";
 import { removeAuthToken } from "@/lib/auth";
 
 export function Sidebar() {
@@ -16,7 +16,6 @@ export function Sidebar() {
 
     const navItems = [
         { label: "Dashboard (Inbox)", href: "/admin/dashboard", icon: Inbox },
-        { label: "Projects", href: "/admin/projects", icon: Briefcase },
     ];
 
     return (
