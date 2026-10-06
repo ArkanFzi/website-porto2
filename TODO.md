@@ -2205,9 +2205,11 @@ ditolak** ("at least 30 minutes"), dan `documentation.mimeType` harus `text/mark
 (updateMask `notificationChannels`) → `portfolio-be-down`, `portfolio-fe-down`, `portfolio-5xx` sekarang
 `channels=pubsub+email`, `enabled=true`, terverifikasi lewat **baca ulang** (bukan dari gema respons PATCH).
 Salinan sebelum/sesudah ikut di repo: `docs/evidence/alert-policies-sebelum-email-channel.json`
-(7.061 byte) dan `docs/evidence/alert-policies-sesudah-email-channel.json` (7.310 byte) — keduanya hasil
-`GET alertPolicies?pageSize=100`, jadi bisa dibedakan dari `creationRecord`/`mutationRecord` per policy.
-Letak di `docs/` juga berarti dia tidak memicu deploy (`deploy.yml` mengabaikan `docs/**`).
+(6.420 byte) dan `docs/evidence/alert-policies-sesudah-email-channel.json` (6.669 byte). Keduanya hasil
+`GET alertPolicies?pageSize=100` yang **kubersihkan** sebelum masuk git: `creationRecord`/`mutationRecord`
+(satu-satunya tempat alamat email operator muncul) dibuang, field yang disisakan cuma yang memang kuclaim
+di tabel — `displayName`, `enabled`, `notificationChannels`, `conditions`. Letak di `docs/` juga berarti
+dia tidak memicu deploy (`deploy.yml` mengabaikan `docs/**`).
 Selain itu: 2 resource drill dibuat lalu dihapus, 2 publish manual ke topic (langsung
 ter-ack konsumen), 1 subscription probe fan-out dibuat dan dihapus. Tidak ada perubahan kode atau IAM lain.
 

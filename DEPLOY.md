@@ -356,7 +356,8 @@ terbaru, dibuat 02:44:25 oleh deploy #26). Yang berubah hanya `metadata.generati
 ## Rantai alarm portfolio (diukur 2026-10-06 06:40 – 07:35 UTC)
 
 Konfigurasi yang berdiri sekarang (terverifikasi lewat **baca ulang** `GET alertPolicies`, bukan dari gema
-PATCH — salinan JSON-nya ada di `docs/evidence/`):
+PATCH — salinan JSON-nya ada di `docs/evidence/`, sudah dibersihkan dari `creationRecord`/`mutationRecord`
+yang memuat identitas operator):
 
 | policy | pemicu | channel |
 |---|---|---|
