@@ -1,15 +1,5 @@
 {
   "_catatan": "Daftar hutang yang diketahui. Isinya harus SAMA PERSIS dengan temuan hari ini: bertambah memicu kegagalan, berkurang juga memicu kegagalan sampai baseline dikecilkan. Regenerasi sadar: node tools/ci/api-contract-check.mjs --emit-baseline",
-  "dead_paths": [
-    "DELETE /api/admin/projects/:p",
-    "DELETE /api/certificates/:p",
-    "DELETE /api/experience/:p",
-    "GET /api/admin/projects",
-    "POST /api/admin/projects",
-    "POST /api/admin/sync-github",
-    "POST /api/certificates",
-    "POST /api/experience",
-    "PUT /api/admin/projects/:p"
-  ],
+  "dead_paths": [],
   "stub_handlers": []
 }

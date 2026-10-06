@@ -9,6 +9,7 @@ import (
 	"net/mail"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -31,6 +32,42 @@ var (
 // Bentuk uuid yang dihasilkan gen_random_uuid(); id cacat ditolak sebelum dikirim ke DB.
 var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
+// maxBodyBytes dibatasi sebelum handler sempat membaca: tanpa batas ini, satu POST publik
+// 20 MB sudah habis terserap ke memori (BE cuma 512Mi) sebelum cek panjang di handler jalan.
+const maxBodyBytes = 1 << 20
+
+func batasiBody() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if c.Request.ContentLength > maxBodyBytes {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "Body terlalu besar"})
+			c.Abort()
+			return
+		}
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBodyBytes)
+		c.Next()
+	}
+}
+
+type isianTeks struct {
+	Label string
+	Value string
+	Max   int
+}
+
+// cekIsian menutup dua lubang yang ditinggalkan tag `not null`: kolom TEXT menerima string
+// kosong, dan tanpa batas panjang satu baris 100 KB kembali utuh di setiap GET publik.
+func cekIsian(isian ...isianTeks) (string, bool) {
+	for _, it := range isian {
+		if strings.TrimSpace(it.Value) == "" {
+			return it.Label + " wajib diisi", false
+		}
+		if utf8.RuneCountInString(it.Value) > it.Max {
+			return it.Label + " terlalu panjang (maks " + strconv.Itoa(it.Max) + " karakter)", false
+		}
+	}
+	return "", true
+}
+
 func getEnv(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -46,24 +83,30 @@ func requireEnv(key string) string {
 	return v
 }
 
+// parseToken satu-satunya jalan menilai Bearer token: HS256 dengan secret kita, tidak kedaluwarsa.
+func parseToken(authHeader string) error {
+	if !strings.HasPrefix(authHeader, "Bearer ") {
+		return errors.New("tidak ada Bearer token")
+	}
+	_, err := jwt.Parse(authHeader[7:], func(t *jwt.Token) (interface{}, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("unexpected signing method")
+		}
+		return jwtSecret, nil
+	})
+	return err
+}
+
 // AuthMiddleware validates JWT tokens for protected routes
 func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
+		if !strings.HasPrefix(authHeader, "Bearer ") {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			c.Abort()
 			return
 		}
-		tokenString := authHeader[7:]
-		token, err := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
-			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, fmt.Errorf("unexpected signing method")
-			}
-			return jwtSecret, nil
-		})
-
-		if err != nil || !token.Valid {
+		if err := parseToken(authHeader); err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
 			c.Abort()
 			return
@@ -182,12 +225,19 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 
-	// Middleware per-group tidak berjalan untuk path yang tidak terdaftar, jadi
-	// DELETE /api/admin/contact (tanpa :id) dijawab 404 tanpa menyentuh JWT sama sekali.
-	// Guard ini membuat seluruh subtree admin menjawab 401, bukan membocorkan rute mana yang ada.
+	r.Use(batasiBody())
+
+	// Middleware per-group tidak berjalan untuk path yang tidak terdaftar, jadi guard ini yang
+	// membuat seluruh subtree admin tertutup. 401 untuk yang tidak berhak — tapi token yang
+	// memang valid harus bertemu 404: /api/admin/projects tidak ada, dan menjawabnya dengan 401
+	// membuat authFetch frontend membuang sesi admin yang masih berlaku.
 	r.NoRoute(func(c *gin.Context) {
 		if strings.HasPrefix(c.Request.URL.Path, "/api/admin/") {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			if err := parseToken(c.GetHeader("Authorization")); err != nil {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+				return
+			}
+			c.JSON(http.StatusNotFound, gin.H{"error": "Not found"})
 			return
 		}
 		c.JSON(http.StatusNotFound, gin.H{"error": "Not found"})
@@ -239,10 +289,30 @@ func main() {
 	protected := api.Group("/")
 	protected.Use(AuthMiddleware())
 
+	// Hanya tiga kolom yang boleh datang dari klien: id, createdAt, updatedAt dihasilkan DB.
+	// Dibinding ke struct model sebelumnya membuat POST mengabulkan id dan timestamp kiriman
+	// klien, termasuk urutan created_at desc yang dipakai situs publik dan render PDF.
 	protected.POST("/certificates", func(c *gin.Context) {
-		var cert Certificate
-		if err := c.ShouldBindJSON(&cert); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		var in struct {
+			Title  string `json:"title"`
+			Issuer string `json:"issuer"`
+			Date   string `json:"date"`
+		}
+		if err := c.ShouldBindJSON(&in); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Format data salah"})
+			return
+		}
+		cert := Certificate{
+			Title:  strings.TrimSpace(in.Title),
+			Issuer: strings.TrimSpace(in.Issuer),
+			Date:   strings.TrimSpace(in.Date),
+		}
+		if pesan, ok := cekIsian(
+			isianTeks{Label: "Judul", Value: cert.Title, Max: 200},
+			isianTeks{Label: "Penerbit", Value: cert.Issuer, Max: 200},
+			isianTeks{Label: "Tanggal", Value: cert.Date, Max: 100},
+		); !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": pesan})
 			return
 		}
 		if err := DB.Create(&cert).Error; err != nil {
@@ -273,9 +343,26 @@ func main() {
 	})
 
 	protected.POST("/experience", func(c *gin.Context) {
-		var exp Experience
-		if err := c.ShouldBindJSON(&exp); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		var in struct {
+			Role    string `json:"role"`
+			Company string `json:"company"`
+			Period  string `json:"period"`
+		}
+		if err := c.ShouldBindJSON(&in); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Format data salah"})
+			return
+		}
+		exp := Experience{
+			Role:    strings.TrimSpace(in.Role),
+			Company: strings.TrimSpace(in.Company),
+			Period:  strings.TrimSpace(in.Period),
+		}
+		if pesan, ok := cekIsian(
+			isianTeks{Label: "Posisi", Value: exp.Role, Max: 200},
+			isianTeks{Label: "Perusahaan", Value: exp.Company, Max: 200},
+			isianTeks{Label: "Periode", Value: exp.Period, Max: 100},
+		); !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": pesan})
 			return
 		}
 		if err := DB.Create(&exp).Error; err != nil {
@@ -309,13 +396,27 @@ func main() {
 	admin := api.Group("/admin")
 	admin.Use(AuthMiddleware())
 
+	// inboxLimit membatasi baris yang dikirim, bukan jumlah pesan yang ada. Tanpa header total,
+	// admin yang melihat 500 baris tidak bisa membedakan "inboxnya memang 500" dari
+	// "sisanya terpotong diam-diam".
+	const inboxLimit = 500
+
 	admin.GET("/contact", func(c *gin.Context) {
+		var total int64
+		if err := DB.Model(&ContactMessage{}).Count(&total).Error; err != nil {
+			log.Printf("admin: gagal menghitung pesan: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal membaca pesan"})
+			return
+		}
 		var msgs []ContactMessage
-		if err := DB.Order("created_at desc").Limit(500).Find(&msgs).Error; err != nil {
+		if err := DB.Order("created_at desc").Limit(inboxLimit).Find(&msgs).Error; err != nil {
 			log.Printf("admin: gagal membaca pesan: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal membaca pesan"})
 			return
 		}
+		c.Header("X-Total-Count", strconv.FormatInt(total, 10))
+		c.Header("X-Returned-Count", strconv.Itoa(len(msgs)))
+		c.Header("X-Inbox-Truncated", strconv.FormatBool(int64(len(msgs)) < total))
 		c.JSON(http.StatusOK, msgs)
 	})
 

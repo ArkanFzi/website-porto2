@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { Toast } from "@/components/UI/Toast";
+import { readApiError } from "@/lib/apiError";
 
 const Contact: React.FC = () => {
   const [form, setForm] = useState({ name: "", email: "", message: "" });
@@ -32,12 +33,20 @@ const Contact: React.FC = () => {
         body: JSON.stringify(payload)
       });
 
-      if (!res.ok) throw new Error("Failed to send message");
+      if (!res.ok) {
+        // Backend sudah menjelaskan alasannya dalam kalimat ("Format email tidak valid",
+        // "Isian terlalu panjang"); menggantinya dengan "Failed" membuat pengirim menebak-nebak.
+        throw new Error((await readApiError(res)) ?? "Message could not be sent. Please try again.");
+      }
 
       setToast({ isVisible: true, message: "Thank you! Your message has been sent.", type: "success" });
       setForm({ name: "", email: "", message: "" });
     } catch (err) {
-      setToast({ isVisible: true, message: "Failed to send message. Please try again.", type: "error" });
+      setToast({
+        isVisible: true,
+        message: err instanceof Error ? err.message : "Message could not be sent. Please try again.",
+        type: "error"
+      });
     } finally {
       setIsLoading(false);
     }
@@ -104,6 +113,7 @@ const Contact: React.FC = () => {
               <input
                 type="text"
                 required
+                maxLength={200}
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 placeholder="your name"
@@ -118,6 +128,7 @@ const Contact: React.FC = () => {
               <input
                 type="email"
                 required
+                maxLength={320}
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
                 placeholder="your email"
@@ -132,6 +143,7 @@ const Contact: React.FC = () => {
               <input
                 type="text"
                 required
+                maxLength={20000}
                 value={form.message}
                 onChange={(e) => setForm({ ...form, message: e.target.value })}
                 placeholder="your visionary project idea..."

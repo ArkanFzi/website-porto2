@@ -4,6 +4,8 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Award, Briefcase, Plus, Trash2, ShieldCheck, LogOut, Lock } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { authFetch } from "@/lib/auth";
+import { readApiError } from "@/lib/apiError";
 
 interface Certificate {
     id: string;
@@ -33,6 +35,7 @@ export default function AdminDashboard() {
     const [certs, setCerts] = useState<Certificate[]>([]);
     const [exps, setExps] = useState<Experience[]>([]);
     const [loading, setLoading] = useState(true);
+    const [flash, setFlash] = useState("");
 
     // Form States
     const [certForm, setCertForm] = useState({ title: "", issuer: "", date: "" });
@@ -40,17 +43,29 @@ export default function AdminDashboard() {
 
     const fetchData = async () => {
         setLoading(true);
+        setFlash("");
         try {
             const [cRes, eRes] = await Promise.all([
                 fetch(`/api/certificates`),
                 fetch(`/api/experience`)
             ]);
-            const cData = await cRes.json();
-            const eData = await eRes.json();
-            setCerts(cData || []);
-            setExps(eData || []);
+            const [cPayload, ePayload] = await Promise.all([
+                cRes.json().catch(() => null),
+                eRes.json().catch(() => null)
+            ]);
+            // Tanpa cek ini, body {"error":"Gagal membaca sertifikat"} dari 500 lolos sebagai
+            // "daftar" dan tabel jatuh ke certs.map is not a function.
+            if (!cRes.ok || !eRes.ok || !Array.isArray(cPayload) || !Array.isArray(ePayload)) {
+                const dariC = typeof cPayload?.error === "string" ? cPayload.error : "";
+                const dariE = typeof ePayload?.error === "string" ? ePayload.error : "";
+                setFlash(dariC || dariE || "Daftar tidak berhasil dimuat.");
+                return;
+            }
+            setCerts(cPayload);
+            setExps(ePayload);
         } catch (e) {
             console.error(e);
+            setFlash("Server tidak terjangkau, daftar belum dimuat.");
         } finally {
             setLoading(false);
         }
@@ -96,66 +111,74 @@ export default function AdminDashboard() {
     const handleAddCert = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            const token = localStorage.getItem("admin_token");
-            await fetch(`/api/certificates`, {
+            const res = await authFetch(`/api/certificates`, {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${token}`
-                },
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(certForm)
             });
+            if (!res.ok) {
+                setFlash((await readApiError(res)) || "Sertifikat tidak tersimpan.");
+                return;
+            }
             setCertForm({ title: "", issuer: "", date: "" });
+            setFlash("");
             fetchData();
         } catch (e) {
             console.error(e);
+            setFlash("Sertifikat tidak tersimpan: server tidak terjangkau.");
         }
     };
 
     const handleDeleteCert = async (id: string) => {
         if (!confirm("Are you sure you want to delete this certificate?")) return;
         try {
-            const token = localStorage.getItem("admin_token");
-            await fetch(`/api/certificates/${id}`, {
-                method: "DELETE",
-                headers: { "Authorization": `Bearer ${token}` }
-            });
+            const res = await authFetch(`/api/certificates/${id}`, { method: "DELETE" });
+            if (!res.ok) {
+                setFlash((await readApiError(res)) || "Sertifikat tidak terhapus.");
+                return;
+            }
+            setFlash("");
             fetchData();
         } catch (e) {
             console.error(e);
+            setFlash("Sertifikat tidak terhapus: server tidak terjangkau.");
         }
     };
 
     const handleAddExp = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            const token = localStorage.getItem("admin_token");
-            await fetch(`/api/experience`, {
+            const res = await authFetch(`/api/experience`, {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${token}`
-                },
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(expForm)
             });
+            if (!res.ok) {
+                setFlash((await readApiError(res)) || "Pengalaman tidak tersimpan.");
+                return;
+            }
             setExpForm({ role: "", company: "", period: "" });
+            setFlash("");
             fetchData();
         } catch (e) {
             console.error(e);
+            setFlash("Pengalaman tidak tersimpan: server tidak terjangkau.");
         }
     };
 
     const handleDeleteExp = async (id: string) => {
         if (!confirm("Are you sure you want to delete this experience?")) return;
         try {
-            const token = localStorage.getItem("admin_token");
-            await fetch(`/api/experience/${id}`, {
-                method: "DELETE",
-                headers: { "Authorization": `Bearer ${token}` }
-            });
+            const res = await authFetch(`/api/experience/${id}`, { method: "DELETE" });
+            if (!res.ok) {
+                setFlash((await readApiError(res)) || "Pengalaman tidak terhapus.");
+                return;
+            }
+            setFlash("");
             fetchData();
         } catch (e) {
             console.error(e);
+            setFlash("Pengalaman tidak terhapus: server tidak terjangkau.");
         }
     };
 
@@ -272,6 +295,12 @@ export default function AdminDashboard() {
                     <p className="text-white/50">Add, view, or remove entries from the database.</p>
                 </header>
 
+                {flash && (
+                    <div className="mb-8 bg-red-500/10 border border-red-500/30 text-red-300 text-sm px-4 py-3 rounded-xl">
+                        {flash}
+                    </div>
+                )}
+
                 <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
 
                     {/* Form Section */}
@@ -285,15 +314,15 @@ export default function AdminDashboard() {
                                 <form onSubmit={handleAddCert} className="flex flex-col gap-4">
                                     <div>
                                         <label className="text-xs font-medium text-white/50 mb-1 block">Title</label>
-                                        <input required value={certForm.title} onChange={e => setCertForm({ ...certForm, title: e.target.value })} type="text" className="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-[#c49a56] transition-colors" placeholder="e.g. AWS Certified" />
+                                        <input required maxLength={200} value={certForm.title} onChange={e => setCertForm({ ...certForm, title: e.target.value })} type="text" className="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-[#c49a56] transition-colors" placeholder="e.g. AWS Certified" />
                                     </div>
                                     <div>
                                         <label className="text-xs font-medium text-white/50 mb-1 block">Issuer</label>
-                                        <input required value={certForm.issuer} onChange={e => setCertForm({ ...certForm, issuer: e.target.value })} type="text" className="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-[#c49a56] transition-colors" placeholder="e.g. Amazon Web Services" />
+                                        <input required maxLength={200} value={certForm.issuer} onChange={e => setCertForm({ ...certForm, issuer: e.target.value })} type="text" className="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-[#c49a56] transition-colors" placeholder="e.g. Amazon Web Services" />
                                     </div>
                                     <div>
                                         <label className="text-xs font-medium text-white/50 mb-1 block">Year/Date</label>
-                                        <input required value={certForm.date} onChange={e => setCertForm({ ...certForm, date: e.target.value })} type="text" className="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-[#c49a56] transition-colors" placeholder="e.g. 2024" />
+                                        <input required maxLength={100} value={certForm.date} onChange={e => setCertForm({ ...certForm, date: e.target.value })} type="text" className="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-[#c49a56] transition-colors" placeholder="e.g. 2024" />
                                     </div>
                                     <button type="submit" className="mt-2 bg-[#c49a56] text-black font-bold py-3 rounded-lg hover:bg-white transition-colors">Save Certificate</button>
                                 </form>
@@ -303,15 +332,15 @@ export default function AdminDashboard() {
                                 <form onSubmit={handleAddExp} className="flex flex-col gap-4">
                                     <div>
                                         <label className="text-xs font-medium text-white/50 mb-1 block">Role</label>
-                                        <input required value={expForm.role} onChange={e => setExpForm({ ...expForm, role: e.target.value })} type="text" className="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-[#ff5500] transition-colors" placeholder="e.g. Senior Developer" />
+                                        <input required maxLength={200} value={expForm.role} onChange={e => setExpForm({ ...expForm, role: e.target.value })} type="text" className="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-[#ff5500] transition-colors" placeholder="e.g. Senior Developer" />
                                     </div>
                                     <div>
                                         <label className="text-xs font-medium text-white/50 mb-1 block">Company</label>
-                                        <input required value={expForm.company} onChange={e => setExpForm({ ...expForm, company: e.target.value })} type="text" className="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-[#ff5500] transition-colors" placeholder="e.g. Google" />
+                                        <input required maxLength={200} value={expForm.company} onChange={e => setExpForm({ ...expForm, company: e.target.value })} type="text" className="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-[#ff5500] transition-colors" placeholder="e.g. Google" />
                                     </div>
                                     <div>
                                         <label className="text-xs font-medium text-white/50 mb-1 block">Period</label>
-                                        <input required value={expForm.period} onChange={e => setExpForm({ ...expForm, period: e.target.value })} type="text" className="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-[#ff5500] transition-colors" placeholder="e.g. 2021 - Present" />
+                                        <input required maxLength={100} value={expForm.period} onChange={e => setExpForm({ ...expForm, period: e.target.value })} type="text" className="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-[#ff5500] transition-colors" placeholder="e.g. 2021 - Present" />
                                     </div>
                                     <button type="submit" className="mt-2 bg-[#ff5500] text-white font-bold py-3 rounded-lg hover:bg-white hover:text-black transition-colors">Save Experience</button>
                                 </form>
