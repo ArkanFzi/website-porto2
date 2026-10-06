@@ -115,7 +115,7 @@ website-porto2/
 ├── go-backend/             # API Go (single binary, main.go + mailer/)
 ├── nextjs-frontend/
 │   ├── src/app/            # App Router: page.tsx, layout.tsx, globals.css
-│   │   ├── admin/          # Halaman admin (status: mati — lihat tabel di atas)
+│   │   ├── admin/          # Halaman admin (status: sebagian hidup — lihat tabel di atas)
 │   │   ├── api/            # Route handler: contact, cv, github-profile, github-repos
 │   │   ├── components/     # Seksi halaman: Hero, About, Projects, Contact, …
 │   │   ├── cv-layout/      # Halaman yang dirender Puppeteer jadi PDF
@@ -127,6 +127,9 @@ website-porto2/
 ├── tools/
 │   ├── ci/                 # api-contract-check.mjs + api-baseline.json (ratchet kontrak API)
 │   └── deploy/             # cloudrun.sh (penyaluran traffic Cloud Run)
+├── docs/
+│   └── verify/
+│       └── browser-probe.mjs  # ukur APA YANG DIRENDER (TODO §9.7); mock di sisi klien
 ├── .github/workflows/
 │   ├── ci.yml              # Gerbang: go, web, api — wajib hijau sebelum merge
 │   ├── deploy.yml          # Build + deploy + verifikasi + rollback
