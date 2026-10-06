@@ -479,6 +479,15 @@ yang kutulis 20 menit sebelumnya.
    `sha256:b4c46da3…` (run 17), `sha256:ec5304fa…` (run 18), `sha256:2b986e14…` (run 19). Build tidak
    reproducible, jadi digest mengikat revisi ke artefak milik satu run — bukan alat dedup. Itu memang
    fungsi yang dibutuhkan rollback, tapi jangan berharap "konten sama ⇒ revisi sama".
+   **Perluasannya terukur 2026-10-06, dan kasus frontend lebih kuat daripada catatan di atas:** merge
+   `29757ca` (PR #37) mengubah **nol** file frontend — diff-nya 3 file, semuanya `go-backend/` — tapi
+   Deploy #35 tetap melahirkan revisi frontend baru `portfolio-fe-00030-phn` dengan image
+   `sha256:ec59a79e…`, berbeda dari `portfolio-fe-00029-zqv` = `sha256:12bd7e2b…` yang dilahirkan Deploy
+   #34 dari sumber frontend yang sama persis. Jadi ini bukan cache yang kelewatan satu direktori: setiap
+   run deploy membangun ulang **kedua** service dan menghasilkan digest baru untuk konten yang tidak
+   berubah. Akibat yang harus diterima: **revisi ≠ versi konten**. Rollback P5 memilih revisi — dan itu
+   memang yang dibutuhkannya — tapi tidak ada digest di registry yang bisa dipakai sebagai "versi" yang
+   bisa dibandingkan antar-run.
 6. **Reheksal lokal tidak bisa membuktikan workflow di runner.** Watch run #1 merah karena `gh` di
    `ubuntu-latest` menolak jalan tanpa `GH_TOKEN` — shim `gh` di laptopku memanggil `curl` dengan
    kredensial git, jadi selalu "berhasil", dan `actionlint` tentu tidak memeriksa isi langkah.
@@ -498,7 +507,7 @@ yang kutulis 20 menit sebelumnya.
 | E4 | Cancel tidak meninggalkan deploy setengah jalan | **hijau (mekanisme: `workflow_dispatch` ×2, bukan `push` ×2 — lihat §8 F3)** | 02:00 UTC: dua dispatch berjarak **27 s** pada `main` `b45c298`. Run #23 job `02:00:28→02:04:24` `success`; run #24 `created 02:00:51` tapi **`pending` 215 s** lalu job `02:04:26→02:07:41` `success` — mulai **2 s** sesudah #23 selesai, `cancelled=false` pada keduanya. Artefak live sesudahnya `portfolio-be-00020-vqd=100` / `portfolio-fe-00019-npr=100`, satu revisi baru per run per service, health `{"db":"ok","status":"ok"}` dari domain publik dan `run.app`, `/` 40.699 byte tanpa `Application error`. Varian "dua push dengan konten berbeda" masih belum ter-exercise (kedua run sama SHA) |
 | E5 | Rollback pernah dieksekusi dan memulihkan | **hijau** | run #18 langkah 13 `success`, langkah 14 `success`, traffic terukur kembali ke `be-00013-s97`/`fe-00012-947` |
 | E6 | Smoke bisa gagal | **hijau** | run #18 `"/api/cv tidak mengembalikan PDF"` pada HTTP 200 — `curl -f` tidak akan melihatnya |
-| E7 | Dokumen tidak memicu deploy | **hijau — dua pengukuran** | (1) merge PR #9 (`f218564`, hanya `README.md`/`DEPLOY.md`/`TODO.md`) → `deploy.yml` run count **0** untuk SHA itu, `ci.yml` push run #14 `success`. (2) merge PR #13 (`7d7217b`, juga dokumen saja) → `deploy.yml` **0 run**, `watch.yml` 0 run, `ci.yml` push run #23 `success`, dan `gcloud run services describe` tetap `portfolio-be-00018-fsc` / `portfolio-fe-00017-wqb` @100% — merge dokumen tidak mengubah apa pun yang melayani request. Kontrasnya terukur di hari yang sama: PR #10/#11/#12 yang menyentuh `.github/workflows/**` memicu deploy run #20, #21, #22 — ketiganya `success`. `paths-ignore: ['**.md','docs/**']` + `actionlint` bersih. **(3)–(6) diukur hari ini bersama F6:** merge PR #15 (`b45c298`), #16 (`dfb9147`), #19 (`75b2f3f`) dan #20 (`6281b7f`) — keempatnya dokumen saja — **0 run `Deploy to Cloud Run`** masing-masing (yang jalan hanya `CI`, dan di #19/#18 ada `Watch`). Kontrasnya diukur pada jendela yang sama: `382f0e4` (PR #17) dan `3a88e25` (PR #18) masing-masing **1 run deploy**. Query-nya, supaya bisa diulang: `actions/runs?per_page=100` lalu `select(.head_sha==<SHA merge>) \| select(.name\|test("deploy";"i")) \| length`. **(7)–(10) diukur 2026-10-06:** merge PR #34 (`52fc2e90`, dokumen saja) → **0 run deploy**; merge PR #35 (`9a5d7eda`, dokumen saja) → **1 run = `CI`, 0 deploy**, dan revisi yang melayani tidak berubah (`portfolio-be-00029-wpx` / `portfolio-fe-00028-jlz`). Kontrasnya pada hari yang sama: merge PR #38 (`e99cf67`, `.github/workflows/ci.yml`) → **1 run `Deploy to Cloud Run` (#34)** → revisi baru `portfolio-be-00030-7wc` / `portfolio-fe-00029-zqv`; merge PR #37 (`29757ca`, `go-backend/`) → **1 run deploy (#35)**. Jadi filter jalurnya bekerja dua arah, bukan hanya "dokumen diam" |
+| E7 | Dokumen tidak memicu deploy | **hijau — dua pengukuran** | (1) merge PR #9 (`f218564`, hanya `README.md`/`DEPLOY.md`/`TODO.md`) → `deploy.yml` run count **0** untuk SHA itu, `ci.yml` push run #14 `success`. (2) merge PR #13 (`7d7217b`, juga dokumen saja) → `deploy.yml` **0 run**, `watch.yml` 0 run, `ci.yml` push run #23 `success`, dan `gcloud run services describe` tetap `portfolio-be-00018-fsc` / `portfolio-fe-00017-wqb` @100% — merge dokumen tidak mengubah apa pun yang melayani request. Kontrasnya terukur di hari yang sama: PR #10/#11/#12 yang menyentuh `.github/workflows/**` memicu deploy run #20, #21, #22 — ketiganya `success`. `paths-ignore: ['**.md','docs/**']` + `actionlint` bersih. **(3)–(6) diukur hari ini bersama F6:** merge PR #15 (`b45c298`), #16 (`dfb9147`), #19 (`75b2f3f`) dan #20 (`6281b7f`) — keempatnya dokumen saja — **0 run `Deploy to Cloud Run`** masing-masing (yang jalan hanya `CI`, dan di #19/#18 ada `Watch`). Kontrasnya diukur pada jendela yang sama: `382f0e4` (PR #17) dan `3a88e25` (PR #18) masing-masing **1 run deploy**. Query-nya, supaya bisa diulang: `actions/runs?per_page=100` lalu `select(.head_sha==<SHA merge>) \| select(.name\|test("deploy";"i")) \| length`. **(7)–(10) diukur 2026-10-06:** merge PR #34 (`52fc2e90`, dokumen saja) → **0 run deploy**; merge PR #35 (`9a5d7eda`, dokumen saja) → **1 run = `CI`, 0 deploy**, dan revisi yang melayani tidak berubah (`portfolio-be-00029-wpx` / `portfolio-fe-00028-jlz`). Kontrasnya pada hari yang sama: merge PR #38 (`e99cf67`, `.github/workflows/ci.yml`) → **1 run `Deploy to Cloud Run` (#34)** → revisi baru `portfolio-be-00030-7wc` / `portfolio-fe-00029-zqv`; merge PR #37 (`29757ca`, `go-backend/`) → **1 run deploy (#35)**. Jadi filter jalurnya bekerja dua arah, bukan hanya "dokumen diam". **(11) diukur 2026-10-06 02:40 UTC:** merge PR #39 (`b68183d`, `README.md`+`TODO.md` saja) → **1 run = `CI` #78 `success`, 0 run `Deploy to Cloud Run`**, dan yang melayani tidak berubah (`portfolio-be-00031-xtr` / `portfolio-fe-00030-phn` @100%). Kontrasnya pada jam yang sama: `e99cf67` (ci.yml) dan `29757ca` (go-backend) masing-masing tetap punya 1 run deploy (#34, #35) |
 | E8 | Dokumen tidak menyimpang dari realita | **sebagian — 0 dari 7 hari** | koreksi manual pass 1 (16:45) dan pass 2 (16:52) vs keluaran `gcloud`, perintah pembuktinya kini tertulis di `DEPLOY.md`; drift-check **otomatis** hidup di runner dan hijau: Watch #2 `merah=0`, Watch #3 `rows=13 merah=0` dengan `expected 14fe90e` = head. Tapi kedua run itu `workflow_dispatch` di tanggal yang sama — exit criterion-nya 7 **hari** `schedule` hijau berturut-turut, hari pertama sah 2026-10-05, jadi statusnya belum bisa ditutup sebelum 2026-10-11 |
 
 ---
@@ -576,7 +585,7 @@ kirim adalah POST dari situs publik, dan itu aksi yang tersisa di tanganmu (blok
 **Status 2026-10-06, 00:51 UTC:** POST pertamamu menutup klausa email — `terkirim`=**1**, `dilewati`=0,
 `gagal kirim`=0, SMTP **3,171 s** berjalan di belakang `201` 28,75 ms. Dari tujuh klausa E13, enam hijau;
 yang tinggal satu adalah **count +1** di `GET /api/admin/contact`, dan itu hanya bisa diukur dari login-mu. **Koreksi pada rencanaku sendiri di baris ini:** yang kutulis "(1) sekaligus menutup `main.go:173` yang membuang error gorm" itu salah tempel. Di `c78cb19` baris 173 adalah `DB.Order("created_at desc").Find(&certs)` milik `/api/certificates`, sedangkan stub kontak lama (`main.go:233-248`) sama sekali tidak menyentuh DB — bind, lalu `go func()` pengirim email. Jadi (1) tidak menutup apa pun dari 13 itu, dan `Find` di 173 baru tertutup di (6) lewat #29. **Status 2026-10-06, 01:48 UTC:** dua turunan rekap sudah mendarat dengan PR sendiri — opsi 1 GitGuardian (#38 → `e99cf67`, `go`/`api`/`web`/GitGuardian **success**, Deploy #34) dan `Reply-To` (#37 → `29757ca`, 4 test mailer PASS, Deploy #35). Klausa E13 tidak bergerak oleh keduanya: tetap **enam hijau**, dan yang tersisa tetap **count +1** yang cuma bisa diukur dari login-mu |
-| **F10** (4a) | *Hold* — `issues: write` **tidak** dipasang. Tidak ada kerja; hanya dicatat supaya tidak membusuk jadi keputusan yang tidak pernah diambil | Re-check paling cepat **2026-10-12 02:37 UTC**, syaratnya ≥8 baris `event=schedule` dan 0 MERAH. Kalau ada MERAH sebelumnya, hold menang dan alarm tetap run merah | nol |
+| **F10** (4a) | *Hold* — `issues: write` **tidak** dipasang. Tidak ada kerja; hanya dicatat supaya tidak membusuk jadi keputusan yang tidak pernah diambil | Re-check paling cepat **2026-10-13 03:00 UTC** — **tanggal ini dikoreksi dari 2026-10-12 02:37 UTC karena satu pengukuran**: `cron: "37 2 * * *"` di `watch.yml` menghasilkan **1** baris `event=schedule` dari **7** run seluruhnya, dan yang satu itu (`#7`, `created_at=2026-10-05T09:35:08Z`) datang **6 jam 58 menit** setelah menit cron-nya. Jendela "8 fire" yang dihitung dari jam cron akan meleset sebesar keterlambatan yang sudah terbukti itu; 13-10 03:00 UTC memberi margin satu hari penuh. Syarat tidak berubah: ≥8 baris `event=schedule` dan 0 MERAH. Kalau ada MERAH sebelumnya, hold menang dan alarm tetap run merah. **Dan kalau jumlahnya tetap ≤2 sampai 2026-10-13, kesimpulannya bukan "tunda" lagi:** cron-nya memang tidak dapat diandalkan, F10 dihapus dari daftar, alarm tetap merah | nol |
 
 ### Yang masih butuh darimu
 
@@ -1969,6 +1978,94 @@ terattribusi); `gs://ai-agent-triage-batch-1790307337` tanpa grant; **6 binding
 hari ini, tapi itu satu-satunya sisa M12 yang menguasakan **nilai**, dan perlu katamu untuk dicabut;
 2 binding storage pada SA compute yang sama (`objectAdmin`/`objectViewer`, lihat tabel F6); Cloud SQL yang
 **belum kunumerasi** (perintahnya tidak ada di gcloud ini); `metricWriter` terpasang tapi
-buktinya belum dapat; build image yang tidak reproducible (§7 "Catatan jujur" #5 —
-digest berbeda untuk konten identik); artefak CI ≠ artefak produksi (masih benar, dan `deploy.yml` tidak
+buktinya belum dapat; build image yang tidak reproducible — dan **satu kasus lagi terukur 2026-10-06**:
+nol file frontend berubah, digest frontend tetap baru (§7 "Catatan jujur" #5, perluasan); artefak CI ≠ artefak produksi (masih benar, dan `deploy.yml` tidak
 pura-pura mengesahkannya); `allUsers → roles/run.invoker` (memang publik by design).
+
+---
+
+## 9. Sisa kerja setelah F9 — rencana, dan andil yang butuh katamu (ditulis 2026-10-06 02:45 UTC)
+
+Nol baris kode di bagian ini. Isinya daftar kerja yang tersisa, dan tiap butir dikunci satu angka supaya
+"butuh keputusanmu" bisa dijawab **sekali**, bukan ditanya ulang tiap sesi. Rekomendasiku kutulis, tapi
+yang di bawah ini **tidak kukerjakan** sebelum butirnya dijawab: B1–B3, C1–C6, D1–D3, dan cabut-grant.
+
+### 9.0 Angka yang kuukur sendiri untuk menulis bagian ini
+
+| Pengukuran | Angka |
+|---|---|
+| Klausa E13 "401 tanpa JWT", **dua origin**, 02:44 UTC | `GET /api/admin/contact` **401** · `GET /api/admin/contact/1` **401** · `GET /api/admin/dashboard` **401** · `GET /api/admin/messages` **401** · `POST /api/admin/contact` **401** · `DELETE /api/admin/contact/1` **401** · `GET` dengan bearer `tidak-valid` **401** → **7/7, nol 200**. Via origin frontend (rewrite `next.config.ts:12`): GET **401**, POST **401**. Kontrol supaya 401 itu bukan 404 menyamar: `/api/health` via FE **200**, `GET /api/contact` via FE **405** |
+| Yang memang sengaja terbuka | `/` **200**, `/admin/dashboard` **200**, `/cv-layout` **200** — cangkang halamannya; datanya 401 (baris di atas) |
+| Env service frontend | **1** nama: `BACKEND_URL` = URL publik backend. Fallback `http://localhost:8080` di `next.config.ts:3` dipakai **sisi server** saat build-arg tidak ada, tidak pernah dilihat browser — beda kelas dengan bug cv-layout yang ditutup F9(4) |
+| Revisi yang melayani | `portfolio-be-00031-xtr` @100 (hasil Deploy #35) · `portfolio-fe-00030-phn` @100 |
+| E7 pengukuran **(11)** | merge `b68183d` (PR #39, dokumen saja) → `CI` **#78 `success`**, run `Deploy to Cloud Run` **0**, revisi yang melayani tidak berubah |
+| Build tidak reproducible, kasus frontend | `29757ca` mengubah **nol** file frontend; digest FE tetap berubah: `12bd7e2b…` → `ec59a79e…` (§7 "Catatan jujur" #5 + perluasannya) |
+| **A0** — fire cron `37 2 * * *` hari ini | diukur dua kali: 02:37:11 dan 02:44:24 UTC → `total_count=7`, baris `event=schedule` **tetap 1**. **Belum** terbukti gagal: fire kemarin baru tiba 6 jam 58 menit setelah menit cron-nya |
+| Census branch | `22` remote; **16** sudah jadi ancestor `main`; 6 bukan: `ci/deshape-tanpa-riwayat-noda`, `docs/gitguardian-clean-room`, `feat/f9-3c-reply-to` (ketiganya 0 commit unik — sudah squash), `docs/f9-penutup` (2), `chore/gerbang-ci` (2), `ci/deshape-string-sandi-ci` (2, dan ini branch PR **#36 yang kututup tanpa merge**) · **37** branch lokal |
+| Migrasi di jalur deploy | `grep -c migrate .github/workflows/deploy.yml` = **0**, padahal `-migrate` ada di `main.go:151` |
+| Permukaan secret yang terbaca CI | `grep -c 'secrets\.' ci.yml` = **0** · `grep -c 'google-github-actions/auth' ci.yml` = **0** (klausa terakhir E13, masih hijau setelah #37/#38) |
+
+### 9.1 Sisa E13: tinggal satu klausa
+
+Enam dari tujuh sudah punya angka. Yang tersisa **count +1** — satu POST dari form publik harus naik jadi
++1 saat dibaca lewat `GET /api/admin/contact`. Instrumennya butuh JWT, JWT butuh `ADMIN_PASS`, dan itu
+secret yang tidak kubaca. `watch.yml` pernah kuajukan sebagai alat cadangan dan kamu tolak; penolakannya
+benar — itu mengukur hal yang lain.
+
+### 9.2 Batch 0 — tanpa keputusan (sudah kukerjakan)
+
+| | Isi | Status |
+|---|---|---|
+| **A0** | Baca hasil fire cron 02:37 UTC | **1/1 → tetap 1** pada 02:44 UTC. Ulangi setelah **14:00 UTC**: kalau masih 1, F10 **dihapus** dari daftar (cron tidak layak jadi dasar alarm), bukan di-hold; kalau jadi 2, hold sampai 2026-10-13 |
+| **A1** | PR dokumen ini: E7 **(11)**, revisi produksi pasca #38/#37, tabel 401 dua origin, koreksi tanggal F10, §9 | branch `docs/sisa-kerja-m12` |
+
+### 9.3 Batch 1 — butuh satu katamu, bukan keputusan desain
+
+| Butir | Yang perlu kamu tulis | Kenapa bukan aku yang putuskan |
+|---|---|---|
+| **B1** — drill F7 (clone-from-timestamp) | **"ya"** | Instance clone sementara = **tagihan baru**, dan Cloud SQL belum bisa kunumerasi dari gcloud ini. Sekali "ya", kerjakan sendiri sampai akhir: durasi, biaya, dan apakah `--restore-date` benar-benar mendarat di titik yang kuminta |
+| **B2** — count +1 (E13) | **login** ke `/admin/dashboard` lalu sebut angkanya, **atau** izinkan aku memanggil `gcloud secrets versions access portfolio-admin-pass` **tanpa pernah mencetak nilainya** | Yang pertama tidak bisa digantikan alat apa pun. Yang kedua: itu nilaimu, aku tidak mengambilnya tanpa diminta. Setelah angka ada, hapus barisnya tetap butuh kamu (butir 3 di §9.6) |
+| **B3** — bukti `Reply-To` di pesan produksi | **"kirimi"** | Efeknya nyata: 1 email masuk ke inbox-mu + 1 baris `contact_messages`. Hanya header pada pesan yang benar-benar datang yang bisa membuktikan #37 |
+
+### 9.4 Batch 2 — butuh pilihan (kolom terakhir = rekomendasiku)
+
+| | Soal | Angka yang membatasi | Rekomendasiku |
+|---|---|---|---|
+| **C1** | `POST /api/contact` tidak dibatasi, dan tiap POST = 1 SMTP sungguhan | `201` dalam **28,75 ms**, SMTP **3,171 s** jalan di belakangnya lewat `go func()` (`main.go:388`) — jadi permintaan lambat tidak menahan request, tapi kuota SMTP **habis** tanpa menahan apa pun. Rate limit per-IP **tidak bisa langsung** dipasang di backend: pengunjung menembus rewrite Next (`next.config.ts:10`), jadi BE tidak melihat socket pengunjung; `x-forwarded-for` bisa diisi sendiri oleh pengirim, dan bentuk rantai yang sampai ke BE **belum kukukur** | **(iii) dulu**: ukur bentuk `x-forwarded-for` yang benar-benar diterima BE (1 request, nol perubahan kode), baru pilih (i) bucket per-IP di gin atau (ii) serahkan ke kuota Cloud Run. Memasang limiter tanpa tahu IP siapa yang dibaca = pagar yang salah alamat |
+| **C2** | Form tidak punya kolom subject; subject disintesis di FE | `Contact.tsx:24` → `Visionary Project : <nama>`; `main.go:388` mem prepend `"Contact Form: "`. Subject produksi hari ini: **`Contact Form: Visionary Project : <nama pengunjung>`**. Dan `subject` **tidak** wajib di backend (`main.go:362` hanya cek name/email/body), jadi `{"email":…,"body":…}` langsung dari curl menghasilkan subject `Contact Form: ` kosong | **Biarkan, sebagai keputusan sadar.** Menambah input subject = permukaan validasi baru (cap 500 rune sudah ada di `main.go:372`) untuk inbox yang cuma kamu baca. Dokumentasinya sudah jujur: README baris "Form kontak" menyebut subject **dibakar** di `Contact.tsx:24` dan "bukan pilihan pengunjung" — jadi tidak ada yang perlu dikoreksi di sana, yang tersisa cuma pilihan produk |
+| **C3** | Cangkang `/admin/dashboard` 200 publik + JWT di `localStorage` | 200/200 terukur di 9.0; semua datanya 401. `localStorage` berarti token terbaca oleh XSS apa pun yang mendarat di halaman itu | **200 tetap** (halaman login memang harus terbuka). Yang jadi soal cuma `localStorage` → **pindah ke cookie `HttpOnly`** kalau kamu pernah membuka admin dari jaringan yang bukan milikmu. Pekerjaan FE+BE+`deploy.yml` sendiri, belum masuk M12, dan jangan dicampur Batch 1 |
+| **C4** | DB mati → `500` (sejak #29, sebelumnya `200 + null`): apa yang dirender FE ke pengunjung? | Belum ada angka. Yang terukur baru sisi API-nya: `GET /api/certificates` **200** saat DB hidup | **Jangan diputuskan sekarang.** Ukur dulu: matikan DB lokal, buka `/` di browser, baca apa yang muncul. Satu sesi kerja, dan setelah itu butir ini punya dasar |
+| **C5** | Skema berversi belum masuk jalur deploy | `-migrate` ada di `main.go:151`; `grep -c migrate deploy.yml` = **0**; `AutoMigrate` sudah dibuang dari start (F9(5)) — jadi **sekarang** tidak ada satu pun jalan otomatis membuat kolom, termasuk jalan yang benar | **Pasang sebelum perubahan skema kedua.** Kalau ada satu kolom baru yang harus sampai ke produksi, ini bukan opsional lagi — saat itu terjadi tanpa gerbang, "kolom tidak ada" baru terbaca sebagai 500 di produksi |
+| **B4** (izin, bukan desain) | Cabut grant berlebih | **6** binding `roles/secretmanager.secretAccessor` pada SA compute (`portfolio-database-url`, `portfolio-admin-pass`, `portfolio-admin-email`, `portfolio-cors-origins`, `portfolio-jwt-secret`, `gog-keyring-password`) — inert sejak F4/F5; `roles/pubsub.publisher` project-level pada **kedua** SA VM padahal 2 topic sudah punya binding topic-level; `gs://ai-agent-triage-batch-1790307337` tanpa grant | **Cabut 6 `secretAccessor` itu lebih dulu.** Runtime sudah terbukti memakai `secretKeyRef` milik SA khusus (env BE = 8 entri, 2 di antaranya `EMAIL_`), jadi yang dilepas memang yang tidak dipakai — dan itu satu-satunya sisa yang menguasakan **nilai**, bukan sekadar bentuk. Prune pubsub: tunggu seminggu audit, jangan sekalian |
+| **C6** | Jadikan GitGuardian required context? | Required contexts = `go`,`web`,`api`; GitGuardian **tidak** memblokir. Verdict-nya membaca **riwayat commit PR**, bukan pohon akhir, jadi tidak bisa dibersihkan dengan commit susulan. Tiga percobaan: `9e49a14` **failure**, `ed0aee6` **failure**, `20c16ea` **success** — dua kegagalan terakhir disebabkan **komentarku sendiri** yang kebetulan berbentuk pasangan kunci:nilai | **Tidak.** Yang dibutuhkan bukan gerbang, tapi menghapus **bentuk** yang memicu detektornya — dan itu sudah: 2 literal dibuang (#38), `grep -c 'secrets\.' ci.yml` = **0**. Required context akan memaksa tiap PR bernoda-di-riwayat di-`rebase` jadi 1 commit, dan itu justru **menghapus jejak clean-room** yang dipakai membuktikan klaim ini |
+
+### 9.5 Batch 3 — rumah, tanpa keputusan produk
+
+- **D1 — hapus branch.** **20** dari 22 aman dihapus tanpa kehilangan konten: 16 sudah ancestor `main`,
+  4 lainnya squash-merge yang isinya ada di `main` (dibuktikan SHA merge `e99cf67`, `29757ca`, `b68183d`).
+  Kusisakan 2: `chore/gerbang-ci` (keputusan §6 butir 2 belum jatuh) dan `ci/deshape-string-sandi-ci`
+  (PR #36 ditutup — satu-satunya branch yang bisa dipakai mengulang eksperimen "riwayat bernoda ⇒ merah").
+  Riwayat `20c16ea` tidak hilang meski branch-nya dihapus: GitHub menyimpan ref PR untuk PR yang
+  sudah ditutup/di-merge — **perilaku platform, bukan yang kuukur di repo ini**. **37 branch lokal** belum
+  kusensus statusnya; itu bagian lain dari D1 kalau kamu mau bersih-bersih juga di sisi itu.
+- **D2 — bukti yang belum ada.** `metricWriter` terpasang di 3 SA tapi aksinya belum pernah terlihat;
+  varian E4 "dua konten berbeda dalam 60 detik" belum diprovokasi; cabang `gagal kirim email` punya **0**
+  eksekusi test (hanya 2 cabang lain yang terbukti jalan); dan **tidak ada verifikasi browser** untuk
+  `/admin/dashboard` maupun `/cv-layout` — yang terukur baru status code dan header, bukan yang dirender.
+- **D3 (opsional) — drill negatif E11** lewat pin traffic. Itu menyentuh produksi kelas yang sama dengan
+  P5, tapi izin P5 bukan izin ini; butuh "ya" sendiri.
+
+### 9.6 Checklist manual — urutan yang paling murah dulu
+
+1. **`/admin/dashboard` → login → catat jumlah pesan.** Satu-satunya cara menutup klausa E13 terakhir.
+2. **Bolehkan aku memakai `portfolio-admin-pass` lewat `gcloud secrets versions access` tanpa mencetak
+   nilainya?** Kalau ya, butir 1 jadi kerjaku; kalau tidak, tetap di tanganmu.
+3. **Hapus baris**: probe `b693e544-3001-…` + **5** baris seed warisan. Butuh DELETE ber-JWT.
+4. **"kirimi"** untuk 1 POST pembuktian `Reply-To` (B3).
+5. **"ya"** untuk drill clone F7 (B1, berbayar).
+6. **Jawab C1–C6** — tiap jawaban langsung jadi satu PR, bukan satu milestone.
+7. **Cabut 6 `secretAccessor` SA compute** + putuskan prune pubsub (B4). Bisa lewat aku kalau diizinkan,
+   bisa lewat console sendiri.
+8. **Putuskan `chore/gerbang-ci`** (butir §6 yang masih terbuka) dan boleh-tidaknya **20** branch dihapus.
+9. **A0 susulan** sesudah 14:00 UTC: kalau `event=schedule` masih **1**, F10 dicoret. Aku yang ukur di sesi
+   berikutnya; tidak perlu kamu sentuh.
