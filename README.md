@@ -36,7 +36,7 @@ Yang masih mati persis seperti tertulis: lima rute `/api/admin/projects` dan emp
 | `GET /api/health` — cek koneksi ke Postgres | jalan |
 | `/api/cv` — PDF dari halaman `/cv-layout` lewat Puppeteer | jalan, tapi **tanpa daftar sertifikat** |
 | `/api/github-repos`, `/api/github-profile` | jalan |
-| Form kontak | **jalan penuh** — `Contact.tsx` mengirim ke `POST /api/contact` di Go, pesan masuk ke `contact_messages` dan dijawab `201 {id}`; stub lama `src/app/api/contact/route.ts` (menahan 1 s lalu menjawab `success: true` tanpa menulis apa pun) sudah dihapus. Notifikasi email **terbukti hidup di produksi**: POST 2026-10-06 00:51 UTC menjawab `201` dalam 28,75 ms dan 3,171 s kemudian mencetak `contact 4e8d174a-…: email terkirim ke muhammadarkanfauzi9@gmail.com`, pesannya sampai ke Gmail. Kalau kredensial hilang, #31 membuat jalurnya berhenti **sebelum** socket dibuka dan tercatat sebagai `email dilewati` — bukan disamarkan jadi kegagalan Gmail. **Catatan yang baru kelihatan setelah pesannya dibaca: tidak ada `Reply-To`**, jadi tombol Balas membalas ke dirimu sendiri, dan `subject` dibakar di `Contact.tsx:24` sebagai `Visionary Project : <nama>` — bukan pilihan pengunjung |
+| Form kontak | **jalan penuh** — `Contact.tsx` mengirim ke `POST /api/contact` di Go, pesan masuk ke `contact_messages` dan dijawab `201 {id}`; stub lama `src/app/api/contact/route.ts` (menahan 1 s lalu menjawab `success: true` tanpa menulis apa pun) sudah dihapus. Notifikasi email **terbukti hidup di produksi**: POST 2026-10-06 00:51 UTC menjawab `201` dalam 28,75 ms dan 3,171 s kemudian mencetak `contact 4e8d174a-…: email terkirim ke muhammadarkanfauzi9@gmail.com`, pesannya sampai ke Gmail. Kalau kredensial hilang, #31 membuat jalurnya berhenti **sebelum** socket dibuka dan tercatat sebagai `email dilewati` — bukan disamarkan jadi kegagalan Gmail. **`Reply-To` sekarang dipasang** (#37, `29757ca`): tombol Balas membalas ke alamat pengunjung, dan nilai yang bukan alamat tidak pernah masuk header (gerbang `mail.ParseAddress` di dalam paket, dengan 6 input jahat sebagai test). Yang masih tersisa dari baris ini: `subject` dibakar di `Contact.tsx:24` sebagai `Visionary Project : <nama>` — bukan pilihan pengunjung, dan header `Reply-To` pada pesan yang benar-benar datang baru terbukti oleh satu POST produksi lagi |
 | Halaman admin (`/admin`, `/admin/projects`, `/admin/dashboard`) | **sebagian hidup** — `POST /api/auth/login` sekarang ada di backend (token terbit) dan `/admin/dashboard` membaca + menghapus kotak masuk lewat `GET`/`DELETE /api/admin/contact` yang ber-JWT (401 untuk siapa pun tanpa token, terukur di produksi); yang tetap mati: lima rute `/api/admin/projects` dan empat tulis `/api/certificates` + `/api/experience` dari `/admin/page.tsx` (fetch polos tanpa `Authorization`) |
 | Login admin (`POST /api/auth/login` + JWT) | **dipakai** — `/admin/login` memanggilnya; `POST /api/login` yang lama masih terdaftar dan menunjuk handler yang sama, jadi keduanya menerbitkan token yang sama |
 
@@ -45,8 +45,9 @@ Yang masih mati persis seperti tertulis: lima rute `/api/admin/projects` dan emp
 Perbaikan produk (kontak, admin, CV, `seedData()` yang ikut jalan di produksi, `AutoMigrate` saat
 container start) dijadwalkan sebagai **M11** — kontak, inbox admin, CV dan jalur start sudah mendarat
 (PR #22, #24, #25, #27, #29, #31 untuk jalur email yang tidak butuh kredensial, dan #33 untuk memasang
-`EMAIL_USER`/`EMAIL_PASS` sebagai secret berversi di revisi produksi) — dan **satu POST lewat form publik**
-(2026-10-06 00:51 UTC) membuktikan SMTP menerima. Yang tersisa dari M11 cuma **lima dead path admin** dan
+`EMAIL_USER`/`EMAIL_PASS` sebagai secret berversi di revisi produksi). **Satu POST lewat form publik**
+(2026-10-06 00:51 UTC) membuktikan SMTP menerima, lalu **#38** (`e99cf67`) membuang bentuk kredensial dari
+`ci.yml` dan **#37** (`29757ca`) memasang `Reply-To`. Yang tersisa dari M11 cuma **lima dead path admin** dan
 **migration berversi**; satu klausa E13 masih menunggu login-mu: hitungan `+1` di `/admin/dashboard`.
 Termasuk di dalamnya: **13 error gorm yang dibuang itu sekarang nol**, diukur oleh
 `go-backend/cmd/audit-ignored` (13 → 6 → 0 pada `c78cb19` / `0204b70` / `bf11c2d`) dan dikunci jadi langkah
@@ -80,7 +81,10 @@ inbox admin menjawab **500** kalau DB gagal — sebelum PR #29 yang sama itu men
   `--set-secrets` di `deploy.yml`). Kalau keduanya hilang: `SendEmail` mengembalikan `ErrNotConfigured`
   **sebelum** ada socket, dan `main.go` mencatatnya sebagai `email dilewati` ber-id pesan. `From` selalu = akun yang diautentikasi
   (Gmail menolak `From` yang bukan pengirimnya); dulu nilai ini dibakar sebagai literal alamat pribadi.
-  Yang belum: **tidak ada `Reply-To`**, jadi alamat pengunjung hanya jadi teks di body
+  Sejak #37 ada **`Reply-To`** (`29757ca`) — `SendEmail(to, replyTo, subject, body)`,
+  dan header hanya dipasang kalau `mail.ParseAddress` lolos. Klaimku sendiri soal kenapa gerbang ini ada
+  sempat salah: gomail sudah menetralkan CRLF di nilai header lewat RFC 2047 (terukur: satu baris
+  encoded-word, tidak pernah jadi header kedua), jadi gerbangnya soal kebersihan alamat, bukan CVE
 - Rute: `POST /api/login`, `POST /api/auth/login`, `GET /api/certificates`, `GET /api/experience`,
   `GET /api/health`, `POST /api/contact` (publik) + `GET /api/admin/contact`,
   `DELETE /api/admin/contact/:id`, `POST`/`DELETE` untuk kedua koleksi (butuh Bearer token)
