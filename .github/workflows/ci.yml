@@ -249,6 +249,79 @@ jobs:
           cat /tmp/be.log
           exit 1
 
+      # C1(a): /api/contact adalah satu-satunya rute publik yang menulis DB dan memicu pengiriman
+      # email. Tanpa batas laju, satu skrip bisa menanam ribuan baris sekaligus ribuan koneksi SMTP.
+      # Batasnya global per proses, BUKAN per-IP: diukur 2026-10-06 di request log produksi, 12 POST
+      # datang dari 11 remoteIp dan yang terbanyak (136.124.34.25, 7 POST) adalah pool egress Cloud
+      # Run tempat semua pengunjung rewrite Next keluar. Bucket per-IP di sana tetap satu bucket
+      # bersama, dan yang bisa diubah-ubah lewat X-Forwarded-For cuma nama bucketnya.
+      - name: Kontrak batas laju kontak (429 + Retry-After, yang ditolak tidak ditulis)
+        working-directory: go-backend
+        env:
+          DATABASE_URL: host=127.0.0.1 user=postgres dbname=portfolio_db port=5432 sslmode=disable TimeZone=UTC
+          JWT_SECRET: ${{ steps.fixtures.outputs.jwt }}
+          ADMIN_USER: portfolio-admin
+          ADMIN_PASS: ${{ steps.fixtures.outputs.adminpass }}
+          ADMIN_EMAIL: ci@example.com
+          CORS_ORIGINS: http://localhost:3000
+        run: |
+          set -uo pipefail
+          A=http://127.0.0.1:8080
+          DSN="host=127.0.0.1 user=postgres dbname=portfolio_db"
+          q() { psql "$DSN" -tAc "$1"; }
+          fail=0
+
+          # Sengaja langkah pertama yang menulis: embernya pasti penuh, jadi burst bisa diuji
+          # sebagai angka pasti, bukan "paling banyak".
+          before=$(q 'select count(*) from contact_messages;')
+          diterima=0; ditolak=0; retry="-"
+          for i in $(seq 1 20); do
+            body=$(jq -nc --arg n "laju-$i" '{name:$n,email:"laju@example.test",subject:"Laju",body:"pesan batas laju ci"}')
+            code=$(curl -sS -o /tmp/rl -D /tmp/rlh -w '%{http_code}' -X POST \
+              -H 'Content-Type: application/json' -d "$body" "$A/api/contact")
+            case "$code" in
+              201) diterima=$((diterima + 1)) ;;
+              429)
+                ditolak=$((ditolak + 1))
+                if [ "$retry" = "-" ]; then
+                  retry=$(tr -d '\r' < /tmp/rlh | awk -F': ' 'tolower($1)=="retry-after"{print $2}')
+                  jq -e '(.error | type=="string") and (has("id") | not)' /tmp/rl > /dev/null \
+                    || { echo "429 tanpa alasan, atau mengaku sudah menyimpan: $(cat /tmp/rl)"; fail=1; }
+                fi ;;
+              *) echo "POST #$i => $code, harus 201 atau 429"; fail=1 ;;
+            esac
+          done
+          echo "20 POST sah => diterima=$diterima ditolak=$ditolak Retry-After=$retry"
+
+          # 10 = kontakBurst di main.go. 20 POST ke localhost selesai jauh di bawah 60s, jadi tidak
+          # ada token tambahan yang bisa bocor dari refill; angka ini pin, bukan kebetulan.
+          [ "$diterima" = "10" ] || { echo "harusnya tepat 10 diterima, burst berubah?"; fail=1; }
+          [ "$ditolak" = "10" ] || { echo "harusnya tepat 10 ditolak"; fail=1; }
+          [ "$retry" = "60" ] || { echo "Retry-After bukan 60 detik: '$retry'"; fail=1; }
+          after=$(q 'select count(*) from contact_messages;')
+          [ "$after" = "$((before + 10))" ] || { echo "yang ditolak ikut ditulis: $before -> $after"; fail=1; }
+          echo "baris naik tepat sebesar yang diterima: $before -> $after"
+
+          # Sampel dibersihkan dan backend dinyalakan ulang supaya langkah-langkah sesudahnya
+          # (termasuk "DB mati menjawab 500") mulai dengan ember penuh, bukan kebagisan 429.
+          psql "$DSN" -qc "delete from contact_messages where name like 'laju-%';" > /dev/null
+          [ "$(q 'select count(*) from contact_messages;')" = "$before" ] \
+            || { echo "sampel laju tidak terbersihkan"; fail=1; }
+          [ "$fail" = "0" ] || { tail -30 /tmp/be.log; exit 1; }
+
+          kill "$(cat /tmp/be.pid)" 2>/dev/null || true
+          for i in $(seq 1 20); do kill -0 "$(cat /tmp/be.pid)" 2>/dev/null || break; sleep 0.5; done
+          /tmp/portfolio-be >> /tmp/be.log 2>&1 &
+          echo $! > /tmp/be.pid
+          for i in $(seq 1 40); do
+            if curl -fsS "$A/api/health" > /dev/null 2>&1; then
+              echo "backend siap ulang setelah ${i} percobaan"; break
+            fi
+            sleep 1
+          done
+          curl -fsS "$A/api/health" > /dev/null || {
+            echo "backend tidak naik ulang setelah uji laju"; tail -30 /tmp/be.log; exit 1; }
+
       - name: Kontrak publik (isi, bukan cuma status code)
         run: |
           health=$(curl -fsS http://127.0.0.1:8080/api/health)

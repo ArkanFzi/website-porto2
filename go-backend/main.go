@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -47,6 +48,57 @@ func batasiBody() gin.HandlerFunc {
 		c.Next()
 	}
 }
+
+// Satu POST /api/contact yang sah memicu satu pengiriman SMTP sungguhan (di belakang, via go func)
+// dan satu baris contact_messages. Kuota SMTP dan inbox admin adalah milik bersama, jadi remnya
+// juga global — bukan per-IP. Alasannya terukur, bukan dugaan: pada 2026-10-06, 12 POST ke rute
+// yang sama tercatat di log BE dari 11 remoteIp, dan IP terbanyak (136.124.34.25, 7 POST) adalah
+// pool egress Cloud Run milik frontend — artinya semua pengunjung yang masuk lewat rewrite Next
+// berbagi satu alamat yang sama. Kunci per-IP akan membatasi seluruh pengunjung sekaligus, dan
+// X-Forwarded-For boleh diisi sendiri oleh pengirimnya.
+//
+// Bucket ini hidup di satu proses; Cloud Run dapat menjalankan lebih dari satu replika, jadi
+// angkanya rem, bukan jaminan lintas-replika.
+const (
+	kontakBurst      = 10
+	kontakRefillEach = time.Minute
+)
+
+type pembatasLaju struct {
+	mu     sync.Mutex
+	token  float64
+	tikum  time.Time
+	burst  float64
+	refill time.Duration
+}
+
+// boleh memakai waktu yang diberikan, bukan waktu sistem, supaya pengisian ulang bisa diuji
+// tanpa tidur sungguhan.
+func (p *pembatasLaju) boleh(kini time.Time) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.tikum.IsZero() {
+		p.tikum = kini
+	}
+	terlempar := kini.Sub(p.tikum).Seconds() / p.refill.Seconds()
+	if terlempar < 0 {
+		// Jam kontainer bisa mundur koreksi NTP; tanpa guard ini satu lompatan mundur
+		// menghapus token dan mengunci rute sampai jamnya menyusul.
+		terlempar = 0
+	}
+	p.token += terlempar
+	p.tikum = kini
+	if p.token > p.burst {
+		p.token = p.burst
+	}
+	if p.token < 1 {
+		return false
+	}
+	p.token--
+	return true
+}
+
+var pembatasKontak = &pembatasLaju{token: kontakBurst, burst: kontakBurst, refill: kontakRefillEach}
 
 type isianTeks struct {
 	Label string
@@ -473,6 +525,15 @@ func main() {
 			utf8.RuneCountInString(row.Subject) > 500 ||
 			utf8.RuneCountInString(row.Body) > 20000 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Isian terlalu panjang"})
+			return
+		}
+
+		// Dicek setelah validasi isian: muatan cacat sudah pulang dengan 400 tanpa menghabiskan
+		// token, jadi yang dihitung hanya pesan yang benar-benar akan disimpan dan dikirim.
+		if !pembatasKontak.boleh(time.Now()) {
+			log.Printf("contact: laju ditolak (client %s)", c.ClientIP())
+			c.Header("Retry-After", strconv.Itoa(int(kontakRefillEach.Seconds())))
+			c.JSON(http.StatusTooManyRequests, gin.H{"error": "Terlalu banyak pesan dalam waktu singkat, coba lagi beberapa menit"})
 			return
 		}
 
