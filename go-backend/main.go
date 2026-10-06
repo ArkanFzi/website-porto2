@@ -385,7 +385,7 @@ func main() {
 		fullBody := fmt.Sprintf("Pesan dari: %s (%s)\n\nIsi Pesan:\n%s", row.Name, row.Email, row.Body)
 
 		go func() {
-			err := mailer.SendEmail(adminEmail, "Contact Form: "+row.Subject, fullBody)
+			err := mailer.SendEmail(adminEmail, row.Email, "Contact Form: "+row.Subject, fullBody)
 			switch {
 			case err == nil:
 				log.Printf("contact %s: email terkirim ke %s", row.ID, adminEmail)
