@@ -261,12 +261,13 @@ situs tetap kehilangan pesan kontak sampai M11 jalan, dan mulai sekarang CI akan
 lewat file baseline, bukan melupakannya. Konsekuensi itu **berlaku sampai F9 langkah (1) mendarat**
 (lihat bloknya di §8): sejak itu pesan pengunjung masuk ke `contact_messages`, dan sejak langkah (3) pesan itu
 bisa **dibaca dan dihapus kembali** lewat `GET`/`DELETE /api/admin/contact` ber-JWT — 401 untuk siapa pun tanpa
-token, terukur di produksi. Yang masih terbuka tinggal tiga: tidak ada satu pun yang dikirim ke inbox email
-(langkah **2a** lewat #31 sudah menghentikan *dial buta* — tanpa kredensial jalur email berhenti **sebelum**
-membuka socket dan tercatat sebagai `dilewati`; **2b** lewat #33 sudah memasang `EMAIL_USER`/`EMAIL_PASS` ke
-revisi produksi, jadi kredensial tidak lagi jadi penahan — yang menahan klausa itu sekarang cuma **satu POST**
-dari situs publik, dan fire-and-forget-nya belum berhenti), lima dead
-path admin, dan `AutoMigrate` yang belum jadi migration berversi. Dua hal yang tadi di daftar ini sudah
+token, terukur di produksi. Yang tadinya tiga di daftar ini, **tinggal dua**: butir "tidak ada satu pun yang
+dikirim ke inbox email" **tertutup 2026-10-06 00:51 UTC** — **2a** (#31) menghentikan *dial buta*, **2b** (#33)
+memasang kredensialnya, dan POST pertamamu menghasilkan `email terkirim` yang pertama (SMTP 3,171 s; lihat blok
+penutup F9). Yang masih terbuka: **lima dead path admin**, dan **`AutoMigrate` yang belum jadi migration
+berversi**. Satu hal ikut tercatat sebagai utang di jalur email dan tidak ikut tertutup: pola fire-and-forget-nya
+sendiri (tanpa konteks, tanpa tunggakan, tanpa retry) — sekarang terukur 3,171 s di belakang `201` 28,75 ms.
+Dua hal yang tadi di daftar ini sudah
 tertutup dan tidak perlu ditebak lagi: **skema tidak lagi dibuat saat start** (PR #27) dan **tidak ada lagi
 error gorm atau `r.Run` yang dibuang** (PR #29).
 
@@ -571,22 +572,24 @@ kedua secret ada versi 1 `enabled` + `secretAccessor` untuk `portfolio-runtime@`
 dua pasangan, `1850577c` → PR **#33** → `go`/`api`/`web`/GitGuardian `success` → merge `95f91647` → **CI #64** +
 **Deploy #33** hijau (4 m 24 s) → **`portfolio-be-00029-wpx`** @100% dengan **8** entri env, 2 di antaranya
 `EMAIL_`. Klausa email E13 **masih terbuka**: kredensial sudah sampai ke proses, tapi satu-satunya pemicu jalur
-kirim adalah POST dari situs publik, dan itu aksi yang tersisa di tanganmu (blok (2b) + batasnya di bawah). **Koreksi pada rencanaku sendiri di baris ini:** yang kutulis "(1) sekaligus menutup `main.go:173` yang membuang error gorm" itu salah tempel. Di `c78cb19` baris 173 adalah `DB.Order("created_at desc").Find(&certs)` milik `/api/certificates`, sedangkan stub kontak lama (`main.go:233-248`) sama sekali tidak menyentuh DB — bind, lalu `go func()` pengirim email. Jadi (1) tidak menutup apa pun dari 13 itu, dan `Find` di 173 baru tertutup di (6) lewat #29 |
+kirim adalah POST dari situs publik, dan itu aksi yang tersisa di tanganmu (blok (2b) + batasnya di bawah).
+**Status 2026-10-06, 00:51 UTC:** POST pertamamu menutup klausa email — `terkirim`=**1**, `dilewati`=0,
+`gagal kirim`=0, SMTP **3,171 s** berjalan di belakang `201` 28,75 ms. Dari tujuh klausa E13, enam hijau;
+yang tinggal satu adalah **count +1** di `GET /api/admin/contact`, dan itu hanya bisa diukur dari login-mu. **Koreksi pada rencanaku sendiri di baris ini:** yang kutulis "(1) sekaligus menutup `main.go:173` yang membuang error gorm" itu salah tempel. Di `c78cb19` baris 173 adalah `DB.Order("created_at desc").Find(&certs)` milik `/api/certificates`, sedangkan stub kontak lama (`main.go:233-248`) sama sekali tidak menyentuh DB — bind, lalu `go func()` pengirim email. Jadi (1) tidak menutup apa pun dari 13 itu, dan `Find` di 173 baru tertutup di (6) lewat #29 |
 | **F10** (4a) | *Hold* — `issues: write` **tidak** dipasang. Tidak ada kerja; hanya dicatat supaya tidak membusuk jadi keputusan yang tidak pernah diambil | Re-check paling cepat **2026-10-12 02:37 UTC**, syaratnya ≥8 baris `event=schedule` dan 0 MERAH. Kalau ada MERAH sebelumnya, hold menang dan alarm tetap run merah | nol |
 
 ### Yang masih butuh darimu
 
-1. **`EMAIL_USER` + `EMAIL_PASS` — SUDAH ADA, dan sudah terpasang (2b mendarat 15:14 UTC).** Kamu yang membuat
-   kedua secret di browser (aku tidak pernah membaca nilainya); aku menambahkan dua pasangan ke baris
-   `--set-secrets` `deploy.yml:117` lewat PR #33, dan revisi **`portfolio-be-00029-wpx`** sekarang melayani
-   request dengan 8 entri env — `EMAIL_USER` + `EMAIL_PASS` termasuk di dalamnya, terukur dari spesifikasi
-   revisi. Yang tersisa benar-benar satu aksi, dan aksi itu menutup tiga klaim sekaligus:
-   **kirim satu pesan lewat form kontak di situs publik.** Satu POST itu producing (i) baris `contact_messages`
-   yang terhitung `+1` lewat `GET /api/admin/contact` — klausa E13 yang masih terbuka, (ii) satu baris log
-   `contact <id>: email terkirim ke …` yang membuktikan SMTP menerima, dan (iii) penutup §8(a).
-   Sekalian bersihkan kotak masuknya di `/admin/dashboard`: baris probe lama `b693e544-3001-…` dan 5 baris seed
-   warisan. (Kenapa tidak kutembak sendiri: `DELETE /api/admin/contact/:id` butuh JWT, JWT butuh `ADMIN_PASS`,
-   dan itu secret yang tidak kubaca — jadi baris yang kutulis tidak bisa kuhapus.)
+1. **Email: SUDAH HIDUP, dan sudah terbukti sampai.** kredensial terpasang lewat #33, dan POST pertamamu
+   (2026-10-06 00:51 UTC) menghasilkan `contact 4e8d174a-…: email terkirim ke muhammadarkanfauzi9@gmail.com`
+   — klausa email E13 hijau. Yang tersisa dari butir ini tinggal dua, dan keduanya butuh login-mu:
+   **(a)** buka `/admin/dashboard`, pastikan pesan itu **terhitung** di `GET /api/admin/contact` (klausa
+   count +1 E13 — satu-satunya klausa F9 yang belum punya angka), dan **(b)** hapus baris probe
+   `b693e544-3001-…` plus 5 baris seed warisan (§8 butir a dan d). Aku tidak bisa melakukan keduanya:
+   `DELETE /api/admin/contact/:id` butuh JWT, JWT butuh `ADMIN_PASS`, dan itu secret yang tidak kubaca.
+   **Satu keputusan baru yang keluar dari pesan yang sampai:** notifikasi tidak punya `Reply-To`, jadi
+   tombol Balas di Gmail membalas ke dirimu sendiri, bukan ke pengunjung (`mailer.go:29-38`). Satu baris
+   + satu assertion tes. Katamu: kerjakan, atau biarkan.
 2. **`chore/gerbang-ci`** — hapus atau simpan (ukurannya sudah di F1b).
 3. **"ya" terakhir untuk F7** (create + delete clone berbayar) dan, kalau kau mau bukti negatif E11,
    **untuk drill pin-traffic** di F8 — itu menyentuh traffic produksi kelasnya dengan P5 yang sudah kamu izinkan.
@@ -1733,6 +1736,74 @@ Yang tetap belum tersentuh, dan sekarang justru lebih kelihatan:
 - `EMAIL_HOST`/port tetap hardcoded `smtp.gmail.com:587` di `mailer.go`; pola fire-and-forget (`go func()` tanpa
   konteks, tanpa tunggakan, tanpa retry) **masih utuh**. 2b memasang kredensial, tidak mengubah bentuk pemanggilnya
   — itu §5 butir fire-and-forget, dan ia bukan bagian urutan F9.
+
+### F9 penutup — satu POST produksi, dan email pertamanya sampai (2026-10-06, 00:51 UTC)
+
+Kamu mengirim satu pesan lewat form publik. Ini seluruh jejaknya di `portfolio-be-00029-wpx`, satu jendela
+log 25 menit, 26 baris:
+
+```
+00:51:09.571  Starting new instance. Reason: AUTOSCALING
+00:51:10.243  Database connection established; skema terverifikasi.
+00:51:10.248  Default STARTUP TCP probe succeeded after 1 attempt for container "backend-1" on port 8080.
+00:51:10.363  [GIN] 201 | 28.75ms | 180.248.44.168 | POST "/api/contact"
+00:51:13.535  contact 4e8d174a-d5ab-4130-8454-d5e71fe917bf: email terkirim ke muhammadarkanfauzi9@gmail.com
+```
+
+**Angkanya.** `terkirim` = **1**, `dilewati` = **0**, `gagal kirim email` = **0**. SMTP memakan **3,171 s**
+(10.363763 → 13.535249) dan pengunjung tidak menunggunya: `201` sudah keluar **28,75 ms** setelah POST,
+di instance yang baru saja lahir (0,792 s dari `Starting new instance` sampai request terlayani). Itu sekaligus
+ukuran pertama pola fire-and-forget di produksi: kalau Gmail menggantung 30 s, yang menderita goroutine tanpa
+konteks itu, bukan orang yang mengisi form.
+
+**Klausa E13, butir per butir, setelah POST ini.**
+
+| klausa E13 | status | ukuran |
+| --- | --- | --- |
+| path mati `api-baseline.json` turun dari 13 | **hijau** | 13 → **9**, sejak langkah (3) |
+| `api-contract-check.mjs` tetap `rc=0` | **hijau** | job `api`, CI #64 dan #66 |
+| 1 POST dari situs publik **terhitung** lewat `GET /api/admin/contact` (count +1) | **belum** | barisnya tertulis — `201` + id UUID yang hanya ada kalau `Create` sukses — tapi hitungannya lewat API admin, dan itu butuh JWT-mu |
+| 401 tanpa JWT | **hijau, diukur ulang di revisi email** | 3/3 ke backend langsung, 3/3 lewat frontend, `Bearer` palsu → 401 |
+| email: 1 log run membuktikan SMTP menerima | **hijau** | `00:51:13.535` di atas, dicocokkan dengan Gmail `07.51 WIB` (= 00:51 UTC, +7) |
+| `go vet` + `gofmt` bersih | **hijau** | rc=0 / kosong, pada `1850577c` |
+| endpoint admin tidak menambah secret yang terbaca CI | **hijau** | `grep -c 'secrets\.'` di `ci.yml` = **0**, `google-github-actions/auth` = **0** |
+
+**Tiga klaim di blok (2b) yang barusan dibetulkan kenyataan.** (i) "Alamat penerima tidak kuklaim" — sekarang
+terkirim dan kotak masuknya memang punyamu, jadi `portfolio-admin-email` tidak salah arah. (ii) "Cabang
+`gagal kirim email` tetap nol eksekusi" — masih benar, tapi sekarang nol-nya setelah jalur itu **pernah hidup**,
+bukan sebelum. (iii) "2b tidak membuktikan satu pun klausa email" — benar saat ditulis, dan tepat satu POST
+mengubahnya.
+
+### Yang keluar dari membaca pesan yang sampai, bukan dari log
+
+Ini tiga temuan yang tidak akan pernah keluar dari `grep` log produksi, dan semuanya milik jalur yang baru saja
+sah dipakai:
+
+1. **Tidak ada `Reply-To`.** `newMessage` (`go-backend/mailer/mailer.go:29-38`) menyetel `From`, `To`, `Subject`,
+   body — dan berhenti di situ. Gmail menampilkan **Balas** yang mengarah ke `muhammadarkanfauzi9@gmail.com`,
+   yaitu ke dirimu sendiri, karena alamat pengunjung (`arkanfauzi.sekawanmedia@gmail.com`) cuma hidup sebagai
+   teks di dalam body. Perbaikannya satu baris `SetHeader("Reply-To", …)` + satu assertion di
+   `mailer_test.go` yang sekarang cuma mengecek From/To/Subject. **Di luar urutan F9, dan butuh katamu.**
+2. **Subjek bukan pilihan pengunjung.** `Contact.tsx:24` membakar `subject: \`Visionary Project : ${form.name}\``,
+   sementara form-nya sendiri hanya punya `name`/`email`/`message`. Karena itu nama yang kauisi ("anonymous")
+   naik ke baris subjek dan subjek sungguhan tidak pernah ada. Bukan bug — keputusan bentuk, dan sekarang
+   terlihat.
+3. **`To` == `From`.** `ADMIN_EMAIL` dan `EMAIL_USER` adalah akun yang sama, jadi Gmail menulis "kepada saya".
+   Jalan. Tapi itu berarti satu secret (`portfolio-admin-email`) adalah satu-satunya tempat rute notifikasi bisa
+   dipindah, dan tidak ada yang mengujinya.
+
+**Satu instrumen yang kucoba lalu kutolak.** `watch.yml` melaporkan `rows=17`, dan terbaca seperti hitungan baris
+DB. Bukan: itu `grep -c` atas TSV vonis komponennya sendiri (`watch.yml:370-374`). Jadi tidak ada satu pun jalur
+sah dari laptop untuk membaca `contact_messages` tanpa tokenmu, dan butir "count +1" di tabel di atas tetap
+punya-mu: **login ke `/admin/dashboard`**, pastikan `4e8d174a-d5ab-4130-8454-d5e71fe917bf` muncul, sekalian
+hapus baris probe `b693e544-3001-…` dan 5 baris seed warisan (§8 butir a dan d).
+
+**Timbul baru, keluar dari screenshot kotak masukmu, bukan dari pekerjaan ini:** GitGuardian mengirim
+**"ArkanFzi/website-porto2 — 1 internal incident detected"** dua kali — `Generic Password` pada
+2026-10-05 06:02:28 UTC dan `Username Password` pada 2026-10-04 15:32:39 UTC — sementara check `GitGuardian
+Security Checks` di CI hijau pada setiap run. Hijau di CI dan insiden di email bukan hal yang sama, dan itu
+persis tipe kalimat yang tidak boleh dibiarkan menggantung. Dijadwalkan sebagai penyelidikan berikutnya
+(izinmu keluar 2026-10-06, setelah rekap ini mendarat).
 
 ### Yang tidak kubebereskan di M12 (biar tidak kelihatan lupa)
 
