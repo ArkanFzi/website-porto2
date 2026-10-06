@@ -13,6 +13,15 @@ import (
 // yang pasti gagal, dan log-nya menyebut itu "gagal kirim".
 var ErrNotConfigured = errors.New("EMAIL_USER/EMAIL_PASS belum terpasang")
 
+// Endpoint SMTP dibakar di paket, bukan di parameter, karena satu-satunya penyedia
+// yang didukung adalah Gmail. Variabel (bukan konstanta) supaya percakapan SMTP bisa
+// diarahkan ke stub lokal di test: tanpa itu, jalur "SMTP menolak" hanya bisa dibuktikan
+// dengan menolak akun Gmail yang sungguhan.
+var (
+	smtpHost = "smtp.gmail.com"
+	smtpPort = 587
+)
+
 func SendEmail(to string, replyTo string, subject string, body string) error {
 	user := os.Getenv("EMAIL_USER")
 	pass := os.Getenv("EMAIL_PASS")
@@ -20,7 +29,7 @@ func SendEmail(to string, replyTo string, subject string, body string) error {
 		return ErrNotConfigured
 	}
 
-	d := gomail.NewDialer("smtp.gmail.com", 587, user, pass)
+	d := gomail.NewDialer(smtpHost, smtpPort, user, pass)
 	return d.DialAndSend(newMessage(user, to, replyTo, subject, body))
 }
 
