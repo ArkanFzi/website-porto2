@@ -498,7 +498,7 @@ yang kutulis 20 menit sebelumnya.
 | E4 | Cancel tidak meninggalkan deploy setengah jalan | **hijau (mekanisme: `workflow_dispatch` ×2, bukan `push` ×2 — lihat §8 F3)** | 02:00 UTC: dua dispatch berjarak **27 s** pada `main` `b45c298`. Run #23 job `02:00:28→02:04:24` `success`; run #24 `created 02:00:51` tapi **`pending` 215 s** lalu job `02:04:26→02:07:41` `success` — mulai **2 s** sesudah #23 selesai, `cancelled=false` pada keduanya. Artefak live sesudahnya `portfolio-be-00020-vqd=100` / `portfolio-fe-00019-npr=100`, satu revisi baru per run per service, health `{"db":"ok","status":"ok"}` dari domain publik dan `run.app`, `/` 40.699 byte tanpa `Application error`. Varian "dua push dengan konten berbeda" masih belum ter-exercise (kedua run sama SHA) |
 | E5 | Rollback pernah dieksekusi dan memulihkan | **hijau** | run #18 langkah 13 `success`, langkah 14 `success`, traffic terukur kembali ke `be-00013-s97`/`fe-00012-947` |
 | E6 | Smoke bisa gagal | **hijau** | run #18 `"/api/cv tidak mengembalikan PDF"` pada HTTP 200 — `curl -f` tidak akan melihatnya |
-| E7 | Dokumen tidak memicu deploy | **hijau — dua pengukuran** | (1) merge PR #9 (`f218564`, hanya `README.md`/`DEPLOY.md`/`TODO.md`) → `deploy.yml` run count **0** untuk SHA itu, `ci.yml` push run #14 `success`. (2) merge PR #13 (`7d7217b`, juga dokumen saja) → `deploy.yml` **0 run**, `watch.yml` 0 run, `ci.yml` push run #23 `success`, dan `gcloud run services describe` tetap `portfolio-be-00018-fsc` / `portfolio-fe-00017-wqb` @100% — merge dokumen tidak mengubah apa pun yang melayani request. Kontrasnya terukur di hari yang sama: PR #10/#11/#12 yang menyentuh `.github/workflows/**` memicu deploy run #20, #21, #22 — ketiganya `success`. `paths-ignore: ['**.md','docs/**']` + `actionlint` bersih. **(3)–(6) diukur hari ini bersama F6:** merge PR #15 (`b45c298`), #16 (`dfb9147`), #19 (`75b2f3f`) dan #20 (`6281b7f`) — keempatnya dokumen saja — **0 run `Deploy to Cloud Run`** masing-masing (yang jalan hanya `CI`, dan di #19/#18 ada `Watch`). Kontrasnya diukur pada jendela yang sama: `382f0e4` (PR #17) dan `3a88e25` (PR #18) masing-masing **1 run deploy**. Query-nya, supaya bisa diulang: `actions/runs?per_page=100` lalu `select(.head_sha==<SHA merge>) \| select(.name\|test("deploy";"i")) \| length` |
+| E7 | Dokumen tidak memicu deploy | **hijau — dua pengukuran** | (1) merge PR #9 (`f218564`, hanya `README.md`/`DEPLOY.md`/`TODO.md`) → `deploy.yml` run count **0** untuk SHA itu, `ci.yml` push run #14 `success`. (2) merge PR #13 (`7d7217b`, juga dokumen saja) → `deploy.yml` **0 run**, `watch.yml` 0 run, `ci.yml` push run #23 `success`, dan `gcloud run services describe` tetap `portfolio-be-00018-fsc` / `portfolio-fe-00017-wqb` @100% — merge dokumen tidak mengubah apa pun yang melayani request. Kontrasnya terukur di hari yang sama: PR #10/#11/#12 yang menyentuh `.github/workflows/**` memicu deploy run #20, #21, #22 — ketiganya `success`. `paths-ignore: ['**.md','docs/**']` + `actionlint` bersih. **(3)–(6) diukur hari ini bersama F6:** merge PR #15 (`b45c298`), #16 (`dfb9147`), #19 (`75b2f3f`) dan #20 (`6281b7f`) — keempatnya dokumen saja — **0 run `Deploy to Cloud Run`** masing-masing (yang jalan hanya `CI`, dan di #19/#18 ada `Watch`). Kontrasnya diukur pada jendela yang sama: `382f0e4` (PR #17) dan `3a88e25` (PR #18) masing-masing **1 run deploy**. Query-nya, supaya bisa diulang: `actions/runs?per_page=100` lalu `select(.head_sha==<SHA merge>) \| select(.name\|test("deploy";"i")) \| length`. **(7)–(10) diukur 2026-10-06:** merge PR #34 (`52fc2e90`, dokumen saja) → **0 run deploy**; merge PR #35 (`9a5d7eda`, dokumen saja) → **1 run = `CI`, 0 deploy**, dan revisi yang melayani tidak berubah (`portfolio-be-00029-wpx` / `portfolio-fe-00028-jlz`). Kontrasnya pada hari yang sama: merge PR #38 (`e99cf67`, `.github/workflows/ci.yml`) → **1 run `Deploy to Cloud Run` (#34)** → revisi baru `portfolio-be-00030-7wc` / `portfolio-fe-00029-zqv`; merge PR #37 (`29757ca`, `go-backend/`) → **1 run deploy (#35)**. Jadi filter jalurnya bekerja dua arah, bukan hanya "dokumen diam" |
 | E8 | Dokumen tidak menyimpang dari realita | **sebagian — 0 dari 7 hari** | koreksi manual pass 1 (16:45) dan pass 2 (16:52) vs keluaran `gcloud`, perintah pembuktinya kini tertulis di `DEPLOY.md`; drift-check **otomatis** hidup di runner dan hijau: Watch #2 `merah=0`, Watch #3 `rows=13 merah=0` dengan `expected 14fe90e` = head. Tapi kedua run itu `workflow_dispatch` di tanggal yang sama — exit criterion-nya 7 **hari** `schedule` hijau berturut-turut, hari pertama sah 2026-10-05, jadi statusnya belum bisa ditutup sebelum 2026-10-11 |
 
 ---
@@ -575,7 +575,7 @@ dua pasangan, `1850577c` → PR **#33** → `go`/`api`/`web`/GitGuardian `succes
 kirim adalah POST dari situs publik, dan itu aksi yang tersisa di tanganmu (blok (2b) + batasnya di bawah).
 **Status 2026-10-06, 00:51 UTC:** POST pertamamu menutup klausa email — `terkirim`=**1**, `dilewati`=0,
 `gagal kirim`=0, SMTP **3,171 s** berjalan di belakang `201` 28,75 ms. Dari tujuh klausa E13, enam hijau;
-yang tinggal satu adalah **count +1** di `GET /api/admin/contact`, dan itu hanya bisa diukur dari login-mu. **Koreksi pada rencanaku sendiri di baris ini:** yang kutulis "(1) sekaligus menutup `main.go:173` yang membuang error gorm" itu salah tempel. Di `c78cb19` baris 173 adalah `DB.Order("created_at desc").Find(&certs)` milik `/api/certificates`, sedangkan stub kontak lama (`main.go:233-248`) sama sekali tidak menyentuh DB — bind, lalu `go func()` pengirim email. Jadi (1) tidak menutup apa pun dari 13 itu, dan `Find` di 173 baru tertutup di (6) lewat #29 |
+yang tinggal satu adalah **count +1** di `GET /api/admin/contact`, dan itu hanya bisa diukur dari login-mu. **Koreksi pada rencanaku sendiri di baris ini:** yang kutulis "(1) sekaligus menutup `main.go:173` yang membuang error gorm" itu salah tempel. Di `c78cb19` baris 173 adalah `DB.Order("created_at desc").Find(&certs)` milik `/api/certificates`, sedangkan stub kontak lama (`main.go:233-248`) sama sekali tidak menyentuh DB — bind, lalu `go func()` pengirim email. Jadi (1) tidak menutup apa pun dari 13 itu, dan `Find` di 173 baru tertutup di (6) lewat #29. **Status 2026-10-06, 01:48 UTC:** dua turunan rekap sudah mendarat dengan PR sendiri — opsi 1 GitGuardian (#38 → `e99cf67`, `go`/`api`/`web`/GitGuardian **success**, Deploy #34) dan `Reply-To` (#37 → `29757ca`, 4 test mailer PASS, Deploy #35). Klausa E13 tidak bergerak oleh keduanya: tetap **enam hijau**, dan yang tersisa tetap **count +1** yang cuma bisa diukur dari login-mu |
 | **F10** (4a) | *Hold* — `issues: write` **tidak** dipasang. Tidak ada kerja; hanya dicatat supaya tidak membusuk jadi keputusan yang tidak pernah diambil | Re-check paling cepat **2026-10-12 02:37 UTC**, syaratnya ≥8 baris `event=schedule` dan 0 MERAH. Kalau ada MERAH sebelumnya, hold menang dan alarm tetap run merah | nol |
 
 ### Yang masih butuh darimu
@@ -587,9 +587,11 @@ yang tinggal satu adalah **count +1** di `GET /api/admin/contact`, dan itu hanya
    count +1 E13 — satu-satunya klausa F9 yang belum punya angka), dan **(b)** hapus baris probe
    `b693e544-3001-…` plus 5 baris seed warisan (§8 butir a dan d). Aku tidak bisa melakukan keduanya:
    `DELETE /api/admin/contact/:id` butuh JWT, JWT butuh `ADMIN_PASS`, dan itu secret yang tidak kubaca.
-   **Satu keputusan baru yang keluar dari pesan yang sampai:** notifikasi tidak punya `Reply-To`, jadi
-   tombol Balas di Gmail membalas ke dirimu sendiri, bukan ke pengunjung (`mailer.go:29-38`). Satu baris
-   + satu assertion tes. Katamu: kerjakan, atau biarkan.
+   **Satu keputusan baru yang keluar dari pesan yang sampai — sudah dikerjakan.** Notifikasi tidak punya
+   `Reply-To`, jadi tombol Balas di Gmail membalas ke dirimu sendiri, bukan ke pengunjung. #37
+   (`29757ca`) memasangnya, dengan gerbang `mail.ParseAddress` di dalam paket. Yang belum terbukti:
+   header itu pada pesan yang benar-benar datang, dan itu butuh satu POST lagi ke form publik — lihat
+   blok "Reply-To" di §M12.
 2. **`chore/gerbang-ci`** — hapus atau simpan (ukurannya sudah di F1b).
 3. **"ya" terakhir untuk F7** (create + delete clone berbayar) dan, kalau kau mau bukti negatif E11,
    **untuk drill pin-traffic** di F8 — itu menyentuh traffic produksi kelasnya dengan P5 yang sudah kamu izinkan.
@@ -615,6 +617,13 @@ yang tinggal satu adalah **count +1** di `GET /api/admin/contact`, dan itu hanya
    — kecil, lokal, bisa kuerjakan sekarang; atau **(2)** masukkan `GitGuardian Security Checks` ke required
    contexts — merah benar-benar memblokir, tapi false positive ikut memblokir semua PR. Aku tidak memilih
    sendiri karena (2) mengubah kebijakan merge semua orang.
+
+   **Status 2026-10-06 01:48 UTC: (1) sudah dikerjakan dan terbukti** (`20c16ea` → PR #38 → `e99cf67`,
+   GitGuardian `success`; dua baris `ci.yml` yang berbentuk kredensial sudah hilang, `grep` = 0).
+   **(2) masih keputusanmu, tapi sekarang berangka:** dari rangkaian itu terukur bahwa temuan GitGuardian
+   menempel pada **riwayat commit PR**, bukan isi akhir — komentar yang salah bentuk tidak bisa dibersihkan
+   oleh commit susulan (`ed0aee6` tetap merah karena `9e49a14`). Kalau (2) dipasang, PR seperti #36 hanya
+   bisa keluar dengan branch baru, karena rewrite history + force-push tidak ada di daftar yang boleh kulakukan.
 
 **Butiran baru yang keluar setelah F9 langkah (1) mendarat — rate limit `POST /api/contact`.** Endpoint ini
 sekarang adalah **tulis DB tanpa autentikasi** yang terbuka di internet. Tiga pilihan yang kubaca: **(i)**
@@ -1860,6 +1869,89 @@ dibutuhkan hanya `go`/`web`/`api`. Itu keputusanmu, bukan task-ku — dua opsi y
    seperti baris 223 yang lolos) → GitGuardian diam tanpa mengubah kebijakan apa pun. Kecil, lokal, bisa kuerjakan.
 2. **Tambahkan `GitGuardian Security Checks` ke required contexts** → merah benar-benar memblokir, tapi setiap
    false positive ikut memblokir merge, dan itu mengubah kebijakan semua PR. Tidak kukerjakan tanpa katamu.
+
+### Opsi 1 dieksekusi — dan scanner-nya mengajuku satu hal yang belum kutahu (2026-10-06, 01:15 – 01:48 UTC)
+
+Katamu opsi 1. Yang dikerjakan ternyata bukan cuma baris 336: `grep` menemukan **satu lagi** dengan bentuk
+sama, `ci.yml:394` di langkah "DB mati menjawab 500, bind gagal tidak keluar nol", dan itu yang
+menginterpolasi `$ADMIN_PASS` fixture asli. Dua-duanya dipindah ke `jq -nc --arg`.
+
+**Angka sebelum push.** `yaml.safe_load` → `jobs=[go, web, api]`; 19 langkah `run:` diekstrak dari YAML
+dan masing-masing dilewat `bash -n` → **0 gagal**; `grep -In` untuk kedua bentuk pasangan terkutip
+(dengan dan tanpa backslash) di `.github/workflows/*.yml` → **0**; payload yang benar-benar dikirim
+dijalankan langsung dan dicetak — isinya sama persis dengan sebelumnya, hanya cara merakitnya yang ganti.
+
+**Lalu PR-nya merah dengan cara yang menarik.** `9e49a14` → `go`/`api`/`web` **success**, GitGuardian
+**`failure`**, dan tabel temuannya menunjuk `R336`. Bukan kode — **komentarku sendiri**:
+
+> `# Bentuk jq --arg, bukan pasangan terkutip username/password: pasangan terkutip yang`
+
+Kata `password` disusul titik dua lalu sebuah kata, dan itulah yang dicari detector `Generic Password`.
+Kode yang kuperbaiki lolos; prosanya yang tidak.
+
+**Commit susulan tidak membersihkan temuan.** Komentar kubuang (`ed0aee6`), poll lagi, check-run tetap
+merah — tapi kalimatnya berubah: "1 secret **were** uncovered from the scan of **2 commits**", dengan
+temuan yang tetap menunjuk `9e49a14`/R336. Scan GitGuardian atas sebuah PR adalah scan **riwayat commit
+PR itu**, bukan isi akhirnya.
+
+| SHA | isi branch | GitGuardian | yang ditunjuk |
+| --- | --- | --- | --- |
+| `9e49a14` | kode bersih + komentar berbentuk kredensial | **failure** | `ci.yml` R336 |
+| `ed0aee6` | komentar dibuang, isi branch identik | **failure** | `9e49a14` R336 (lama) |
+| `20c16ea` | **satu commit**, isi branch identik, riwayat bersih | **success** | — |
+
+Baris ketiga adalah instrument yang sebenarnya dari klaim opsi 1 — bukan "kodenya sudah rapi", tapi "isi
+akhir `ci.yml` tidak lagi berbentuk kredensial". Branch-nya dibuat dari `origin/main`, isinya
+`git checkout ed0aee6 -- .github/workflows/ci.yml`; diff `1 file changed, 7 insertions(+), 2 deletions(-)`,
+identik dengan PR #36. #36 kututup dengan komentar yang menjelaskan kenapa, bukan karena isinya salah.
+Badan PR #38 juga kusapukan pola yang sama (`hit=0`, 2 596 karakter) supaya eksperimen "riwayat bersih =
+hijau" tidak terconfound oleh teks yang sedang diuji.
+
+**Dan ini angka yang dulu tidak kupunya untuk opsi 2.** Kalau `GitGuardian Security Checks` jadi required
+context, PR berbentuk #36 tidak bisa digabung tanpa rewrite history — dan `strict: true` + larangan
+force-push membuat jalannya keluar cuma satu: branch baru. Detector itu terbukti bisa dipuaskan
+(`20c16ea`) **dan** bisa dinyalakan oleh sebuah kalimat (`9e49a14`). Keputusanmu tetap, tapi sekarang
+berangka.
+
+**Mendarat.** `20c16ea` → PR **#38** → `go`/`api`/`web`/GitGuardian **success** → squash **`e99cf67`** →
+CI run **#74** + Deploy run **#34** **success** → `portfolio-be-00030-7wc` dan `portfolio-fe-00029-zqv`
+@100%. Entri env revisi baru tetap **8**, dengan **2** nama berawalan `EMAIL_` yang menunjuk secret yang
+sama — tidak ada yang berubah di sana.
+
+### Reply-To — dan satu klaimku soal injeksi header yang kukoreksi sebelum sempat masuk kode (2026-10-06, 01:22 – 01:48 UTC)
+
+Rencana pertamaku menulis gerbangnya berbunyi: tanpa filter, CRLF di `Reply-To` "bisa menempel header
+baru di badan email". Aku ukur dulu, dan **salah**: gomail menetralkan nilai header dengan RFC 2047, jadi
+
+```
+Reply-To: =?UTF-8?q?hit@example.test=0D=0AX-Injected:_bukti?=
+```
+
+tetap **satu baris**; `X-Injected` tidak pernah berdiri sendiri jadi header. Komentarku dibuang dari kode,
+dan `TestCRLFTidakMenjadiBarisHeaderBaru` mengunci perilaku pustaka itu supaya orang berikutnya tidak
+menyimpulkan hal yang sama dariku. Gerbang `mail.ParseAddress` tetap dipasang, dengan alasan yang benar:
+encoded-word semacam itu bukan alamat yang bisa dibalas — lebih baik header-nya hilang daripada salah.
+Handler sudah memvalidasi `row.Email` di `main.go:366`, jadi ini defense-in-depth di batas paket, bukan
+satu-satunya pagar.
+
+**Yang berubah.** `mailer.SendEmail(to, replyTo, subject, body)` — satu parameter baru, satu call site
+(`main.go:388`) yang sekarang mengirim `row.Email` pengunjung; `newMessage` memasang `Reply-To` hanya
+kalau nilainya lolos `mail.ParseAddress`.
+
+**Angka.** `go test -count=1 ./mailer/` → **4 PASS** (`TestSendEmailTanpaKredensialBerhentiSebelumSMTP`
+3 sub-case, `TestPengirimAdalahAkunYangDiautentikasi` dengan From/To/Reply-To/Subject,
+`TestReplyToBukanAlamatTidakMasukHeader` 6 input jahat, `TestCRLFTidakMenjadiBarisHeaderBaru`) ·
+`gofmt -l .` kosong · `go vet ./...` rc=0 · `go build ./...` ok · `cmd/audit-ignored` →
+`silent_gorm=0 silent_listen=0` · diff 3 file `+71/−6`.
+
+**Satu titik data baru soal `strict: true`.** PR #37 sempat hijau penuh di `a3bbbb9`, lalu `main` bergerak
+oleh #38 dan branch-nya jadi tertinggal; dengan proteksi §F2 satu-satunya jalan adalah
+`git merge origin/main` → commit merge `564900c` → keempat check **success** lagi → squash **`29757ca`** →
+CI run **#76** + Deploy run **#35**. Tidak ada force-push di seluruh rangkaian ini.
+
+**Yang belum terbukti.** Bahwa balasan benar-benar mengarah ke pengunjung. Itu hanya bisa dibaca dari
+header `Reply-To` pada pesan yang benar-benar datang, dan itu butuh **satu POST lagi** ke form publik —
+satu email baru ke inbox-mu dan satu baris baru ke `contact_messages`. Tidak kukirim tanpa katamu.
 
 ### Yang tidak kubebereskan di M12 (biar tidak kelihatan lupa)
 
