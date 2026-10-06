@@ -1,0 +1,57 @@
+version: 2
+
+# Dependabot ditulis ke repo ini setelah `npm audit --omit=dev` dan `govulncheck` diukur dan ternyata
+# merah sejak awal: 15 paket produksi terdampak — 60 ID GHSA unik, dan satu-satunya paket ber-severity
+# critical adalah `next` (dua advisori) — plus 3 kerentanan Go yang benar-benar dipanggil kode
+# (x/text, quic-go, pgx). Yang tidak punya jalan masuk otomatis adalah kenaikan versi itu sendiri,
+# dan itu pekerjaan bot ini.
+#
+# Batas yang benar-benar berlaku:
+#   * `open-pull-requests-limit` itu PER ekosistem, bukan global. 3 + 3 = maksimal 6 PR terbuka
+#     sekaligus dari dependabot. Tidak ada kunci global di file ini.
+#   * Dependabot TIDAK pernah merge sendiri. Daftar PR tetap keputusan manusia, dan tiap PR-nya lewat
+#     CI yang sama (go/web/api/pdf) sebelum kamu baca — termasuk job `pdf` yang baru, karena
+#     bump `puppeteer`/`next` pernah merusak standalone tracing dan itu tidak kelihatan di lint.
+#   * Jadwalnya Senin pagi UTC, sengaja setelah scan.yml (03:17) supaya urutan hari itu terbaca:
+#     scan menyatakan keadaan, bot menawarkan perbaikan.
+
+updates:
+  - package-ecosystem: npm
+    directory: "/nextjs-frontend"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:33"
+      timezone: "UTC"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: chore(deps)
+      include: scope
+    groups:
+      # Minor/patch digabung jadi satu PR supaya tidak membanjiri daftar; major tetap PR sendiri
+      # karena di situlah keputusan (next 16 -> 17, puppeteer ganti besar) perlu mata manusia.
+      minor-dan-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: gomod
+    directory: "/go-backend"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:36"
+      timezone: "UTC"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: chore(deps)
+      include: scope
+    groups:
+      minor-dan-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
