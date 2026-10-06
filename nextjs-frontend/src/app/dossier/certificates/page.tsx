@@ -22,11 +22,18 @@ const CERT_BACKGROUNDS = [
 export default function CertificatesPage() {
     const [items, setItems] = useState<CarouselItem[]>([]);
     const [allCerts, setAllCerts] = useState<Certificate[]>([]);
+    const [loadError, setLoadError] = useState("");
 
     useEffect(() => {
         fetch(`/api/certificates`)
-            .then((r) => r.ok ? r.json() : [])
-            .then((data: Certificate[]) => {
+            .then(async (r) => {
+                const data = await r.json().catch(() => null);
+                // Tanpa guard ini, 500 dengan body {"error":"Gagal membaca sertifikat"} berubah
+                // menjadi halaman yang tampak kosong seolah memang belum ada sertifikat.
+                if (!r.ok || !Array.isArray(data)) {
+                    setLoadError(typeof data?.error === "string" ? data.error : "Sertifikat tidak dapat dimuat.");
+                    return;
+                }
                 setAllCerts(data);
 
                 const mappedItems: CarouselItem[] = data.slice(0, 5).map((cert, idx) => {
@@ -45,7 +52,7 @@ export default function CertificatesPage() {
                 });
                 setItems(mappedItems);
             })
-            .catch((e) => console.error(e));
+            .catch(() => setLoadError("Sertifikat tidak dapat dimuat: server tidak terjangkau."));
     }, []);
 
     return (
@@ -68,6 +75,12 @@ export default function CertificatesPage() {
                         <span className="w-32 text-right">Date Earned</span>
                     </div>
                 </div>
+
+                {loadError && (
+                    <div className="mb-8 border border-red-500/30 bg-red-500/10 text-red-300 text-sm font-mono px-4 py-3 rounded-xl">
+                        {loadError}
+                    </div>
+                )}
 
                 <div className="flex flex-col">
                     {allCerts.map((cert) => (

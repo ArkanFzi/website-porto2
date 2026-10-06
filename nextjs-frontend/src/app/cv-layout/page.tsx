@@ -12,12 +12,21 @@ interface Certificate {
 
 export default function CVLayout() {
   const [certificates, setCertificates] = useState<Certificate[]>([]);
+  const [certError, setCertError] = useState("");
 
   useEffect(() => {
     fetch("/api/certificates")
-      .then(res => res.ok ? res.json() : [])
-      .then(data => setCertificates(data))
-      .catch(err => console.error("Failed to fetch certificates", err));
+      .then(async (res) => {
+        const data = await res.json().catch(() => null);
+        // Halaman ini juga jadi sumber PDF /api/cv: kegagalan baca harus ikut tercetak,
+        // jangan menyamar sebagai "belum punya sertifikat".
+        if (!res.ok || !Array.isArray(data)) {
+          setCertError(typeof data?.error === "string" ? data.error : "Certificates could not be loaded.");
+          return;
+        }
+        setCertificates(data);
+      })
+      .catch(() => setCertError("Certificates could not be loaded: server unreachable."));
   }, []);
 
   return (
@@ -163,13 +172,15 @@ export default function CVLayout() {
         <section>
           <h2 className="text-sm font-bold uppercase tracking-widest border-b border-black/10 pb-2 mb-8">Validations / Certificates</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-[13px]">
-            {certificates.length > 0 ? certificates.map((cert) => (
+            {certError ? (
+              <p className="text-gray-600 italic col-span-2">{certError}</p>
+            ) : certificates.length > 0 ? certificates.map((cert) => (
               <div key={cert.id}>
                 <h3 className="font-bold uppercase leading-tight">{cert.title}</h3>
                 <p className="text-gray-500">{cert.issuer} | {cert.date}</p>
               </div>
             )) : (
-              <p className="text-gray-400 italic">No professional certifications loaded.</p>
+              <p className="text-gray-400 italic">No certifications recorded.</p>
             )}
           </div>
         </section>
