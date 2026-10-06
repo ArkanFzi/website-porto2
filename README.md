@@ -79,12 +79,17 @@ inbox admin menjawab **500** kalau DB gagal — sebelum PR #29 yang sama itu men
 - **`gomail`** untuk SMTP — tersambung ke form kontak dan **terbukti mengirim di produksi** sejak #33
   (`EMAIL_USER` ← `portfolio-email-user`, `EMAIL_PASS` ← `portfolio-email-pass`, keduanya lewat
   `--set-secrets` di `deploy.yml`). Kalau keduanya hilang: `SendEmail` mengembalikan `ErrNotConfigured`
-  **sebelum** ada socket, dan `main.go` mencatatnya sebagai `email dilewati` ber-id pesan. `From` selalu = akun yang diautentikasi
-  (Gmail menolak `From` yang bukan pengirimnya); dulu nilai ini dibakar sebagai literal alamat pribadi.
-  Sejak #37 ada **`Reply-To`** (`29757ca`) — `SendEmail(to, replyTo, subject, body)`,
-  dan header hanya dipasang kalau `mail.ParseAddress` lolos. Klaimku sendiri soal kenapa gerbang ini ada
-  sempat salah: gomail sudah menetralkan CRLF di nilai header lewat RFC 2047 (terukur: satu baris
-  encoded-word, tidak pernah jadi header kedua), jadi gerbangnya soal kebersihan alamat, bukan CVE
+  **sebelum** ada socket, dan `main.go` mencatatnya sebagai `email dilewati` ber-id pesan.
+  - `From` selalu = akun yang diautentikasi (Gmail menolak `From` yang bukan pengirimnya); dulu nilai ini
+    dibakar sebagai literal alamat pribadi.
+  - Sejak #37 ada **`Reply-To`** (`29757ca`) — `SendEmail(to, replyTo, subject, body)`, dan header hanya
+    dipasang kalau `mail.ParseAddress` lolos. Klaimku sendiri soal kenapa gerbang ini ada sempat salah:
+    gomail sudah menetralkan CRLF di nilai header lewat RFC 2047 (terukur: satu baris encoded-word, tidak
+    pernah jadi header kedua), jadi gerbangnya soal kebersihan alamat, bukan CVE.
+  - Ketiga hasil pengiriman sekarang **punya test**: `email` diarahkan ke stub SMTP in-process (endpoint
+    Gmail jadi variabel paket, bukan env — permukaan konfigurasinya tetap nol), jadi penolakan
+    `535 5.7.8` terbukti menghasilkan kelas error yang benar, dan penerimaan terbukti `nil`. Sebelum ini,
+    cabang `gagal kirim email` hanya pernah **diasumsikan tidak muncul** oleh CI (`ci.yml:289-293`).
 - Rute: `POST /api/login`, `POST /api/auth/login`, `GET /api/certificates`, `GET /api/experience`,
   `GET /api/health`, `POST /api/contact` (publik) + `GET /api/admin/contact`,
   `DELETE /api/admin/contact/:id`, `POST`/`DELETE` untuk kedua koleksi (butuh Bearer token)
