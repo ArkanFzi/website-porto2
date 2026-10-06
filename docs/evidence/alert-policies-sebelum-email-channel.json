@@ -1,0 +1,178 @@
+{
+  "diukurPada": "2026-10-06T07:55:17Z",
+  "catatan": "snapshot GET alertPolicies; identitas operator (creationRecord/mutationRecord/changedBy) sengaja dibuang",
+  "alertPolicies": [
+    {
+      "displayName": "portfolio-fe-down",
+      "enabled": true,
+      "combiner": "OR",
+      "name": "projects/config-agentic-ubuntu/alertPolicies/2674986484363806933",
+      "notificationChannels": [
+        "projects/config-agentic-ubuntu/notificationChannels/10272166320138577165"
+      ],
+      "conditions": [
+        {
+          "displayName": "FE tidak terjangkau dari semua checker GCP selama 2 menit",
+          "name": "projects/config-agentic-ubuntu/alertPolicies/2674986484363806933/conditions/2674986484363804920",
+          "monitoringQueryLanguage": {
+            "query": "fetch uptime_url\n| metric 'monitoring.googleapis.com/uptime_check/check_passed'\n| filter (metric.check_id == 'portfolio-fe-uptime-1mf-3XMJoKI')\n| group_by 1m, [c: count_true(value.check_passed)]\n| every 1m\n| condition val() < 1",
+            "duration": "120s",
+            "trigger": {
+              "count": 1
+            }
+          },
+          "metricThreshold": {
+            "filter": null,
+            "aggregations": null,
+            "comparison": null,
+            "thresholdValue": null,
+            "duration": null,
+            "trigger": null
+          },
+          "absent": {
+            "filter": null,
+            "duration": null,
+            "trigger": null
+          }
+        }
+      ]
+    },
+    {
+      "displayName": "portfolio-5xx",
+      "enabled": true,
+      "combiner": "OR",
+      "name": "projects/config-agentic-ubuntu/alertPolicies/2674986484363808572",
+      "notificationChannels": [
+        "projects/config-agentic-ubuntu/notificationChannels/10272166320138577165"
+      ],
+      "conditions": [
+        {
+          "displayName": "5xx terdeteksi di portfolio (lebih dari 3 kali dalam 5 menit)",
+          "name": "projects/config-agentic-ubuntu/alertPolicies/2674986484363808572/conditions/2674986484363806559",
+          "monitoringQueryLanguage": null,
+          "metricThreshold": {
+            "filter": "metric.type=\"logging.googleapis.com/user/portfolio-5xx\" AND resource.type=\"cloud_run_revision\"",
+            "aggregations": [
+              {
+                "alignmentPeriod": "300s",
+                "perSeriesAligner": "ALIGN_SUM"
+              }
+            ],
+            "comparison": "COMPARISON_GT",
+            "thresholdValue": 3,
+            "duration": "300s",
+            "trigger": {
+              "count": 1
+            }
+          },
+          "absent": {
+            "filter": null,
+            "duration": null,
+            "trigger": null
+          }
+        }
+      ]
+    },
+    {
+      "displayName": "Agentic Watchdog heartbeat hilang",
+      "enabled": true,
+      "combiner": "OR",
+      "name": "projects/config-agentic-ubuntu/alertPolicies/3591921607178095452",
+      "notificationChannels": [
+        "projects/config-agentic-ubuntu/notificationChannels/8264110425603501759"
+      ],
+      "conditions": [
+        {
+          "displayName": "heartbeat absent >15m",
+          "name": "projects/config-agentic-ubuntu/alertPolicies/3591921607178095452/conditions/3591921607178094243",
+          "monitoringQueryLanguage": null,
+          "metricThreshold": {
+            "filter": null,
+            "aggregations": null,
+            "comparison": null,
+            "thresholdValue": null,
+            "duration": null,
+            "trigger": null
+          },
+          "absent": {
+            "filter": "metric.type=\"logging.googleapis.com/user/agentic-watchdog-heartbeat\" resource.type=\"gce_instance\"",
+            "duration": "900s",
+            "trigger": {
+              "count": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "displayName": "portfolio-be-down",
+      "enabled": true,
+      "combiner": "OR",
+      "name": "projects/config-agentic-ubuntu/alertPolicies/5143161099297661663",
+      "notificationChannels": [
+        "projects/config-agentic-ubuntu/notificationChannels/10272166320138577165"
+      ],
+      "conditions": [
+        {
+          "displayName": "BE tidak terjangkau dari semua checker GCP selama 2 menit",
+          "name": "projects/config-agentic-ubuntu/alertPolicies/5143161099297661663/conditions/5143161099297664720",
+          "monitoringQueryLanguage": {
+            "query": "fetch uptime_url\n| metric 'monitoring.googleapis.com/uptime_check/check_passed'\n| filter (metric.check_id == 'portfolio-be-uptime-3lw7E4A0E40')\n| group_by 1m, [c: count_true(value.check_passed)]\n| every 1m\n| condition val() < 1",
+            "duration": "120s",
+            "trigger": {
+              "count": 1
+            }
+          },
+          "metricThreshold": {
+            "filter": null,
+            "aggregations": null,
+            "comparison": null,
+            "thresholdValue": null,
+            "duration": null,
+            "trigger": null
+          },
+          "absent": {
+            "filter": null,
+            "duration": null,
+            "trigger": null
+          }
+        }
+      ]
+    },
+    {
+      "displayName": "watchdog-vm-down",
+      "enabled": true,
+      "combiner": "OR",
+      "name": "projects/config-agentic-ubuntu/alertPolicies/5832240726785760455",
+      "notificationChannels": [
+        "projects/config-agentic-ubuntu/notificationChannels/8264110425603501759"
+      ],
+      "conditions": [
+        {
+          "displayName": "agentic-watchdog-vm tidak melaporkan uptime selama 5 menit",
+          "name": "projects/config-agentic-ubuntu/alertPolicies/5832240726785760455/conditions/5832240726785759568",
+          "monitoringQueryLanguage": {
+            "query": "fetch gce_instance\n| metric 'compute.googleapis.com/instance/uptime'\n| filter (resource.instance_id == '3411766485018421527')\n| group_by 5m, [c: aggregate(value.uptime)]\n| every 1m\n| condition val() == 0",
+            "duration": "0s",
+            "trigger": {
+              "count": 1
+            }
+          },
+          "metricThreshold": {
+            "filter": null,
+            "aggregations": null,
+            "comparison": null,
+            "thresholdValue": null,
+            "duration": null,
+            "trigger": null
+          },
+          "absent": {
+            "filter": null,
+            "duration": null,
+            "trigger": null
+          }
+        }
+      ]
+    }
+  ]
+}

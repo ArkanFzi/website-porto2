@@ -2096,6 +2096,14 @@ benar — itu mengukur hal yang lain.
 8. **Putuskan `chore/gerbang-ci`** (butir §6 yang masih terbuka) dan boleh-tidaknya **20** branch dihapus.
 9. **A0 susulan** sesudah 14:00 UTC: kalau `event=schedule` masih **1**, F10 dicoret. Aku yang ukur di sesi
    berikutnya; tidak perlu kamu sentuh.
+10. **Bolehkah `github-watch@config-agentic-ubuntu.iam.gserviceaccount.com` memegang
+    `roles/monitoring.viewer`?** Satu binding **read-only**. Tanpa itu, tidak ada assertion yang bisa menjaga
+    channel email yang kupasang hari ini — `notificationChannels` ketiga policy bisa kembali jadi 1 dan
+    **tidak ada satu pun workflow yang merah**, karena `watch.yml` hari ini cuma bisa membaca Cloud Run
+    (`roles/run.viewer`).
+11. **Eksperimen atribusi konsumen (§9.8):** cabut `roles/pubsub.subscriber` dari `hermes-openclaw@` selama
+    satu jendela alarm, lalu lihat ack. Ini yang menutup hutang prune §8 F6. Aku tidak mengerjakannya sendiri
+    karena kalau ternyata hermes yang menyedot, rantai alarm putus selama jendela pengamatan.
 
 ### 9.7 Alat ukur yang ikut di repo: `docs/verify/browser-probe.mjs`
 
@@ -2141,3 +2149,266 @@ Yang perlu diketahui supaya angkanya tidak disalah baca:
   `tsc --noEmit -p <tsconfig dengan include tanpa .next>` → **rc=0**; `npm run lint` → **0 errors,
   11 warnings** (semua warning sudah ada sebelumnya). CI tidak pernah melihat ini karena checkout-nya
   bersih, tanpa `.next`.
+
+### 9.8 Rantai alarm: dua kesimpulan salahku sendiri, dan angka yang membatalkannya (2026-10-06, 06:40 – 07:35 UTC)
+
+**Klaim yang dicabut.** Sesi kemarin menuliskan **N3**: "rantai alarm produksi berakhir di antrean yang
+tidak pernah dibaca", dibuktikan dengan **nol** entri `Subscription.Pull` di Cloud Audit Logs 30 hari.
+Hari ini aku menggali "koreksi" yang lebih keras: "bukan cuma tidak dibaca — tidak pernah ditulis sama
+sekali" (`send_message_operation_count` 0, `ack_message_count` 0, `pull_message_operation_count` 0 dalam
+30 hari). **Keduanya salah.** Rantainya hidup dan sibuk.
+
+**Satu penyebab, dan itu penyebabku, bukan produksi.** Semua angka nol itu keluar dari satu bentuk query:
+`aggregation.alignmentPeriod=604800s` (pekanan) + `ALIGN_SUM` pada metrik bertipe DELTA milik Pub/Sub.
+API-nya **membalas 0 tanpa error apa pun** — bukan "tidak ada data", tapi nol yang looks like a measurement.
+Dengan bucket harian (`86400s`) angkanya begini:
+
+| hari | publish ke `agentic-alerts` | ack di `agentic-alerts-sub` | unary pull |
+|---|---|---|---|
+| 2026-09-26 | 9 | 9 | 1 |
+| 09-27 | 43 | 43 | 5 |
+| 09-28 | **233** | 233 | 0 |
+| 09-29 | 116 | 116 | 0 |
+| 09-30 | 65 | 66 | 0 |
+| 10-01 … 10-05 | 57, 43, 41, 59, 62 | 57, 43, 41, 59, 62 | 0 |
+| 10-06 (s/d 07:05) | 71 | 72 | 7 |
+
+Ack ≈ publish **hari per hari**, dan unary pull nyaris nol → konsumennya streaming pull. Jadi kalimat yang
+benar: antreannya **dibaca**, dan `pull_message_operation_count` yang nol itu bukan bukti "tidak ada yang
+menyedot" — dia hanya tidak menghitung streaming.
+
+**Aturan yang kutanam supaya temuan hantu seperti ini tidak terulang.** (1) Pada metrik Pub/Sub ber-type
+DELTA, `alignmentPeriod` **maksimum 86400s**; jangan pernah pakai pekanan/bulanan. (2) Sebuah nol harus
+dibaca silang dari metrik lawannya (publish vs ack) dan pada bucket 60s sebelum dipercaya. (3) Absennya
+entri di Cloud Audit Logs **bukan** bukti negatif untuk operasi data-plane — Pub/Sub tidak meng-audit
+`publish`/`ack`/`pull` kecuali data-access logging dinyalakan, dan hari ini dia tidak menyala: 9 ack
+terukur terjadi pada menit yang sama, `gcloud logging read` untuk `protoPayload.serviceName=
+"pubsub.googleapis.com"` tetap **0 baris**.
+
+**Drill yang kukerjakan (sesuai "ukur dua kali"), dan hasilnya.** Setelah patch, satu insiden dipicu lewat
+jalur yang sama persis dengan produksi (uptime checker → kondisi → channel):
+
+| langkah | angka |
+|---|---|
+| cek `drill-rantai-alarm-2F2YjRZiiDs` (host yang tidak resolve, `tcpCheck:443`, `period:60s`, `STATIC_IP_CHECKERS`) | dibuat 06:52 UTC |
+| policy `drill-rantai-alarm-portfolio`, kondisi MQL identik dengan `portfolio-be-down`, `duration:0s`, dua channel | dibuat 06:56 UTC |
+| insiden OPEN | **6 baris** checker: 4 @ 06:57:51, 2 @ 06:58:27 |
+| publish ke topic | **6** pada bucket `06:59:58` (`code=success`) |
+| ack | ikut naik (06:58:31=2, 06:59:31=4) |
+| email | **mendarat** di `arkanfauzi.sekawanmedia@gmail.com` — disaksikan penerima, karena API notifikasi tidak bisa kupakai (lihat "batas bukti") |
+| pembongkaran | `DELETE` policy dan `DELETE` cek = HTTP 200; tersisa 5 policy + 2 cek produksi, terverifikasi |
+
+Dua penolakan API yang layak dicatat karena bentuknya tidak intuitif: `alertStrategy.autoClose` **1200s
+ditolak** ("at least 30 minutes"), dan `documentation.mimeType` harus `text/markdown`, bukan `TEXT/MARKDOWN`.
+
+**Perubahan produksi yang benar-benar terjadi hari ini, semuanya tercatat.** 3 `PATCH alertPolicies`
+(updateMask `notificationChannels`) → `portfolio-be-down`, `portfolio-fe-down`, `portfolio-5xx` sekarang
+`channels=pubsub+email`, `enabled=true`, terverifikasi lewat **baca ulang** (bukan dari gema respons PATCH).
+Salinan sebelum/sesudah ikut di repo: `docs/evidence/alert-policies-sebelum-email-channel.json`
+(6.420 byte) dan `docs/evidence/alert-policies-sesudah-email-channel.json` (6.669 byte). Keduanya hasil
+`GET alertPolicies?pageSize=100` yang **kubersihkan** sebelum masuk git: `creationRecord`/`mutationRecord`
+(satu-satunya tempat alamat email operator muncul) dibuang, field yang disisakan cuma yang memang kuclaim
+di tabel — `displayName`, `enabled`, `notificationChannels`, `conditions`. Letak di `docs/` juga berarti
+dia tidak memicu deploy (`deploy.yml` mengabaikan `docs/**`).
+Selain itu: 2 resource drill dibuat lalu dihapus, 2 publish manual ke topic (langsung
+ter-ack konsumen), 1 subscription probe fan-out dibuat dan dihapus. Tidak ada perubahan kode atau IAM lain.
+
+**Batas bukti yang kubiarkan terbuka, dan jawabannya cuma satu eksperimen.** Heartbeat tiap 5 menit dari
+instance `3411766485018421527` = `agentic-watchdog-vm` (SA `agentic-watchdog@`), isinya
+`{alive:true, beatMs:5, pubsubSubscriber:true, queueLength:0, uptimeSec:98118, whatsappConnected:true}`
+(terakhir 07:22:21.979Z). Itu menguatkan bahwa konsumen ada di VM itu — tapi tetap **self-report**, dan
+ack tidak menyebut identitas. Karena data-plane tidak ter-audit dan API notifikasi `v1` mati di proyek ini
+(semua jalur 404: `notificationChannels`, `notifications`, `incidents`, `uptimeCheckConfigs`), pertanyaan
+§8 F6 "VM mana yang menyedot `agentic-alerts-sub`" **belum terjawab**, dan hutang grant pubsub di kedua SA
+tetap berdiri. Eksperimen yang menutupnya satu perintah dan bisa dibatalkan — cabut
+`roles/pubsub.subscriber` dari `hermes-openclaw@`, amati satu jendela alarm: ack terus datang → hermes
+inert dan prune aman; ack berhenti → `add-iam-policy-binding` lagi. Risikonya jelas: kalau ternyata hermes
+yang menyedot, rantai putus selama jendela pengamatan. **Itu keputusanmu, bukan yang kukerjakan diam-diam.**
+
+**Reframing yang harus kutelan.** Item "konsumen buntu" di urutan kerja kita tidak memperbaiki apa pun yang
+rusak; yang terjadi adalah **menambah jalur kedua** (pubsub → email terverifikasi) pada tiga policy, plus
+satu koreksi besar di dokumen ini. Nilainya nyata tapi jauh di bawah yang kuklaim kemarin.
+
+**Angka PR #43** (perbaikan bug, jalur terpisah dari bagian ini): run `51860055524` `success` — `go`, `api`,
+`web` hijau, GitGuardian hijau; langkah baru `Kontrak validasi tulis (kosong, kepanjangan, body besar, rute mati)`
+lolos di GitHub, bukan hanya di harness lokal. Baseline kontrak `dead_paths` 9 → **0**.
+
+## 10. N6 — Artifact Registry: temuanku salah sebab, dan tulisannya sudah dieksekusi (2026-10-06, 15:20 – 16:10 UTC)
+
+**Yang kutuliskan sebagai N6:** "Artifact Registry tidak punya kebijakan pembersihan → tumbuh tanpa batas."
+**Salah.** Kebijakannya **sudah ada**, dua-duanya, dengan id yang jelas:
+
+```
+keep-recent-5        = KEEP   mostRecentVersions.keepCount = 5
+delete-older-than-3d = DELETE olderThan = 259200s, tagState = ANY
+```
+
+Yang membuatnya tidak pernah mengerjakan apa pun: `cleanupPolicyDryRun` **menyala**. Kebijakan dalam mode
+dry run itu laporan yang tidak pernah dibaca siapa pun — dia menghitung apa yang *akan* dihapus dan
+tidak menghapus apa pun, selamanya. Jadi temuan yang benar bukan "tidak ada kebijakan", tapi
+**"kebijakan ada tapi non-aktif, dan tidak ada satu pun yang diberi tahu"**.
+
+**Keadaan yang kuukur sebelum menulis apa pun.**
+
+| paket | versi | jumlah `imageSizeBytes` |
+|---|---|---|
+| `backend` | 33 | 745,54 MB |
+| `frontend` | 32 | 10945,25 MB |
+| penjumlahan | 65 | 11690,79 MB |
+| **Repository Size (terukur AR)** | — | **10636,582 MB** |
+
+Selisih 1054,21 MB antara penjumlahan per-versi dan ukuran repository = layer yang **di-dedup**. Angka ini
+penting karena dia membatalkan klaim berikutnya: kebijakan yang sama, kalau dinyalakan, secara nominal
+membuang **10 versi backend (225,63 MB) + 9 versi frontend (2206,32 MB) ≈ 2,43 GB** — tapi karena dedup,
+yang benar-benar kembali ke storage **tidak bisa diketahui sebelum penghapusan terjadi**, dan angka
+atasnya 2,43 GB. Pertumbuhan harian yang kuukur dari tabel push (2026-09-23 … 2026-10-06) ≈ 1 GB/hari,
+puncak 4,43 GB pada 10-05.
+
+**Tulisannya, satu perintah.** `gcloud artifacts repositories set-cleanup-policies portfolio-app
+--project=config-agentic-ubuntu --location=us-central1 --no-dry-run` → rc=0, `Dry run is disabled.`
+Terekam di audit log sebagai `UpdateRepository` pada **2026-10-06T15:32:29.780Z**,
+`permission: artifactregistry.repositories.update`, `granted: true`, isi permintaan
+`cleanupPolicyDryRun: false` beserta kedua kebijakan dikirim ulang utuh (read-modify-write, jadi
+kebijakannya tidak tertimpa kosong).
+
+**Tiga pembacaan untuk membuktikan mati-nya dry run** (bukan dari gema perintah tulis):
+(1) `list-cleanup-policies` mencetak `Dry run is disabled.`; (2) `describe --format=json` menampilkan
+kedua kebijakan dan **tanpa** key `cleanupPolicyDryRun` sama sekali — key hilang = false; (3) audit log
+di atas.
+
+**Empat belokan yang kubayar di jalan ke sana**, ditulis supaya tidak dibelokkan ulang:
+(a) **"gcloud GA tidak bisa mematikan dry run" — salah.** `--no-dry-run` ada. Aku menyimpulkan tidak ada
+karena `--help` (GA/beta/alpha) tidak menampilkan flag cleanup apa pun; yang membuktikan adalah surface
+definition CLI-nya sendiri: `lib/surface/artifacts/repositories/set_cleanup_policies.yaml` →
+`arg_name: dry-run / api_field: repository.cleanupPolicyDryRun / type: bool / default: null`,
+`command_type: UPDATE`, `update.read_modify_update: true`. Bentuk `--dry-run=false` **ditolak**
+(`ignored explicit argument 'false'`) — flag bool di surface ini cuma punya bentuk `--no-`.
+(b) **Rute REST mentok**: discovery `v1` dan `v1beta2` tidak mengekspos sub-sumber `cleanupPolicies`,
+jadi "coba PATCH langsung" bukan jalur yang sah lewat alat yang kupakai.
+(c) **Rute file `--policy` dibuang** setelah tiga penolakan beruntun: objek → `Policy file must contain a
+list of policies`; array tanpa `name` → `Key "name" not found`; setelah `id`→`name` →
+`Invalid action "DELETE"`. Bentuk yang diterima surface itu tidak kubuktikan, dan aku tidak butuh bukti
+itu karena (a) sudah cukup.
+(d) **Loop ukuran sempat menghasilkan `null`** untuk 65 baris karena aku memecah pada `"@sha256:"`
+sedangkan nama versi AR memakai `/versions/sha256:`; `--show-tags`/`--show-untagged` bukan flag yang ada,
+dan `--format=json` memberi `metadata.tags: null`, jadi ukuran harus `versions describe` satu-satu.
+
+**Pertanyaan "resource-ku habis?" — dan jawabannya bukan tentang Artifact Registry.**
+Aku sempat menjawab "yang habis itu uang", dan itu juga perlu dikoreksi. Dari BigQuery FOCUS export
+(`gcp_billing_export_focus_018EEB_36C206_679B7E`, filter `DATE(ChargePeriodStart)` — kolom `ChargeDate`
+tidak ada): total list Rp483.530 sejak hari tagih pertama 2026-09-20, kredit free trial terserap
+**Rp411.886**, effective cost ≈ **Rp0**. Composisinya:
+
+| layanan | biaya (Rp, list) |
+|---|---|
+| Compute Engine | 253.339 |
+| Networking | 127.375 |
+| Cloud SQL | 96.961 |
+| Cloud Run | 4.197 |
+| Vertex | 1.060 |
+| **Artifact Registry** | **596** |
+
+Artifact Registry = **0,12%** dari semuanya. SKU penyimpanan `8502-299A-ABAF` ≈ Rp494/GiB-bulan list, jadi
+menyalakan penghapusan (±2,43 GB) maupun membiarkannya tumbuh itu delta-nya **≈ Rp266/hari ≈ 0,9% dari
+burn** — di bawah noise. Burn Rp30.600–33.800/hari itu datang dari **dua VM yang menyala**:
+`hermes-openclaw-vm` (e2-medium) dan `agentic-watchdog-vm` (e2-micro), us-central1-a. Risikonya bukan
+"kehabisan kredit" tapi **kredit hangus di akhir trial** (±90 hari → sekitar 19 Des 2026): yang Rp411.886
+itu tidak hilang, tapi sisa burn setelahnya berubah jadi tagihan riil, ordo Rp2,8 juta. Yang **tidak bisa
+kuukur dari CLI**: saldo kredit dan tanggal hangus sebenarnya — itu hanya ada di Console → Billing → Credits.
+
+**Batas kebijakan, supaya tidak salah berharap.** AR punya **dua** batas umur (`olderThan: 3d`) dan satu
+batas jumlah (`keep-recent-5`); dia **tidak** punya batas ukuran. `gcloud alpha services quota list
+--service=artifactregistry.googleapis.com --consumer=projects/config-agentic-ubuntu` hanya mengembalikan
+metrik laju permintaan (`project_region_requests/writes/deletes/upstream_host_reads/repo_management/
+prewarm_operations` + `user_*`) — **tidak ada kuota storage maupun jumlah versi**. Artinya pembersihan ini
+bukan penyelamat kuota; dia hanya mengikat steady-state repository di ±9 GiB ≈ **3 hari deploy**.
+
+**Produksi sehat sesudah menulis** (dibaca ulang, bukan disimpulkan): `/api/health` 200
+`{"db":"ok","status":"ok"}`; `/api/cv` 200, 783.896 byte, diawali `%PDF-`; digest yang sedang dipakai
+Cloud Run — `be sha256:0a9528af…`, `fe sha256:6d26e722…` — tetap **peringkat #1** di daftarnya, jadi
+`keep-recent-5` melindunginya. Itu bukan kebetulan yang aman: setiap deploy push `$IMG:${{ github.sha }}`
+dan deploy by digest, jadi versi live selalu yang terbaru.
+
+**Yang masih terbuka, dan itu memang bagian dari rencana.** Penghapusan AR **asinkron**; dokumentasinya
+"applied within approximately one day". Per **2026-10-06T16:09Z** hitungannya masih **33 backend /
+32 frontend**, Repository Size masih 10636,582 MB — jadi belum ada satu byte pun yang benar-benar
+terhapus, dan klaim "N6 selesai" belum boleh ditulis tanpa pembacaan besok (target: 23/23, digest live
+masih ada, `/api/cv` tetap PDF). Kalau hitungannya tidak turun, yang kubaca bukan "kebijakan gagal" tapi
+"penghapusan belum dijadwalkan" — dan itu yang akan kulaporkan apa adanya.
+
+**Yang sengaja tidak kukerjakan (di luar scope, atas katamu).** Guard AR di CI. Dua alasan: `github-watch`
+cuma punya `roles/run.viewer` sehingga tidak bisa membaca AR sama sekali (kalau mau, tempatnya di
+`deploy.yml`, bukan `watch.yml`), dan tidak ada yang terancam — AR 0,12% dari biaya, tanpa kuota, tanpa
+jalur deploy yang bergantung pada jumlah versi.
+
+## 11. Antrean eksekusi — lima PR terbuka, dan apa yang terjadi di tiap merge (ditulis 2026-10-06 16:20 UTC)
+
+Bagian ini rencana kerja, bukan hasil. Yang **sudah kuukur** cuma fakta di "gerbang" dan "konflik" di bawah;
+sisa angkanya akan ditulis dari log run setelah tiap merge, dan kalau tidak cocok dengan ramalan di sini
+yang berubah adalah bagiannya, bukan klaimnya.
+
+**Gerbang yang berlaku di `main`** (dibaca dari `branches/main/protection`): required contexts =
+**`go`, `api`, `web`**, `strict: true` (cabang wajib setara `main` sebelum boleh merge),
+`required_approving_review_count: 0`, `enforce_admins` ada. **GitGuardian bukan required check** —
+itu sebabnya netral di #46 tidak memblokir merge. Job baru `pdf` (#46) dan `vuln` (#47) juga **belum
+required**; dia jalan dan hijau tapi tidak menahan siapa pun.
+
+**Satu koreksi sebelum daftar.** Aku sempat melaporkan GitGuardian #46 "selesai" seolah itu hasil baik.
+Check run-nya `completed` dengan kesimpulan **`neutral`**, `title: "Could not complete scanning of your
+commits"`, `summary: "…Some resources do not exist on GitHub. Please retry."`, `annotations: 0`,
+mulai 08:46:20Z → selesai 09:06:22Z. **Pemindaiannya tidak pernah jalan**, bukan "bersih". Karena dia
+tidak required, merge tetap sah; tapi kalimat "GitGuardian hijau" untuk #46 salah dan tidak boleh
+ditulis ulang. Yang benar: `go`, `api`, `web`, **`pdf`** hijau di #46; GitGuardian tidak terukur.
+
+**Konflik: tidak ada, dan itu diuji bukan ditebak.** Kelima cabang dicoba merge berurutan di cabang
+buang (`git merge --no-ff` sungguhan, lalu cabang buang dihapus): **bersih semua** —
+`fix/validasi-admin-dan-galat-fe` → `feb8789`, `ci/migrate-lewat-image` → `75f10a8`,
+`ci/pdf-dari-image` → `fdffba8`, `ci/gerbang-kerentanan` → `b61a9fc`, `docs/koreksi-rantai-alarm` →
+`5cf9a29`. Alasan strukturnya: #43/#45/#46 tiga-tiganya menyentuh `.github/workflows/ci.yml` tapi
+hunk-nya terpisah jauh (sisip di baris 247; sunting 92 + 174; sambung di ujung 447), dan **hanya #44**
+yang menyentuh `TODO.md`, jadi tidak ada dua PR yang berkelahi di ekor yang sama — itu juga sebabnya
+§10 dan §11 ini kutulis di cabang #44, bukan di `main` langsung.
+
+**Urutan, dan harga tiap langkah.** `deploy.yml` jalan di `push` ke `main` dengan
+`paths-ignore: ["**.md", "docs/**"]`, `concurrency: deploy-production-main`,
+`cancel-in-progress: false`, timeout 30 menit. Jadi:
+
+| # | PR | isi | deploy produksi? |
+|---|---|---|---|
+| 1 | **#43** | `fix(admin)`: validasi tulis, batas body 1 MB, rute mati 404, galat FE | **ya** (menyentuh `go-backend/`, `nextjs-frontend/`) |
+| 2 | retry GitGuardian #46 | bukan merge; cuma minta check suite dijalankan ulang | tidak |
+| 3 | **#45** | `fix(image)`: `ENTRYPOINT` supaya `-migrate` tercapai lewat image | **ya** (`Dockerfile` + `ci.yml`) |
+| 4 | **#46** | `ci(pdf)`: uji `/api/cv` lewat image frontend, bukan magic byte saja | **ya** (`ci.yml`) |
+| 5 | **#47** | `ci(vuln)`: gerbang baseline kerentanan + dependabot | **ya** (`scan.yml`, `dependabot.yml`, `tools/ci/`) |
+| 6 | **#44** | `docs(alarm)` + §10 + §11 | **tidak** — keempat file kena `paths-ignore` |
+
+Empat deploy produksi untuk langkah 1–5, satu untuk #44 = nol. Deploy tidak bisa dihindari dengan
+menyusun ulang PR karena isinya memang kode produksi/CI; `cancel-in-progress: false` berarti mereka
+**antre**, tidak saling batalkan — tiap merge berikutnya menambah ±20 menit ke antrian, jadi
+menggabungkan semuanya sekaligus itu bukan ide.
+
+**Kenapa #46 di posisi 4, bukan belakangan.** Dependabot menjadwalkan npm **Senin 03:33 UTC** dan gomod
+**03:36 UTC** (`day: monday`, `timezone: UTC`, `open-pull-requests-limit: 3` per ekosistem → maksimal
+6 PR terbuka, bukan 3 total). PR bumpan dependabot menjalankan CI dari cabang basis, dan aku ingin
+bump `next`/`puppeteer` pertama itu **sudah** tertangkap job `pdf` — kenaikan versi di dua paket itulah
+yang pernah merusak `standalone` tracing dan tidak pernah kelihatan di lint. Tenggat nyatanya: #46 sudah
+di `main` sebelum **2026-10-12 03:33 UTC**. `scan.yml` dijadwalkan 03:17 UTC, jadi urutan hari Senin
+yang sah: scan menyatakan keadaan → bot menawarkan perbaikan → `pdf` membuktikan perbaikan itu.
+
+**Setiap langkah dipantau, bukan dianggap lulus.** Setelah tiap merge: baca run `deploy.yml` untuk SHA
+merge itu (bukan run terakhir yang kebetulan hijau), lalu baca ulang produksi — `/api/health` 200,
+`/api/cv` diawali `%PDF-`, dan digest live kedua service. Kalau ada yang merah, antrean berhenti di situ
+dan yang dilaporkan adalah penyebab dari log, bukan dugaan.
+
+**Langkah 7, besok (bukan hari ini): verifikasi N6 benar-benar mengeksekusi penghapusan.**
+Setelah ±15:32 UTC + satu jendela "approximately one day": `versions list` diharapkan **backend 33 → 23**
+dan **frontend 32 → 23**, Repository Size turun dari 10636,582 MB ke ordo ±8,2 GB, digest
+`sha256:0a9528af…` (be) dan `sha256:6d26e722…` (fe) **masih ada**, `/api/health` 200, `/api/cv` tetap PDF.
+Nomor 23/23 itu hasil simulasi `olderThan: 259200s` + `keepCount: 5` di atas daftar hari ini — kalau
+nyata berbeda, yang ditulis adalah angka nyata dan alasannya, bukan angka ramalan. Task #6 baru boleh
+berstatus selesai setelah pembacaan ini.
+
+**Langkah 8, setelah daftar di atas tutup: separuh kedua permintaan awal.**
+"…jika sudah tidak ada maka kita langsung perbaiki bugs di website-porto2 langsung." Bug yang tersisa
+itu pekerjaan sebenarnya, dan N1–N7 tidak mengerjakan satu pun darinya. Tidak ada langkah 9 yang
+direncanakan dari sini; apa yang muncul dari bugs itu nanti yang menentukan.
