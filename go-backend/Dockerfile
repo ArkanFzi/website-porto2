@@ -26,4 +26,7 @@ COPY --from=builder /app/main .
 
 EXPOSE 8080
 
-CMD ["./main"]
+# ENTRYPOINT, bukan CMD: dengan CMD ["./main"], `docker run <image> -migrate` mengirim
+# "-migrate" sebagai nama program dan kontainer mati di exec: NOT_FOUND. Cloud Run tidak
+# berubah perilakunya — perintah akhirnya tetap ./main tanpa argumen.
+ENTRYPOINT ["./main"]
