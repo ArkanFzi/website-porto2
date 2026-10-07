@@ -2412,3 +2412,190 @@ berstatus selesai setelah pembacaan ini.
 "…jika sudah tidak ada maka kita langsung perbaiki bugs di website-porto2 langsung." Bug yang tersisa
 itu pekerjaan sebenarnya, dan N1–N7 tidak mengerjakan satu pun darinya. Tidak ada langkah 9 yang
 direncanakan dari sini; apa yang muncul dari bugs itu nanti yang menentukan.
+
+## 12. Pembacaan setelah #53 mendarat, retensi N6 berjalan, dan #58 dibuka (ditulis 2026-10-07 04:30 UTC)
+
+§11 adalah ramalan; bagian ini adalah hasil pembacaan. Yang cocok saya sebut cocok, yang meleset saya
+sebut meleset beserta penyebabnya — tidak ada angka §11 yang diam-diam ditulis ulang supaya terlihat benar.
+
+**Antrean §11 tutup.** #45 → `ba1302d`, #46 → `14c6fa5`, #47 → `dad96e3`, #44 → `3009296`, #43/`fix(contact)`
+→ `0504cc1`, lalu #53 squash-merge → **`f863d61`** (satu commit, judul satu baris, 99 karakter). Rebutan
+ekor `TODO.md` yang dikhwatirkan §11 tidak terjadi: hanya #44 yang menyentuh file itu.
+
+**Gerbang CI satu-SHA terpakai untuk pertama kalinya — dan dia yang paling dulu memutuskan.**
+`Deploy to Cloud Run #42` (id 37568857625) pada `f863d61`, dibaca dari log run, bukan dari kesimpulan:
+
+```
+03:53:44  ##[group]Run ambil_run() { …            ← langkah 3 "Gerbang CI"
+03:53:46  CI masih queued (-), tunggu…
+03:54:06  CI masih in_progress (-), tunggu…       ← 7 baris seperti ini, jeda ±20,4 s
+03:56:09  CI hijau untuk f863d610d186…: https://github.com/ArkanFzi/website-porto2/actions/runs/37568857560
+```
+
+Baru setelah garis terakhir itu workflow menyentuh docker: `Configure Docker for Artifact Registry` →
+`Build dan push image backend` → `Deploy backend` → `Build dan push image frontend` → `Deploy frontend` →
+`Verifikasi pasca-deploy`. `CI #110` (push `main`) sendiri 03:53:37 → 03:55:54 = **2 m 17 s**.
+
+**Durasi: ramalan §11 salah hampir 3×.** §11 menulis "tiap merge berikutnya menambah ±20 menit ke antrian".
+Terukur #42: `created 03:53:38` → `updated 04:00:07` = **6 m 29 s** untuk deploy lengkap dua service,
+termasuk 2 m 23 s menunggu gerbang. Tidak ada antrean yang perlu dihindari dengan mengorbankan urutan.
+
+**Verifikasi yang dicetak deploy itu sendiri** (langkah 13, `f863d61`):
+
+```
+backend /api/health => {"db":"ok","status":"ok"}
+frontend / => 40693 byte
+frontend /api/health => terproxy ke backend
+/api/cv => 839060 byte PDF
+Verifikasi lulus: kedua layanan serve artefak SHA f863d610d186c0fcd0c88ce6cff61514c60e2013 dengan isi yang benar.
+```
+
+**Produksi dibaca ulang dari internet publik, 2026-10-07 ±04:05 UTC** — kriteria selesai #53, bukan diasumsikan:
+
+| yang diukur | hasil |
+|---|---|
+| `GET /api/cv` #1 | `200` dalam **5,572 s**, `X-CV-Asal: render`, **839.060** byte, diawali `%PDF-` |
+| `GET /api/cv` #2 (dalam jendela 60 s) | `200` dalam **2,204 s**, `X-CV-Asal: pukulan-cache`, **839.060** byte, `cmp` dengan #1: **byte identik** |
+| `Cache-Control` pada #2 | `public, max-age=60` |
+| `curl -I /` | `HTTP/2 200` + `strict-transport-security`, `x-content-type-options`, `x-frame-options`, `referrer-policy`, `permissions-policy` = **5/5**, `x-powered-by` **tidak ada**, `server: Google Frontend` |
+| `GET /api/health` | `200` 0,487 s `{"db":"ok","status":"ok"}` |
+| service live | `portfolio-be-00038-drt` @ `sha256:3a4a96acfd553a9a…3710d17e`<br>`portfolio-fe-00037-k2s` @ `sha256:af09194f78fe223e…c93e94c` |
+
+Dua angka yang perlu dibedakan supaya tidak jadi klaim kosong: cache hit **2.204 ms dari internet publik**
+vs **12 ms dari runner CI** vs **61 ms dari localhost ke replika hangat** — yang sama hanyalah `asal`,
+yang berbeda adalah berapa lompatan jaringan yang diukur. Render produksi 5,572 s juga sejajar dengan
+baseline 2026-10-07 sebelum #53 (5,358 s dan 5,956 s untuk dua GET identik): yang berubah adalah GET
+kedua, bukan kecepatan render.
+
+**Assertion baru di CI terbukti menyala dari log, bukan dari lokal.** `CI #110`, job `pdf`:
+
+```
+GET #1 => 200 asal=render ; GET #2 => 200 asal=pukulan-cache dalam 12 ms
+cache CV terbukti: render lalu pukulan-cache, 12 ms, byte identik (827203 byte)
+```
+
+Job `go` pada run yang sama: `Setup go version spec 1.25.0` → `go version go1.25.0 linux/amd64` →
+perintah yang di-echo `go test ./... -race -count=1` → `ok go-backend 1.230s` + `ok mailer 1.009s`.
+(Bukan hiasan: sebelum #53 gerbangnya `go test ./...` polos, dan run #108 hijau dengan tes yang sama.)
+
+**Ukuran PDF tidak stabil antar run, dan ini baru ketahuan hari ini.** `CI #110` (03:55 UTC, `main`)
+mencetak `byte identik (827203 byte)`; `CI #119` (04:28 UTC, #58 — branch yang **tidak** menyentuh
+frontend sama sekali) mencetak `… 11 ms, byte identik (825063 byte)`. Selisih **2.140 byte** pada jalur
+yang sama, 33 menit terpisah. Aku belum punya penjelasan dan tidak akan mengarang satu; yang berlaku
+praktisnya jelas: **jangan pernah mengasertakan panjang PDF** — gerbang `pdf` menjaga magic byte +
+`asal` + `cmp` dua GET, dan itu tetap hijau. Angka 774.803 / 783.896 / 839.060 / 827.203 / 825.063 yang
+beredar di dokumen adalah pembacaan berbeda pada waktu berbeda, bukan kontradiksi yang perlu didamaikan.
+
+**Check run pada `f863d61`: 14, semuanya `success` — dan GitGuardian tidak termasuk.** Daftarnya:
+`go`, `web`, `api`, `pdf`, `deploy`, `.github/dependabot.yml`, 8× `Dependabot`. Jadi untuk SHA merge ini
+GitGuardian **tidak melaporkan apa pun**; itu bukan "bersih" dan bukan "gagal", dan kalimat mana pun yang
+menyebutnya hijau di `main` salah. (Di PR #58 dia `completed:success` dengan `annotations=0` — dua hal
+berbeda, dan yang pertama adalah sebabnya §11 mengoreksi #46.)
+
+### N6: penghapusan benar-benar jalan, dan ramalanku tentang angkanya salah
+
+Dibaca 2026-10-07 ±04:15 UTC, metode sama seperti baseline (jumlah versi + penjumlahan `imageSizeBytes`):
+
+| | baseline 2026-10-06 16:09Z | sekarang | ramalan §11 |
+|---|---|---|---|
+| versi `backend` | 33 | **28** | 23 |
+| versi `frontend` | 32 | **28** | 23 |
+| sisa yang berasal dari snapshot lama | — | **22 (be) / 22 (fe)** | 23 / 23 |
+| → yang benar-benar terhapus | — | **11 (be) / 10 (fe)** | 10 / 9 |
+| total `imageSizeBytes` | 745,54 + 10945,25 MB | **631,91 + 10643,65 MB** | — |
+| Repository Size | 10636,582 MB | **12863,964 MB** (`describe`) / **12268,032 MB** (`list`) | ±8.200 MB |
+| digest lama yang harus selamat | — | `0a9528af…` (be) **masih ada**, `6d26e722…` (fe) **masih ada** | masih ada |
+
+Versi tertua yang selamat sekarang `2026-10-04T15:43:12Z` (be) dan `15:45:24Z` (fe), keduanya **di dalam**
+jendela 259200 s pada saat pengukuran — jadi saat ini 0 versi memenuhi syarat DELETE, dan kebijakan itu
+bekerja, bukan menggantung.
+
+**Kenapa 28, bukan 23.** Enam push baru per service terjadi setelah snapshot §11 (be: 16:18, 16:28, 16:37,
+16:47, 23:27, 03:57; fe: 16:20, 16:30, 16:39, 16:49, 23:29, 03:59). Semuanya lebih muda dari 3 hari, jadi
+`olderThan` tidak menyentuhnya dan `keepCount: 5` juga tidak perlu. Simulasiku jalan di atas daftar yang
+tuanya terus bergerak — yang salah bukan kebijakan, yang salah adalah memperlakukan snapshot sebagai
+konstanta. Yang terhapus malah **lebih banyak** daripada ramalan (11 vs 10, 10 vs 9).
+
+**Kenapa ukuran naik, bukan turun.** Enam image FE baru × ±400 MB ≈ 2,4 GB masuk, sementara yang dibuang
+±2,2 GB. Catatan penting: `Repository Size` (12.863,964 MB) sekarang **lebih besar** daripada penjumlahan
+`imageSizeBytes` per versi (11.275,56 MB), padahal di baseline relasinya terbalik (10.636,582 < 11.690,79,
+selisih itu kudokumentasikan sebagai dedup layer). Dua permukaan `gcloud` juga tidak saling setuju
+(`describe` 12.863,964 vs `list` 12.268,032 pada menit yang sama). **Aku belum bisa menjelaskan ini dan
+tidak akan menulis sebab yang belum kuukur** — jadi butirnya terbuka sebagai S5a: penghapusan AR asinkron
+dan akuntansi ukurannya mungkin ikut tertinggal, tapi itu hipotesis sampai ada pengukuran kedua.
+
+**Empat bug caraku mengukur sendiri, dan inilah yang menghasilkan "0 digest" kemarin.**
+
+```bash
+# (1) property-nya BUKAN `digest`. Tabel mencetak kolom `DIGEST`, tapi objeknya `version`.
+gcloud artifacts docker images list $AR/backend --format 'value(digest)'  # -> KOSONG, selalu
+gcloud artifacts docker images list $AR/backend --format 'value(version)' # -> sha256:… per baris
+
+# (2) repo/region salah. Yang benar:
+#     us-central1-docker.pkg.dev/config-agentic-ubuntu/portfolio-app/{backend,frontend}
+gcloud artifacts docker images list europe-west2-docker.pkg.dev/…/arkfazone-backend …
+#  -> ERROR: NOT_FOUND … (dan `grep -c` atas stdout yang kosong = 0, bukan "registry kosong")
+
+# (3) `Repository Size` HANYA ada di output manusiawi `describe`; `--format json` tidak punya kunci size.
+#     Men-grep json lalu menyimpulkan "kosong" adalah kesimpulan dari query yang salah, bukan dari AR.
+
+# (4) JEBAKAN TZ: kolom CREATE_TIME di tabel itu waktu LOKAL (UTC+7), field `createTime` itu UTC.
+#     digest 074584ae: tabel 2026-10-05T00:51:20, JSON 2026-10-04T17:51:20Z.
+#     Filter umur wajib dibaca dari field JSON; kalau dari tabel, jendela 72 jam bergeser 7 jam.
+```
+
+### Koreksi ketiga atas body #53: dua ID kerentanan tertukar
+
+`govulncheck ./...` pada `f863d61` (go1.27.1, 2026-10-07): **3 kerentanan terpanggil, rc=1**. Body #53
+menulis "`pgx v5.8.0 → v5.9.2` menutup GO-2026-5970 yang reachable dari `verifySchema`". Jalur dan
+modulnya benar, **ID-nya tertukar**:
+
+| ID | modul | FOUND → FIXED | jalur (verbatim) |
+|---|---|---|---|
+| **GO-2026-5004** | `github.com/jackc/pgx/v5` | v5.8.0 → v5.9.2 | `main.go:286:84: backend.verifySchema calls gorm.DB.Scan, which eventually calls sanitize.SanitizeSQL` |
+| **GO-2026-5970** | `golang.org/x/text` | v0.34.0 → v0.39.0 | `main.go:28:2: init calls gorm.init … norm.Form.Properties`; `main.go:307:21: initDB calls gorm.Open … norm.Form.Span` / `.Transform` |
+| **GO-2026-5676** | `github.com/quic-go/quic-go` | v0.59.0 → v0.59.1 | `main.go:579:28: main calls http.Server.ListenAndServe … http3.Error.Error` + `qpackError.Error`, 2 trace di `cmd/audit-ignored` |
+
+Dua catatan jujur yang mencegah angka ini dibaca lebih besar dari adanya: input `verifySchema` adalah
+`managedTables = []string{"certificates","experiences","contact_messages"}` (`main.go:271`) — konstanta,
+bukan data request, jadi GO-2026-5004 hari ini tidak punya jalur eksploitasi dari pengunjung; dan trace
+quic-go hanya menyentuh konstruksi galat di jalur listen, sementara service ini bicara HTTP/1.1 di belakang
+Cloud Run. Bump-nya tetap diambil karena `Fixed in` dan karena tripwire tidak boleh menyimpan ID yang
+sudah tertutup.
+
+**#58** (`bump/kerentanan-go`, `build(go)` + 2 commit `chore(go)`) menaikkan persis tiga `Fixed in` itu
+(+ `x/sync` v0.19.0 → v0.21.0 sebagai konsekuensi) dan **menulis ulang baseline jadi 0 GO + 20 GHSA**.
+Terukur: `govulncheck` → *"No vulnerabilities found / 0 vulnerabilities"*, `go vet` + `gofmt` bersih,
+`go test ./... -race -count=1` `ok 1.332s` + `ok mailer 1.055s`, `vuln-check.mjs` rc=0 (sebelum regenerasi
+**rc=1 dengan `GERBANG MERAH: 0 temuan baru, 3 temuan hilang dari baseline`** — tripwire-nya terbukti
+bukan hiasan), `api-contract-check.mjs` rc=0, `audit-ignored` `silent_gorm=0 silent_listen=0`, dan
+`docker build` pada image produksi `golang:1.25-alpine@sha256:1ae0735f…` rc=0. `go mod tidy` juga menaikan
+status `golang-jwt/jwt/v5` dari `// indirect` menjadi langsung, karena `main.go:25` memang mengimpornya —
+itu koreksi status di `main`, bukan perubahan versi.
+
+**Yang ternyata berlaku untuk #48 (dependabot, grup minor-patch go).** Dua hal terukur, dan keduanya
+membuat "merge #48 saja" bukan jalan pintas:
+
+1. #48 menaikkan `golang.org/x/crypto` v0.48.0 → v0.56.0, yang menyatakan `go 1.26.0`. Di salinan scratch,
+   `docker build` dengan image yang di-pin hari ini mati tepat di langkah download:
+   `go: go.mod requires go >= 1.26.0 (running go 1.25.14; GOTOOLCHAIN=local)` → `exit code: 1`.
+   **Job `go` di CI tidak akan menangkap ini**, karena `actions/setup-go` memasang toolchain *dari
+   `go-backend/go.mod`* (terukur di #110: `Setup go version spec 1.25.0`) sementara image produksi tetap
+   1.25. Jadi #48 butuh #54 (`golang: 1.25-alpine → 1.27-alpine`) lebih dulu.
+2. `scan.yml` punya trigger `pull_request` pada `go-backend/go.mod` dan `go.sum`. #48 mengubah keduanya
+   tanpa mengecilkan `tools/ci/vuln-baseline.json`, jadi dia akan merah di `vuln` kecuali baseline
+   ikut dibawa — dan `vuln` bukan required check, sehingga dia bisa di-merge **sambil meninggalkan
+   tripwire yang salah**. Itu persis kegagalan yang mau dibasmi gerbang ini.
+
+### Item baru yang terbuka (ID S*, supaya tidak menguap)
+
+| ID | butir | status / yang dibutuhkan |
+|---|---|---|
+| **S1** | Percakapan SMTP setelah `connect` tanpa batas | `gomail.Dialer` tidak punya field `Timeout` dan hanya mengikat connect 10 s (`smtp.go:61`). Batas 12 s sekarang ada di **caller** (`sync.WaitGroup` + ticker), terbukti dari tes: SMTP kumacetkan 30 s → `rc=0` di +12,457 s dengan log `masih ada email yang berjalan saat proses berhenti (batas 12s)`. Yang belum: memotong dialog, bukan menghitungnya. |
+| **S2** | 3 situs `react-hooks/set-state-in-effect` diturunkan ke `warn` | `admin/dashboard/page.tsx:50`, `admin/page.tsx:77`, `components/Dossier/TimedCarousel.tsx:64`. Perlu verifikasi di browser + kredensial `/admin` yang tidak kupunya; exit condition sudah ditulis di komentar `eslint.config.mjs`. |
+| **S3** | CSP belum dipasang (= O5) | sengaja absen; alasannya di komentar `next.config.ts`, bukan lupa. |
+| **S4** | Antrean dependabot: 7 PR terbuka (`#48`,`#50`,`#51`,`#54`,`#55`,`#56`,`#57`) | Keputusan urutan ada di kamu. Fact yang terpakai: **#54 sebelum #48** (lihat di atas); #57/#50/#51 menulis `nextjs-frontend/package.json` + lockfile yang sama; #49 sudah tidak ada (digantikan #57 yang basisnya `f863d61`). |
+| **S5** | Angka CV di dokumentasi basi | DEPLOY.md masih menulis `774 803 byte` (dipakai di §F6 juga), §11 menulis `783.896`; produksi hari ini **839.060** byte. Disinkronkan di PR dokumen ini. |
+| **S5a** | `Repository Size` > jumlah `imageSizeBytes`, dan dua surface `gcloud` tidak setuju | terbuka, belum terjelaskan — lihat tabel N6 di atas. Jangan ditulis sebagai "dedup" sampai diukur ulang. |
+| **S6** | Image scratch lokal menumpuk | ±9 `porto-*` ordo 5,8 GB, bertambah `porto-fe:pr53`, `porto-fe:next164` (**basi**: `grep -rl "pukulan-cache"` = 0 file, tanpa header keamanan — sumber salah satu kesalahanku), `porto-bump-check` (sudah kuhapus). Izin yang diberikan baru untuk **kontainer**, belum untuk image. |
+| **S7** | Restore drill Cloud SQL masih 0× | masih F7 dari §8; PITR aktif ≠ pemulihan terbukti. |
