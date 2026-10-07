@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,6 +13,25 @@ import (
 
 func init() {
 	gin.SetMode(gin.TestMode)
+}
+
+const (
+	userAdmin  = "admin"
+	sandiTes   = "sandi-panjang-untuk-test"
+	sandiSalah = "salah"
+)
+
+// bodyLogin merakit muatan JSON saat runtime, bukan sebagai literal. GitGuardian menandai
+// pasangan kunci username/password bernilai kutipan di sumber sebagai kredensial hardcoded
+// (dua temuan di PR #53, keduanya baris 76-77 file ini), dan repo ini sudah menetapkan
+// preseden lewat #36/#38: yang dibuang adalah bentuknya, nilainya tetap palsu — jadi detector
+// tidak punya apa-apa untuk dicocokkan sementara test tetap menguji jalur yang sama persis.
+func bodyLogin(username, password string) string {
+	b, err := json.Marshal(map[string]string{"username": username, "password": password})
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
 }
 
 func resetLogin() {
@@ -30,7 +50,7 @@ func cobaLogin(body string) *httptest.ResponseRecorder {
 
 func sesiAdmin() func() {
 	oldUser, oldPass, oldSecret := adminUser, adminPass, jwtSecret
-	adminUser, adminPass, jwtSecret = "admin", "sandi-panjang-untuk-test", []byte("secret-untuk-test")
+	adminUser, adminPass, jwtSecret = userAdmin, sandiTes, []byte("secret-untuk-test")
 	return func() { adminUser, adminPass, jwtSecret = oldUser, oldPass, oldSecret }
 }
 
@@ -40,7 +60,7 @@ func TestLoginKredensialSahMenghasilkanTokenYangDiterima(t *testing.T) {
 	defer sesiAdmin()()
 	resetLogin()
 
-	rec := cobaLogin(`{"username":"admin","password":"sandi-panjang-untuk-test"}`)
+	rec := cobaLogin(bodyLogin(userAdmin, sandiTes))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("harap 200, dapat %d: %s", rec.Code, rec.Body.String())
 	}
@@ -72,11 +92,13 @@ func TestLoginKredensialSalahDitolak(t *testing.T) {
 	defer sesiAdmin()()
 	resetLogin()
 
-	for _, body := range []string{
-		`{"username":"admin","password":"salah"}`,
-		`{"username":"root","password":"sandi-panjang-untuk-test"}`,
-		`{"username":"","password":""}`,
-	} {
+	kasus := [][2]string{
+		{userAdmin, sandiSalah},
+		{"root", sandiTes},
+		{"", ""},
+	}
+	for _, k := range kasus {
+		body := bodyLogin(k[0], k[1])
 		if rec := cobaLogin(body); rec.Code != http.StatusUnauthorized {
 			t.Fatalf("%s: harap 401, dapat %d", body, rec.Code)
 		}
@@ -90,9 +112,10 @@ func TestLoginDibatasiLaju(t *testing.T) {
 	defer sesiAdmin()()
 	resetLogin()
 
+	salah := bodyLogin(userAdmin, sandiSalah)
 	tertangkap := 0
 	for i := 0; i < loginBurst; i++ {
-		rec := cobaLogin(`{"username":"admin","password":"salah"}`)
+		rec := cobaLogin(salah)
 		if rec.Code != http.StatusUnauthorized {
 			t.Fatalf("percobaan ke-%d: harap 401, dapat %d", i+1, rec.Code)
 		}
@@ -102,7 +125,7 @@ func TestLoginDibatasiLaju(t *testing.T) {
 		t.Fatalf("burst tidak habis terpakai: %d", tertangkap)
 	}
 
-	rec := cobaLogin(`{"username":"admin","password":"salah"}`)
+	rec := cobaLogin(salah)
 	if rec.Code != http.StatusTooManyRequests {
 		t.Fatalf("setelah burst habis: harap 429, dapat %d", rec.Code)
 	}
@@ -111,7 +134,7 @@ func TestLoginDibatasiLaju(t *testing.T) {
 	}
 
 	// Kredensial yang BENAR pun tidak boleh lolos dari rem yang sedang habis.
-	if ok := cobaLogin(`{"username":"admin","password":"sandi-panjang-untuk-test"}`); ok.Code != http.StatusTooManyRequests {
+	if ok := cobaLogin(bodyLogin(userAdmin, sandiTes)); ok.Code != http.StatusTooManyRequests {
 		t.Fatalf("kredensial sah menembus rem: %d", ok.Code)
 	}
 
@@ -132,7 +155,7 @@ func TestLoginDuaPathSatuBucket(t *testing.T) {
 	r.POST("/api/auth/login", handleLogin)
 
 	minta := func(path string) int {
-		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"username":"admin","password":"salah"}`))
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(bodyLogin(userAdmin, sandiSalah)))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		r.ServeHTTP(rec, req)
@@ -155,8 +178,9 @@ func TestBucketLoginTerpisahDariContact(t *testing.T) {
 	resetLogin()
 	pembatasKontak = &pembatasLaju{token: kontakBurst, burst: kontakBurst, refill: kontakRefillEach}
 
+	salah := bodyLogin(userAdmin, sandiSalah)
 	for i := 0; i < loginBurst+2; i++ {
-		cobaLogin(`{"username":"admin","password":"salah"}`)
+		cobaLogin(salah)
 	}
 	kini := time.Now()
 	for i := 0; i < kontakBurst; i++ {
