@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"crypto/subtle"
 	"errors"
 	"flag"
 	"fmt"
@@ -8,10 +10,12 @@ import (
 	"net/http"
 	"net/mail"
 	"os"
+	"os/signal"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -99,6 +103,20 @@ func (p *pembatasLaju) boleh(kini time.Time) bool {
 }
 
 var pembatasKontak = &pembatasLaju{token: kontakBurst, burst: kontakBurst, refill: kontakRefillEach}
+
+// Satu bucket untuk login, terpisah dari contact: kalau digabung, banjir percobaan kata kunci
+// bisa bersembunyi di belakang kuota pesan yang sah.
+//
+// Global, bukan per-IP, dengan alasan yang sama seperti contact (pool egress Cloud Run + XFF
+// boleh diisi pengirim). Konsekuensinya perlu disebut: penyerang yang menembak /api/login
+// langsung bisa membuat admin antre di belakang bucket ini. Jendela refill sengaja pendek
+// supaya harga kunciannya beberapa detik, bukan beberapa menit.
+const (
+	loginBurst      = 8
+	loginRefillEach = 15 * time.Second
+)
+
+var pembatasLogin = &pembatasLaju{token: loginBurst, burst: loginBurst, refill: loginRefillEach}
 
 type isianTeks struct {
 	Label string
@@ -198,6 +216,56 @@ type ContactMessage struct {
 }
 
 var DB *gorm.DB
+
+// simpanPesan dan pengirimEmail adalah titik sisip test. Di produksi keduanya implementasi
+// asli (INSERT dan SMTP Gmail), tapi "SIGTERM datang saat email masih di udara" tidak bisa
+// dibuktikan dengan akun Gmail sungguhan pada jam sungguhan — hanya dengan stub yang
+// tertahan sengaja.
+var (
+	simpanPesan   = func(row *ContactMessage) error { return DB.Create(row).Error }
+	pengirimEmail = mailer.SendEmail
+)
+
+// undungEmail menghitung pengiriman yang masih berjalan. Pengunjung sudah pulang dengan
+// 201 sebelum SMTP selesai, dan instance Cloud Run bisa mati kapan saja setelah SIGTERM:
+// tanpa hitungan ini, pesan yang sudah tersimpan di DB bisa hilang diam-diam dari inbox
+// admin justru pada saat scale-down (saat paling sibuk, justru saat instance dimatikan).
+//
+// Pointer, supaya tiap siklus hidup — satu proses, atau satu test — memegang grup
+// sendiri: kontrak sync.WaitGroup melarang Add pada grup yang masih ada Wait tertinggal
+// dari set sebelumnya, dan memakai satu nilai paket membuatnya langgar diam-diam.
+var undungEmail = &sync.WaitGroup{}
+
+// batasMatikan adalah total waktu yang kita berikan untuk menutup bersih: request yang
+// sedang jalan plus email yang sedang dikirim. Angka ini di bawah grace period default
+// platform, jadi yang memutuskan kapan proses berhenti masih kita — dan kegagalannya
+// masih tercatat di log, bukan digantikan SIGKILL yang senyap.
+const batasMatikan = 12 * time.Second
+
+// tungguSelesai memberi batas waktu pada sebuah WaitGroup. false berarti masih ada yang
+// berjalan saat batas habis: lebih baik pulang dan menyebutnya, daripada menggantung
+// selamanya karena satu percakapan SMTP yang tidak pernah dijawab.
+func tungguSelesai(wg *sync.WaitGroup, batas time.Duration) bool {
+	selesai := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(selesai)
+	}()
+	if batas <= 0 {
+		select {
+		case <-selesai:
+			return true
+		default:
+			return false
+		}
+	}
+	select {
+	case <-selesai:
+		return true
+	case <-time.After(batas):
+		return false
+	}
+}
 
 // managedTables adalah tabel yang harus sudah ada sebelum satu request pun dilayani.
 var managedTables = []string{"certificates", "experiences", "contact_messages"}
@@ -492,88 +560,142 @@ func main() {
 	})
 
 	//api contact
-	api.POST("/contact", func(c *gin.Context) {
-		var msg struct {
-			Name    string `json:"name"`
-			Email   string `json:"email"`
-			Subject string `json:"subject"`
-			Body    string `json:"body"`
-		}
-
-		if err := c.ShouldBindJSON(&msg); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Format data salah"})
-			return
-		}
-
-		row := ContactMessage{
-			Name:    strings.TrimSpace(msg.Name),
-			Email:   strings.ToLower(strings.TrimSpace(msg.Email)),
-			Subject: strings.TrimSpace(msg.Subject),
-			Body:    strings.TrimSpace(msg.Body),
-		}
-
-		if row.Name == "" || row.Email == "" || row.Body == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Nama, email, dan pesan wajib diisi"})
-			return
-		}
-		if _, err := mail.ParseAddress(row.Email); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Format email tidak valid"})
-			return
-		}
-		if utf8.RuneCountInString(row.Name) > 200 ||
-			utf8.RuneCountInString(row.Email) > 320 ||
-			utf8.RuneCountInString(row.Subject) > 500 ||
-			utf8.RuneCountInString(row.Body) > 20000 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Isian terlalu panjang"})
-			return
-		}
-
-		// Dicek setelah validasi isian: muatan cacat sudah pulang dengan 400 tanpa menghabiskan
-		// token, jadi yang dihitung hanya pesan yang benar-benar akan disimpan dan dikirim.
-		if !pembatasKontak.boleh(time.Now()) {
-			log.Printf("contact: laju ditolak (client %s)", c.ClientIP())
-			c.Header("Retry-After", strconv.Itoa(int(kontakRefillEach.Seconds())))
-			c.JSON(http.StatusTooManyRequests, gin.H{"error": "Terlalu banyak pesan dalam waktu singkat, coba lagi beberapa menit"})
-			return
-		}
-
-		if err := DB.Create(&row).Error; err != nil {
-			log.Printf("contact: gagal menyimpan pesan: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Pesan gagal tersimpan, coba lagi"})
-			return
-		}
-
-		adminEmail := getEnv("ADMIN_EMAIL", "muhammadarkanfauzi9@gmail.com")
-		fullBody := fmt.Sprintf("Pesan dari: %s (%s)\n\nIsi Pesan:\n%s", row.Name, row.Email, row.Body)
-
-		go func() {
-			err := mailer.SendEmail(adminEmail, row.Email, "Contact Form: "+row.Subject, fullBody)
-			switch {
-			case err == nil:
-				log.Printf("contact %s: email terkirim ke %s", row.ID, adminEmail)
-			case errors.Is(err, mailer.ErrNotConfigured):
-				log.Printf("contact %s: email dilewati, %v", row.ID, err)
-			default:
-				log.Printf("contact %s: gagal kirim email: %v", row.ID, err)
-			}
-		}()
-
-		c.JSON(http.StatusCreated, gin.H{
-			"id":      row.ID,
-			"message": "Pesan kamu tersimpan, terima kasih!",
-		})
-	})
+	api.POST("/contact", handleContact)
 
 	log.Println("Server running on port 8080")
-	// gin mengembalikan error bind, dan membuangnya berarti "address already in use"
-	// keluar dengan rc=0 — container yang tidak pernah mendengarkan terlihat sehat.
-	if err := r.Run(":8080"); err != nil {
-		log.Fatalf("server: gagal listen di :8080: %v", err)
+	// http.Server, bukan r.Run: r.Run tidak pernah melihat SIGTERM, jadi request yang sedang
+	// berjalan dan email yang sedang dikirim berhenti di tengah percakapan tanpa jejak di log.
+	srv := &http.Server{Addr: ":8080", Handler: r}
+
+	sinyal, batalkanSinyal := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer batalkanSinyal()
+
+	dengar := make(chan error, 1)
+	go func() {
+		// http.ErrServerClosed adalah pulang yang diharapkan saat Shutdown dipanggil.
+		// Error lain berarti tidak pernah mendengarkan, dan membuangnya berarti
+		// "address already in use" keluar dengan rc=0 — kontainer yang tidak pernah
+		// melayani terlihat sehat.
+		err := srv.ListenAndServe()
+		if errors.Is(err, http.ErrServerClosed) {
+			err = nil
+		}
+		dengar <- err
+	}()
+
+	select {
+	case <-sinyal.Done():
+		log.Println("server: sinyal berhenti diterima, menutup pelan-pelan")
+	case err := <-dengar:
+		if err != nil {
+			log.Fatalf("server: gagal listen di :8080: %v", err)
+		}
+		return
 	}
+
+	tenggat := time.Now().Add(batasMatikan)
+	tutupCtx, batalkanTutup := context.WithDeadline(context.Background(), tenggat)
+	defer batalkanTutup()
+	if err := srv.Shutdown(tutupCtx); err != nil {
+		log.Printf("server: request belum selesai dalam %v: %v", batasMatikan, err)
+	}
+
+	// Sisa tenggat dipakai untuk email, bukan tenggat baru: total waktu mati tetap batasMatikan.
+	if sisa := time.Until(tenggat); !tungguSelesai(undungEmail, sisa) {
+		log.Printf("contact: masih ada email yang berjalan saat proses berhenti (batas %v)", batasMatikan)
+	}
+	log.Println("server: berhenti")
 
 }
 
+// handleContact adalah satu-satunya jalur publik yang menulis ke DB dan memicu SMTP,
+// jadi validasi isian dan batas laju harus selesai sebelum keduanya disentuh.
+func handleContact(c *gin.Context) {
+	var msg struct {
+		Name    string `json:"name"`
+		Email   string `json:"email"`
+		Subject string `json:"subject"`
+		Body    string `json:"body"`
+	}
+
+	if err := c.ShouldBindJSON(&msg); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Format data salah"})
+		return
+	}
+
+	row := ContactMessage{
+		Name:    strings.TrimSpace(msg.Name),
+		Email:   strings.ToLower(strings.TrimSpace(msg.Email)),
+		Subject: strings.TrimSpace(msg.Subject),
+		Body:    strings.TrimSpace(msg.Body),
+	}
+
+	if row.Name == "" || row.Email == "" || row.Body == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Nama, email, dan pesan wajib diisi"})
+		return
+	}
+	if _, err := mail.ParseAddress(row.Email); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Format email tidak valid"})
+		return
+	}
+	if utf8.RuneCountInString(row.Name) > 200 ||
+		utf8.RuneCountInString(row.Email) > 320 ||
+		utf8.RuneCountInString(row.Subject) > 500 ||
+		utf8.RuneCountInString(row.Body) > 20000 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Isian terlalu panjang"})
+		return
+	}
+
+	// Dicek setelah validasi isian: muatan cacat sudah pulang dengan 400 tanpa menghabiskan
+	// token, jadi yang dihitung hanya pesan yang benar-benar akan disimpan dan dikirim.
+	if !pembatasKontak.boleh(time.Now()) {
+		log.Printf("contact: laju ditolak (client %s)", c.ClientIP())
+		c.Header("Retry-After", strconv.Itoa(int(kontakRefillEach.Seconds())))
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": "Terlalu banyak pesan dalam waktu singkat, coba lagi beberapa menit"})
+		return
+	}
+
+	if err := simpanPesan(&row); err != nil {
+		log.Printf("contact: gagal menyimpan pesan: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Pesan gagal tersimpan, coba lagi"})
+		return
+	}
+
+	adminEmail := getEnv("ADMIN_EMAIL", "muhammadarkanfauzi9@gmail.com")
+	fullBody := fmt.Sprintf("Pesan dari: %s (%s)\n\nIsi Pesan:\n%s", row.Name, row.Email, row.Body)
+
+	// Add dilakukan sinkron di sini, bukan di dalam goroutine: kalau tidak, proses yang
+	// menutup bisa melihat hitungan nol tepat pada saat pengiriman baru saja dimulai.
+	undungEmail.Add(1)
+	go func() {
+		defer undungEmail.Done()
+		err := pengirimEmail(adminEmail, row.Email, "Contact Form: "+row.Subject, fullBody)
+		switch {
+		case err == nil:
+			log.Printf("contact %s: email terkirim ke %s", row.ID, adminEmail)
+		case errors.Is(err, mailer.ErrNotConfigured):
+			log.Printf("contact %s: email dilewati, %v", row.ID, err)
+		default:
+			log.Printf("contact %s: gagal kirim email: %v", row.ID, err)
+		}
+	}()
+
+	c.JSON(http.StatusCreated, gin.H{
+		"id":      row.ID,
+		"message": "Pesan kamu tersimpan, terima kasih!",
+	})
+}
+
 func handleLogin(c *gin.Context) {
+	// Dijaga sebelum apa pun: yang dihitung adalah percobaan kata kunci, dan muatan cacat
+	// tidak boleh memberi siapa pun sejumlah tak terbatas tebakan gratis.
+	if !pembatasLogin.boleh(time.Now()) {
+		log.Printf("login: laju percobaan ditolak (client %s)", c.ClientIP())
+		c.Header("Retry-After", strconv.Itoa(int(loginRefillEach.Seconds())))
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": "Terlalu banyak percobaan login, coba lagi beberapa saat"})
+		return
+	}
+
 	var creds struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
@@ -583,18 +705,30 @@ func handleLogin(c *gin.Context) {
 		return
 	}
 
-	if creds.Username == adminUser && creds.Password == adminPass {
-		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-			"username": creds.Username,
-			"exp":      time.Now().Add(time.Hour * 24).Unix(), // 1 day expiration
-		})
-		tokenString, err := token.SignedString(jwtSecret)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not generate token"})
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"token": tokenString})
-	} else {
+	if !kredensialSah(creds.Username, creds.Password) {
+		// Yang gagal harus terdengar di log: tanpa baris ini, satu kampanye tebakan kata
+		// kunci tidak meninggalkan jejak sama sekali.
+		log.Printf("login: percobaan gagal (client %s, username %q)", c.ClientIP(), creds.Username)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
+		return
 	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"username": creds.Username,
+		"exp":      time.Now().Add(time.Hour * 24).Unix(), // 1 day expiration
+	})
+	tokenString, err := token.SignedString(jwtSecret)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not generate token"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"token": tokenString})
+}
+
+// kredensialSah membandingkan dua secret tanpa bocor lewat waktu: `==` berhenti pada byte
+// pertama yang beda, dan satu-satunya kunci admin ini tidak boleh bisa ditebak per-byte.
+func kredensialSah(username, password string) bool {
+	samaUser := subtle.ConstantTimeCompare([]byte(username), []byte(adminUser))
+	samaSandi := subtle.ConstantTimeCompare([]byte(password), []byte(adminPass))
+	return samaUser&samaSandi == 1
 }

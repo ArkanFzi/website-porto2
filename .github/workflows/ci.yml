@@ -50,7 +50,11 @@ jobs:
         run: |
           go vet ./...
           go build ./...
-          go test ./...
+          # -race bukan hiasan: data race pada sync.WaitGroup pemegang email in-flight hanya
+          # tertangkap di mesin lokal karena `go test ./...` polos. Run #108 hijau dengan tes
+          # yang sama, jadi gerbangnya yang lebih lemah dari buktinya. -count=1 menutup cache
+          # hasil tes supaya angka ini benar-benar dari SHA yang dites.
+          go test ./... -race -count=1
 
   web:
     name: web
@@ -812,6 +816,24 @@ jobs:
           [ "$code" = "200" ] || { echo "bukan 200; body: $(head -c 300 /tmp/cv.pdf)"; exit 1; }
           grep -qi '^content-type: application/pdf' /tmp/cv.h || { echo "header bukan application/pdf:"; cat /tmp/cv.h; exit 1; }
           [ "$(head -c 5 /tmp/cv.pdf)" = "%PDF-" ] || { echo "magic byte bukan PDF"; exit 1; }
+
+          # Kriteria selesai perbaikan CV, diukur dari luar — bukan dari narasi. Sebelum langkah
+          # ini, tidak ada satu pun job yang menyebut X-CV-Asal (grep di keempat log run #108:
+          # 0), jadi klaim "cache 60 detik jalan" cuma punya bukti lokal. Produksi yang lama
+          # malah tidak punya lapisan apa pun: dua GET identik berurutan 5,358 s lalu 5,956 s.
+          # Sengaja DITEMPATKAN DI SINI, sebelum apt-get install poppler-utils, karena install
+          # itu bisa memakan lebih dari 60 detik dan jendela cache-nya per-proses.
+          asal1=$(tr -d '\r' < /tmp/cv.h | tr 'A-Z' 'a-z' | sed -n 's/^x-cv-asal: //p' | tr -d ' ')
+          t0=$(date +%s%3N)
+          code2=$(curl -sS -o /tmp/cv2.pdf -D /tmp/cv2.h -w '%{http_code}' --max-time 180 "$FE/api/cv")
+          t1=$(date +%s%3N)
+          asal2=$(tr -d '\r' < /tmp/cv2.h | tr 'A-Z' 'a-z' | sed -n 's/^x-cv-asal: //p' | tr -d ' ')
+          echo "GET #1 => $code asal=$asal1 ; GET #2 => $code2 asal=$asal2 dalam $((t1 - t0)) ms"
+          [ "$asal1" = "render" ] || { echo "GET pertama seharusnya render, dapat '$asal1'"; cat /tmp/cv.h; exit 1; }
+          [ "$code2" = "200" ] || { echo "GET kedua bukan 200; body: $(head -c 200 /tmp/cv2.pdf)"; exit 1; }
+          [ "$asal2" = "pukulan-cache" ] || { echo "cache tidak bekerja: GET kedua asal='$asal2'"; cat /tmp/cv2.h; docker logs fe-pdf 2>&1 | tail -20; exit 1; }
+          cmp -s /tmp/cv.pdf /tmp/cv2.pdf || { echo "yang datang dari cache bukan byte yang sama dengan hasil render"; exit 1; }
+          echo "cache CV terbukti: render lalu pukulan-cache, $((t1 - t0)) ms, byte identik ($(wc -c < /tmp/cv2.pdf) byte)"
 
           command -v pdftotext > /dev/null || sudo apt-get install -y --no-install-recommends poppler-utils
           command -v pdftotext > /dev/null || { echo "pdftotext tetap tidak tersedia setelah install"; exit 1; }

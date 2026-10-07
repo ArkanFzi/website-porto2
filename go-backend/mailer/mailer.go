@@ -22,6 +22,12 @@ var (
 	smtpPort = 587
 )
 
+// SendEmail mengirim pesan ke satu penerima. Bind deadline TIDAK ada di sini: gomail.v2
+// hanya membatasi koneksi TCP (10s, hardcoded di smtp.go:61 Dial()) dan Dialer tidak
+// punya field Timeout — `d.Timeout undefined (type *gomail.Dialer has no field or method
+// Timeout)` — jadi percakapan SMTP setelah koneksi terbentuk bisa menggantung tanpa batas
+// dan tidak ada pegangan dari luar untuk memotongnya. Yang menahan adalah pemanggilnya:
+// main.go menghitung kiriman ini di WaitGroup dan memberi batas total saat proses ditutup.
 func SendEmail(to string, replyTo string, subject string, body string) error {
 	user := os.Getenv("EMAIL_USER")
 	pass := os.Getenv("EMAIL_PASS")

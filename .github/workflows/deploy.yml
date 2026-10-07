@@ -19,6 +19,9 @@ on:
 permissions:
   contents: read
   id-token: write
+  # Dibaca oleh gerbang CI di bawah: tanpa ini `permissions:` yang eksplisit membuat
+  # scope actions jadi `none` dan API run-list menolak token workflow.
+  actions: read
 
 env:
   PROJECT_ID: config-agentic-ubuntu
@@ -39,7 +42,10 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 45 menit, bukan 30: gerbang CI di bawah boleh menunggu sampai 18 menit, dan sisa
+    # workflow (dua build image + dua deploy + verifikasi) tidak boleh dipangkas supaya
+    # tempatnya terpakai untuk menunggu.
+    timeout-minutes: 45
     # Concurrency per-job, bukan per-workflow, dan cancel-in-progress: false (E4). Run #13 pernah
     # dibatalkan tepat di batas deploy dan meninggalkan revisi setengah jalan. Deploy tidak boleh
     # bisa dibunuh; push baru cukup mengantri.
@@ -49,6 +55,61 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.3
+
+      - name: Gerbang CI — tunggu ci.yml pada SHA yang sama
+        # ci.yml juga memicu pada push:main, jadi run yang ditunggu di sini adalah run yang
+        # mewakili commit yang persis sama dengan yang akan naik. Tanpa langkah ini, deploy
+        # bisa menyelesaikan build+push sementara job go/web/api masih berjalan — dan satu
+        # langkah yang merah di CI tidak pernah menghentikan produksi.
+        #
+        # workflow_dispatch sengaja tidak menunggu: operator yang mem-deploy ulang SHA lama
+        # tahu bahwa check CI-nya mungkin sudah kedaluwarsa atau tidak ada, dan dia yang
+        # memutuskan.
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ github.sha }}
+        run: |
+          ambil_run() {
+            # Pemisah `|`, bukan tab: output gh api --jq bisa tercetak dengan tanda kutip
+            # di sekelilingnya, dan tab yang lolos sebagai literal "\t" akan membuat
+            # pemotongan field salah tanpa suara.
+            gh api "repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=$SHA&per_page=100" \
+              --jq '[.workflow_runs[] | select(.head_sha == env.SHA)] | sort_by(.created_at) | last
+                    | "\(.status // "tiada")|\(.conclusion // "-")|\(.html_url // "-")"' | tr -d '"'
+          }
+
+          batas_tunggu=$(( $(date +%s) + 1080 ))   # 18 menit: ci.yml paling lambat ada di kisaran ini
+          batas_daftar=$(( $(date +%s) + 180 ))    # setelah ini, "run tidak pernah terdaftar" adalah kegagalan
+          while :; do
+            baris=$(ambil_run) || baris=""
+            status=$(printf '%s' "$baris" | cut -d'|' -f1)
+            kesimpulan=$(printf '%s' "$baris" | cut -d'|' -f2)
+            url=$(printf '%s' "$baris" | cut -d'|' -f3)
+
+            if [ -z "$baris" ] || [ "$status" = "tiada" ]; then
+              if [ "$(date +%s)" -ge "$batas_daftar" ]; then
+                echo "::error::ci.yml tidak pernah terdaftar untuk SHA $SHA dalam 3 menit — deploy dibatalkan"
+                exit 1
+              fi
+              echo "ci.yml belum terdaftar untuk SHA ini, tunggu…"; sleep 15; continue
+            fi
+
+            if [ "$status" = "completed" ]; then
+              if [ "$kesimpulan" = "success" ]; then
+                echo "CI hijau untuk $SHA: $url"
+                exit 0
+              fi
+              echo "::error::CI '$kesimpulan' untuk $SHA — deploy dibatalkan: $url"
+              exit 1
+            fi
+
+            if [ "$(date +%s)" -ge "$batas_tunggu" ]; then
+              echo "::error::CI belum selesai dalam 18 menit (status: $status) — deploy dibatalkan: $url"
+              exit 1
+            fi
+            echo "CI masih $status ($kesimpulan), tunggu…"; sleep 20
+          done
 
       - name: Authenticate to Google Cloud via WIF
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
@@ -107,6 +168,7 @@ jobs:
           gcloud run deploy "$BE_SERVICE" \
             --image "${{ steps.be_push.outputs.ref }}" \
             --platform managed \
+            --project "$PROJECT_ID" \
             --region "$REGION" \
             --service-account "$RUNTIME_SA" \
             --vpc-connector "$VPC_CONNECTOR" \
@@ -122,7 +184,7 @@ jobs:
       - name: Ambil URL backend
         id: be_url
         run: |
-          URL=$(gcloud run services describe "$BE_SERVICE" --platform managed --region "$REGION" \
+          URL=$(gcloud run services describe "$BE_SERVICE" --platform managed --project "$PROJECT_ID" --region "$REGION" \
             --format='value(status.url)')
           echo "url=$URL" >> "$GITHUB_OUTPUT"
           echo "backend: $URL"
@@ -146,6 +208,7 @@ jobs:
           gcloud run deploy "$FE_SERVICE" \
             --image "${{ steps.fe_push.outputs.ref }}" \
             --platform managed \
+            --project "$PROJECT_ID" \
             --region "$REGION" \
             --service-account "$RUNTIME_SA" \
             --allow-unauthenticated \
@@ -158,7 +221,7 @@ jobs:
 
       - name: Ringkas URL layanan
         run: |
-          FE=$(gcloud run services describe "$FE_SERVICE" --platform managed --region "$REGION" \
+          FE=$(gcloud run services describe "$FE_SERVICE" --platform managed --project "$PROJECT_ID" --region "$REGION" \
             --format='value(status.url)')
           echo "Frontend: $FE"
           echo "Backend:  ${{ steps.be_url.outputs.url }}"
@@ -167,7 +230,7 @@ jobs:
         id: verify
         run: |
           BE="${{ steps.be_url.outputs.url }}"
-          FE=$(gcloud run services describe "$FE_SERVICE" --platform managed --region "$REGION" \
+          FE=$(gcloud run services describe "$FE_SERVICE" --platform managed --project "$PROJECT_ID" --region "$REGION" \
             --format='value(status.url)')
 
           # 0. Pastikan yang di-probe di bawah memang artefak run ini. Tanpa langkah ini, hijau
@@ -185,7 +248,7 @@ jobs:
           #     kembali ke default compute SA, deploy tetap "berhasil" tapi F6 jadi berbahaya:
           #     editor dicabut, service yang ternyata masih butuh editor langsung mati.
           for svc in "$BE_SERVICE" "$FE_SERVICE"; do
-            sa=$(gcloud run services describe "$svc" --platform managed --region "$REGION" \
+            sa=$(gcloud run services describe "$svc" --platform managed --project "$PROJECT_ID" --region "$REGION" \
               --format='value(spec.template.spec.serviceAccountName)')
             echo "$svc serviceAccountName=$sa"
             [ "$sa" = "$RUNTIME_SA" ] || {
@@ -193,7 +256,7 @@ jobs:
           done
 
           # 0c. Connector harus masih terpasang di backend — ini yang membawa DB private IP.
-          conn=$(gcloud run services describe "$BE_SERVICE" --platform managed --region "$REGION" \
+          conn=$(gcloud run services describe "$BE_SERVICE" --platform managed --project "$PROJECT_ID" --region "$REGION" \
             --format='value(spec.template.metadata.annotations."run.googleapis.com/vpc-access-connector")')
           echo "$BE_SERVICE vpc-access-connector=$conn"
           [ "$conn" = "$VPC_CONNECTOR" ] || {
@@ -259,18 +322,18 @@ jobs:
           echo "Verifikasi/deploy gagal; kembalikan traffic ke revisi siap terakhir."
           gcloud run services update-traffic "$BE_SERVICE" \
             --to-revisions="${{ steps.prev.outputs.be_rev }}=100" \
-            --platform managed --region "$REGION"
+            --platform managed --project "$PROJECT_ID" --region "$REGION"
           gcloud run services update-traffic "$FE_SERVICE" \
             --to-revisions="${{ steps.prev.outputs.fe_rev }}=100" \
-            --platform managed --region "$REGION"
+            --platform managed --project "$PROJECT_ID" --region "$REGION"
           echo "Traffic dikembalikan: $BE_SERVICE=${{ steps.prev.outputs.be_rev }}, $FE_SERVICE=${{ steps.prev.outputs.fe_rev }}"
 
       - name: Verifikasi pasca-rollback
         if: always() && steps.rollback.outcome == 'success'
         run: |
-          BE=$(gcloud run services describe "$BE_SERVICE" --platform managed --region "$REGION" \
+          BE=$(gcloud run services describe "$BE_SERVICE" --platform managed --project "$PROJECT_ID" --region "$REGION" \
             --format='value(status.url)')
-          FE=$(gcloud run services describe "$FE_SERVICE" --platform managed --region "$REGION" \
+          FE=$(gcloud run services describe "$FE_SERVICE" --platform managed --project "$PROJECT_ID" --region "$REGION" \
             --format='value(status.url)')
 
           # Yang dibandingkan adalah alokasi traffic, bukan latestReadyRevisionName — nama itu

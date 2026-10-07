@@ -16,18 +16,18 @@ region="${REGION:?REGION harus di-set}"
 
 case "$action" in
   allocate)
-    rev=$(gcloud run services describe "$service" --platform managed --region "$region" \
+    rev=$(gcloud run services describe "$service" --platform managed --project "${PROJECT_ID:?PROJECT_ID harus di-set}" --region "$region" \
       --format='value(status.latestCreatedRevisionName)')
     if [ -z "$rev" ]; then
       echo "$service: latestCreatedRevisionName kosong" >&2
       exit 1
     fi
     gcloud run services update-traffic "$service" \
-      --to-revisions="$rev=100" --platform managed --region "$region" >&2
+      --to-revisions="$rev=100" --platform managed --project "${PROJECT_ID:?PROJECT_ID harus di-set}" --region "$region" >&2
     printf '%s\n' "$rev"
     ;;
   serving)
-    gcloud run services describe "$service" --platform managed --region "$region" \
+    gcloud run services describe "$service" --platform managed --project "${PROJECT_ID:?PROJECT_ID harus di-set}" --region "$region" \
       --format='json(status.traffic)' |
       jq -r '.status.traffic[] | "\(.revisionName)=\(.percent)"'
     ;;
