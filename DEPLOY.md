@@ -81,6 +81,16 @@ checks are failing."** `main` tidak bergerak dan SHA rusak itu tidak pernah puny
 
 `deploy.yml` berjalan berurutan; setiap langkah punya bukti di log run:
 
+0. **Gerbang CI satu-SHA — langkah paling awal, sebelum apa pun menyentuh Cloud Run.** Workflow
+   menunggu run `ci.yml` **pada SHA yang sama** sampai hijau (`batas_tunggu=1080s` untuk status,
+   `batas_daftar=180s` untuk keberadaannya); `failure`, `cancelled`, masih berjalan, atau belum terdaftar
+   semuanya `exit 1`. Alasannya spesifik dan pernah terjadi: run #14 (workflow lama) `success` sementara
+   form kontak di situs publik membuang setiap pesan — gerbang ini menutup celah "deploy jalan tanpa tes".
+   Bukti pemakaian pertama, `Deploy #42` pada `f863d61` (2026-10-07, dari log langkah 3):
+   `03:53:46 CI masih queued (-), tunggu…` → 7× `CI masih in_progress` (jeda ±20,4 s) →
+   `03:56:09 CI hijau untuk f863d61…: actions/runs/37568857560`, lalu build/push/deploy. Total run
+   **6 m 29 s** (`created 03:53:38` → `updated 04:00:07`), jadi harga menunggu gerbang jauh lebih kecil
+   daripada dugaan "±20 menit per merge" yang sempat kutulis di TODO.md §11.
 1. **Titik rollback** dibaca dari **alokasi traffic nyata** (`status.traffic`), bukan
    `latestReadyRevisionName` — nama kedua terbukti bisa tertinggal dari revisi yang melayani
    request. Workflow mengasumsikan satu alokasi 100% dan menolak kalau ada canary.
@@ -100,7 +110,11 @@ checks are failing."** `main` tidak bergerak dan SHA rusak itu tidak pernah puny
      kegagalan DB yang muncul setelah image dibangun tetap hanya kelihatan di respons.
    - `GET /` → > 5 KB dan tidak mengandung `Application error` (halaman error Next.js);
    - `GET <fe>/api/health` dan `<fe>/api/certificates` → rantai rewrite fe→be hidup;
-   - `GET <fe>/api/cv` → magic byte `%PDF-` (jalur Puppeteer, ~16 s cold, 774 803 byte).
+   - `GET <fe>/api/cv` → magic byte `%PDF-` (jalur Puppeteer). Nomor yang lewat di sini **naik-turun
+     mengikuti isi CV dan versi renderer**, jadi ia dicatat per pengukuran, bukan sebagai konstanta:
+     774.803 byte (2026-10-05 04:13 UTC), 783.896 byte (2026-10-06 16:10 UTC), **839.060 byte**
+     (`Deploy #42` 04:00:03 UTC, dan sama persis saat dibaca ulang dari URL publik). Yang dijaga langkah
+     ini tetap bentuknya (`%PDF-`), bukan ukurannya; rantai render→cache dijaga di `ci.yml` job `pdf`.
 6. **Rollback kedua layanan** kalau verifikasi *atau* salah satu langkah build/deploy gagal:
    `gcloud run services update-traffic --to-revisions=<revisi-sebelumnya>=100`. Bukan re-deploy,
    supaya env/secret tidak perlu dituliskan ulang di jalur darurat — dulu rollback hanya ada untuk
@@ -551,10 +565,40 @@ kalau trigger tidak lagi membutuhkannya.
   memakai connector: `run.googleapis.com/vpc-access-connector=portfolio-connector` +
   `vpc-access-egress=all-traffic` di anotasi *revision*-nya (bukan anotasi service — cek di sini
   lewat `--format=json | jq`, karena `--flatten` mencetak kolom kosong). Cold start terukur:
-  `/api/certificates` 1,7 s; `/api/cv` 13,9 s cold / 5,8 s warm.
-- **Artifact Registry tanpa retention policy**: 17 tag `backend`, 16 tag `frontend` (16/15 pada
-  snapshot 16:45; bertambah satu per dua deploy), dan revisi lama adalah target rollback — jangan
-  di-prune sebelum mekanisme retensi dipikirkan.
+  `/api/certificates` 1,7 s; `/api/cv` 13,9 s cold / 5,8 s warm. Sejak #53 angka "warm" itu bercampur
+  oleh dua lapisan yang berbeda di dalam proses: singleflight + cache 60 s. Terukur 2026-10-07 dari URL
+  publik: render **5,572 s**, lalu hit dalam jendela cache **2,204 s** (byte identik), dan hit yang sama
+  di runner CI **12 ms** — jadi latency yang sampai pengunjung didominasi jaringan/lapisan Cloud Run,
+  bukan lagi oleh Chromium. Yang tidak berubah: cold start kontainer (replika baru = cache kosong).
+- **Artifact Registry: retensi sudah kebijakan aktif, bukan wacana.** Repo `portfolio-app`
+  (`us-central1`) memegang dua policy: `keep-recent-5` (`KEEP`, `mostRecentVersions.keepCount = 5`) dan
+  `delete-older-than-3d` (`DELETE`, `olderThan = 259200s`, `tagState = ANY`). `cleanupPolicyDryRun`
+  sudah dicabut — sebelumnya itulah sebabnya kebijakan yang terpasang tidak pernah menghapus apa pun.
+  Terukur 2026-10-07 04:15 UTC: `backend` 33 → **28** versi, `frontend` 32 → **28**; bila dihitung dari
+  snapshot 2026-10-06 16:09 UTC, 22 versi lama selamat di tiap repo (= **11 terhapus di be, 10 di fe**)
+  dan 6 push baru per service masuk setelahnya, semuanya di dalam jendela 3 hari sehingga dilindungi.
+  Dua digest lama yang sedang dipakai produksi (`sha256:0a9528af…` be, `sha256:6d26e722…` fe) **masih ada**
+  — itu yang membuat titik rollback tidak hilang; revisi live selalu versi terbaru karena deploy push
+  tag full SHA dan deploy by digest. Penghapusan AR **asinkron** ("approximately one day"), jadi jumlah
+  versi yang kamu baca menit ini boleh saja masih lebih banyak dari yang seharusnya.
+- **Empat jebakan cara membaca AR** (semuanya keluar dari kesalahan pengukuranku sendiri, bukan teori):
+
+  ```bash
+  AR=us-central1-docker.pkg.dev/config-agentic-ubuntu/portfolio-app
+  # (1) kolom tabelnya `DIGEST`, property objeknya `version`. `value(digest)` => KOSONG, selalu.
+  gcloud artifacts docker images list $AR/backend --format 'value(version)'        # benar
+  # (2) region/repo yang benar di atas. `europe-west2` / `arkfazone-*` => NOT_FOUND, dan `grep -c`
+  #     atas stdout kosong menghasilkan "0" yang gampang salah dibaca sebagai "registry kosong".
+  # (3) `Repository Size` HANYA muncul di output manusiawi `describe`; `--format json` tidak punya
+  #     kunci size. Dan dua surface tidak sepakat: 04:15 UTC `describe` 12863,964 MB vs `list` 12268,032 MB.
+  # (4) JEBAKAN TZ: `CREATE_TIME` di tabel itu waktu lokal (UTC+7), field `createTime` itu UTC —
+  #     digest 074584ae: tabel 2026-10-05T00:51:20, JSON 2026-10-04T17:51:20Z. Filter umur untuk
+  #     memeriksa jendela 72 jam wajib dibaca dari field JSON, tidak hasilnya bergeser 7 jam.
+  ```
+
+  yang masih terbuka: `Repository Size` (12.863,964 MB) kini **lebih besar** daripada penjumlahan
+  `imageSizeBytes` per versi (11.275,56 MB), padahal di baseline relasinya terbalik (10.636,582 <
+  11.690,79 = dedup layer). Belum terjelaskan, sengaja tidak kutulis sebabnya — TODO.md §12 butir **S5a**.
 - **Cloud SQL `portfolio-pg`** (diverifikasi ulang 16:52 UTC): Postgres 15, tier `db-f1-micro`,
   `availabilityType=ZONAL` (tanpa HA), IP **PRIVATE** saja, backup harian **enabled** — 7 backup
   tersimpan, semuanya `SUCCESSFUL`; terbaru mulai `2026-10-04T04:50:41Z` selesai `04:52:13Z` (91 s).
