@@ -50,7 +50,11 @@ jobs:
         run: |
           go vet ./...
           go build ./...
-          go test ./...
+          # -race bukan hiasan: data race pada sync.WaitGroup pemegang email in-flight hanya
+          # tertangkap di mesin lokal karena `go test ./...` polos. Run #108 hijau dengan tes
+          # yang sama, jadi gerbangnya yang lebih lemah dari buktinya. -count=1 menutup cache
+          # hasil tes supaya angka ini benar-benar dari SHA yang dites.
+          go test ./... -race -count=1
 
   web:
     name: web
