@@ -622,14 +622,20 @@ kalau trigger tidak lagi membutuhkannya.
   publik: render **5,572 s**, lalu hit dalam jendela cache **2,204 s** (byte identik), dan hit yang sama
   di runner CI **12 ms** — jadi latency yang sampai pengunjung didominasi jaringan/lapisan Cloud Run,
   bukan lagi oleh Chromium. Dibaca ulang setelah `Deploy #44` (revisi baru, cache dingin): render
-  **5,539 s** → hit **1,800 s**, byte tetap identik. Satu pengukuran lagi menambahkan sisi yang
-  belum pernah terukur: setelah situs menganggur, `/api/cv` pertama menjawab **16,384 s** dengan
-  `x-cv-asal: render` (839.060 byte, lalu hit berikutnya **2,228 s** `pukulan-cache`). Selisih
-  16,384 − 5,539 = **10,845 s** adalah harga *replika dingin* (`min-instances` tidak di-set ⇒ 0),
-  dan angka itu belum kuisolasi lebih lanjut: di dalamnya ada start kontainer dan start
-  Chromium/Puppeteer, dan aku tidak bisa memisahkan keduanya dari luar. Ini data keputusan untuk
-  **E4/O3** (`minInstances`), bukan sekadar catatan latency. Yang tidak berubah: cold start kontainer
-  (replika baru = cache kosong).
+  **5,539 s** → hit **1,800 s**, byte tetap identik. **Koreksi penting dari log `run.googleapis.com/requests`
+  (2026-10-07):** angka 16,384 s yang sempat kutulis di sini sebagai "harga replika dingin"
+  **salah label**. Server-side, permintaan itu 13,104 s pada instance yang sudah hidup 31 menit;
+  yang benar adalah **render pertama pada sebuah instance = 13,1–15,3 s (4 sampel) vs render
+  berikutnya pada instance yang sama = 4,0–4,8 s (5 sampel)** — dua kelompok yang tidak tumpang
+  tindih. Start kontainer sendiri terukur 4,689 s (`/` pertama instance baru), dan itu jarang
+  terjadi: 2.509 dari 2.534 permintaan `portfolio-fe` 09:00:05–15:59:43 UTC adalah uptime checks
+  (satu tiap 10,03 detik) sehingga kontainer praktis tidak pernah scale ke nol. Selisih klien−server
+  juga terukur: 16,384↔13,104 s (3,28 s), 2,228↔0,034 s (2,19 s), 5,504↔3,985 s (1,52 s).
+  Konsekuensinya butir **standby replika** (TODO.md **S13**) kehilangan alasannya: yang ±9 s itu ada
+  di dalam kontainer yang sudah hidup (`puppeteer.launch()`/`browser.close()` per render,
+  `route.ts:45-69`), dan yang menghapusnya adalah render pemanasan saat boot, bukan replika standby.
+  Angka lengkap + dua hal yang belum terisolasi: TODO.md §14. Yang tidak berubah: replika baru
+  memulai dengan cache kosong.
 - **Artifact Registry: retensi sudah kebijakan aktif, bukan wacana.** Repo `portfolio-app`
   (`us-central1`) memegang dua policy: `keep-recent-5` (`KEEP`, `mostRecentVersions.keepCount = 5`) dan
   `delete-older-than-3d` (`DELETE`, `olderThan = 259200s`, `tagState = ANY`). `cleanupPolicyDryRun`

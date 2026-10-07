@@ -2757,7 +2757,7 @@ bukan kebetulan dan sudah dicatat di bullet `paths-ignore` DEPLOY.md.
 | **S6** | ±9 image `porto-*` | `porto-s1-check` sempat kubuat (build verifikasi `docker build ./go-backend`) dan kuhapus pada hari yang sama; hitungan sisa tidak berubah. |
 | **S8** (baru) | — | `merge_method` + `sha` wajib eksplisit di tiap `PUT /pulls/*/merge`. Alasan terukur: #58 jadi merge commit. Sudah berlaku di #59 dan #60. |
 
-## 14. Sampel ketiga E7, dan satu angka yang menjatuhkan alasanku sendiri (ditulis 2026-10-07 14:45–14:55 UTC)
+## 14. Sampel ketiga E7, dan dua angka yang menjatuhkan alasanku sendiri (ditulis 2026-10-07 14:45–15:45 UTC)
 
 ### E7, sampel ketiga: merge dokumen lagi, `deploy.yml` diam lagi
 
@@ -2868,31 +2868,74 @@ curl -s --config $CFG "$API/actions/runs?event=schedule&per_page=100" \
 for s in 3e0265a 03b2876 ad767c6; do git show $s:.github/workflows/watch.yml | sed -n '36p'; done
 ```
 
-### `/api/cv` hari ini: 16,4 s bukan 5,5 s, dan bedanya adalah replika
+### `/api/cv`: angka "16,4 s replika dingin" yang kutulis 20 menit lalu itu salah, dan log permintaan mematahkannya
 
-Setelah `#61` mendarat (produksi tidak berubah), kubaca ulang `/api/cv` karena ingin bukti bahwa
-"tidak ada yang berubah". Yang berubah justru latensinya, dan angkanya lebih jujur dari yang
-sebelumnya kutulis:
+Yang kutulis di draf awal subseksi ini: 16,384 s terjadi karena `min-instances` tidak di-set ⇒
+replika dingin, selisih 10,845 s = harga replika. Log `run.googleapis.com/requests` milik Cloud Run
+mematahkan itu. Empat belas permintaan `/api/cv` hari 2026-10-07, **server-side**:
 
-| kondisi | hasil | catatan |
+| kelas | server-side | sampel (waktu UTC, instance) |
 |---|---|---|
-| replika **dingin** (min-instances tidak di-set ⇒ 0), cache kosong | **16,384 s**, `x-cv-asal: render`, 839.060 byte | pengukuran pertama setelah situs menganggur |
-| replika hangat, cache kosong | 5,539 s (`#44`, 13:42 UTC) · 5,572 s (`#42`, 04:00 UTC) | `x-cv-asal: render` |
-| hit dalam jendela 60 s | 2,228 s (sesudah 16,4 s itu) · 1,800 s · 2,204 s | `x-cv-asal: pukulan-cache`, byte **identik** |
+| **render pertama pada sebuah instance** | **13,104 – 15,252 s** | 03:59:48 = 15,066 (`…71a`, instance lahir 03:59:43) · 04:46:36 = 15,252 (`…46`, lahir 04:46:25) · 13:38:52 = 14,288 (`…5b`, lahir 13:38:43) · 14:40:54 = 13,104 (`…f4`, `/api/cv` pertamanya) |
+| **render berikutnya, instance yang sama** | **3,985 – 4,766 s** | 04:01:27 = 4,202 · 04:57:49 = 4,224 · 09:12:49 = 4,766 · 13:42:05 = 4,118 · 15:28:30 = 3,985 |
+| hit cache < 60 s | **8 – 34 ms** | 04:01:32 = 13,8 ms · 04:57:54 = 8,3 ms · 13:42:11 = 20,0 ms · 14:41:21 = 34,1 ms |
+| posisi dalam instance tidak diketahui | 5,052 s | 00:45:42 pada `…66` (instance ini lebih tua dari jendela log hari ini) |
 
-Ini data yang persis dibutuhkan **E4/O3** (`minInstances`) — dan **S3/CSP tidak ada sangkut pautnya
-di sini**: penghematan `min-instances=0` adalah nol biaya untuk replika idle, dan harga yang dibayar
-pengunjung pertama adalah **10,8 detik tambahan** (16,384 − 5,539) di ujung render.
+Keduanya tidak tumpang tindih sedikit pun (13,1 di atas vs 5,05 di bawah), dan penjelasannya bukan
+replika: **instance `…f4` sudah hidup 31 menit** ketika menerima 13,104 s itu (lahir 14:09:14 lewat
+permintaan `/` pertama yang butuh 4,689 s = start kontainer), dan sepanjang 31 menit itu `/` diminta
+terus-menerus.
 
-Yang TIDAK bisa kupisahkan dari angka itu: 10,8 s ini adalah selisih *replika dingin vs replika
-hangat*, dan di dalamnya ada setidaknya dua hal yang belum kuisolasi — start proses Node/Chromium
-pada container baru, dan antrean/penyiapan revision Cloud Run. Menyebutnya "harga Chromium" adalah
-penyederhanaan; sebut yang terukur: **selisih replika**. Dibanding catatan lama (13,9 s cold /
-5,8 s warm) angkanya ada di rentang yang sama, jadi tidak ada regresi — yang berubah cuma seberapa
-lama situs menganggur sebelum aku lewat.
+Kenapa kontainer hampir tidak pernah dingin: **2.534 permintaan** masuk ke `portfolio-fe` antara
+09:00:05 dan 15:59:43 UTC (jendela 6 j 59 m 38 s = 25.178 detik), dan **2.509 di antaranya (99,0 %)
+berasal dari `GoogleStackdriverMonitoring-UptimeChecks`** — rata-rata satu permintaan tiap 9,94
+detik; 10,03 detik kalau hanya uptime checks yang dihitung. Instance berganti generasi empat kali
+hari ini (…66 → …71a → …46 → …5b → …f4), dan **tiga di antaranya tepat berimpit dengan pergantian
+revisi**: 03:59:43 (→00037), 04:46:25 (→00038), 13:38:43 (→00039). Yang keempat, `…5b`→`…f4` pada
+14:09:14, terjadi **di revision yang sama** dan tidak kutafsirkan. Artinya `min-instances=0` hari
+ini praktis tidak pernah tertagih ke pengunjung: yang menyalakan kontainer baru adalah deploy, bukan
+sepi trafik.
 
-Keputusan untuk E4/O3 tetap milikmu (biaya per jam replika standby), dan tabel di atas sekarang
-adalah angka yang bisa dipakai memutuskan, bukan narasi.
+Client-side vs server-side, dan sisa yang harus dibayar jaringan:
+
+| permintaan | `curl` (klien) | log (server) | selisih |
+|---|---|---|---|
+| 14:40:54 render pertama `…f4` | 16,384 s | 13,104 s | 3,28 s |
+| 14:41:21 hit cache | 2,228 s | 0,034 s | **2,19 s** |
+| 15:28:30 render berikutnya | 5,504 s | 3,985 s | 1,52 s |
+
+Jadi hitungan yang benar: **±9 s** (13,1–15,3 vs 4,0–4,8) hidup **di dalam kontainer yang sudah
+hidup**, per instance pertama, bukan per replika. Catatan lama "13,9 s cold / 5,8 s warm" di bullet
+Skala DEPLOY.md adalah fenotipe yang sama dengan label yang sama salahnya.
+
+Yang **tidak** bisa kuisolasi dari luar, dan ini bukan malas menyebutnya: di dalam ±9 s itu ada
+(a) Chromium first-run (`puppeteer.launch()` + `browser.close()` **per render** — `route.ts:45-69`,
+tidak ada browser pool) dan (b) `/cv-layout` pertama yang dikompilasi/dilayani Next lewat loopback.
+Dua-duanya kubuang sebagai sumber bukti: `page.goto` internal tidak tercatat di request log
+(terukur: **0 baris** memuat `cv-layout` sepanjang hari) dan stdout kontainer kosong pada jendela
+14:40:40–14:41:40 (terukur: hanya 8 baris request log, nol `textPayload`). Yang bisa memisahkan
+keduanya cuma render pemanasan saat boot atau instrumentasi di rute itu — **perubahan kode**, jadi
+butuh katamu (ID baru **S12**).
+
+Konsekuensinya untuk butir **standby replika** berubah arah (ID barunya **S13** di tabel bawah), dan
+ini bagian yang penting: `minInstances=1` tidak menyentuh ±9 s itu sama sekali. Yang dibelinya cuma
+start kontainer (4,689 s, dan itu pun jarang karena uptime checks menghangatkan instance setiap
+10,03 detik) — jadi uangnya dibayar untuk sesuatu yang sudah terjadi gratis. Yang memang menghapus
+9 s bagi pengunjung pertama adalah **satu render pemanasan saat instance naik**, nol rupiah.
+
+Keputusan tetap milikmu; tabel di atas yang jadi dasarnya sekarang datang dari log produksi, bukan
+dari `curl` yang kutafsirkan.
+
+### Satu observasi yang lewat di pull log yang sama: probe `.env` dan `.git/config`
+
+Bukan bagian dari E7/S1, tapi tercatat di pull log yang sama dan layak ditulis daripada menguap:
+`arkfazone-portofolio.elarisnoir.my.id` dipprobe **10 path `.env*`** pada 03:44:54–03:45:27 UTC oleh
+UA `CertLabBot/1.0 (certificate research)`, dan `.git/config` dua kali (05:55:15, 12:36:00) dari UA
+Safari/Chrome biasa. Yang terukur di log: varian `http://` dijawab **302** (redirect ke https,
+ditambah 13 permintaan tanpa `instanceId` — sebagian tidak pernah menyentuh kontainer), dan untuk
+`.env*` lanjutan `https:` -nya **tercatat** dan dijawab **404** — tidak ada satu pun isi file yang
+sampai. `.git/config` berhenti di 302 dan lanjutan https-nya tidak muncul di log sama sekali, jadi
+vonis untuk yang satu itu **belum** bisa kubacakan dari data ini.
 
 ### `total_count` berfilter mengembalikan dua angka untuk pertanyaan yang sama
 
@@ -2936,6 +2979,8 @@ diukur.
 | **S10** (baru) | — | **Bukan temuan baru:** F10 (§8) dan A0 (§9.0) sudah mencatat `schedule` Watch datang ±6,6 jam setelah cron 02:37 UTC. Yang ditambahkan #8 dan #9 → selisih mengecil ±11 m/hari, dan tesis "drift" difalsifikasikan: #10 ≈ 09:01 UTC pada 2026-10-08, #15 ≈ 08:05 UTC pada 2026-10-13. Meleset → klaim drift dicabut. Tanggal baca yang sah tetap **2026-10-13 03:00 UTC** seperti F10, dan keputusan §6 butir 5 wajib menyebut latensi ±6,6 jam. |
 | **S11** (baru) | metode "`?status=X` → `total_count`" ditulis di DEPLOY.md sebagai cara benar | Turunkan derajatnya jadi pemeriksaan sekunder. wajib: paginasi penuh + `group_by(.conclusion)`. Alasan terukur: `ci.yml?status=success` memberi 117 lalu 126 (×3) untuk pertanyaan yang sama; yang menutup adalah 126+3=129. |
 | **E7** | terbukti 2 sampel | **tiga sampel, dua sisi**: `#59` 43→43, `#60` (kode) 43→44, `#61` 44→44 dengan `CI #129` tetap tersulut. |
-| **E4/O3** | "perlu angka" | angkanya ada: 16,384 s (replika dingin) vs 5,539/5,572 s (hangat) vs 1,8–2,2 s (hit cache) pada byte yang sama, 839.060. Keputusan tetap menunggu kamu. |
-| **S5** | empat pengukuran CV | tetap empat; yang bertambah adalah **satu angka replika dingin** dan pemisahan label `x-cv-asal`. |
+| **E4** (bukan butir ini) dan **O3** (tidak ada) | kusedia menyebut keduanya sebagai "butir minInstances" | **Koreksi:** `E4` = `cancel-in-progress` CI, sudah hijau sejak F3; seri `O` tidak ada di file ini. Butir standby replika yang kumaksud sekarang bernama **S13**, dan isinya sudah diukur. |
+| **S13** (baru) | sempat kutulis di draf sebagai "**E4/O3**" — **dua ID itu salah: E4 adalah butir `cancel-in-progress` CI (`main.go` tidak bersangkutan, lihat §7/tabel E), dan seri `O` tidak ada di file ini** (satu-satunya `O5` yang dipakai di baris S3 adalah rujukan ke daftar opsi lama). | Butir yang sebenarnya: apakah `min-instances=0` pada `portfolio-fe` layak diganti replika standby. Jawabannya sekarang punya angka dan **berbentuk "tidak"**: yang dibelinya cuma start kontainer 4,689 s, dan uptime checks (2.509 dari 2.534 permintaan 09:00–16:00 UTC) sudah menghangatkan instance lebih dulu. |
+| **S12** (baru) | — | **Satu render pemanasan saat instance naik** (atau reuse browser) di `nextjs-frontend/src/app/api/cv/route.ts`: memangkas ±9 s untuk pengunjung pertama dengan nol rupiah, tidak seperti `minInstances`. Butuh katamu karena ini mengubah kode yang ter-deploy. Sebelum setuju: pemisahan Chromium-first-run vs Next-compile `/cv-layout` belum terukur (0 baris `cv-layout` di request log, 0 `textPayload` di stdout). |
+| **S5** | empat pengukuran CV | byte tetap empat angka yang sama (839.060); **yang berubah justru penjelasan latensinya** — label "replika dingin" gugur, diganti dua kelas server-side dari log (13,1–15,3 s render pertama per instance vs 4,0–4,8 s berikutnya). |
 
