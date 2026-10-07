@@ -1,11 +1,7 @@
 {
   "_catatan": "Temuan yang diketahui. Harus SAMA PERSIS dengan hasil scan hari ini: bertambah membuat scan.yml gagal, berkurang juga gagal sampai daftar ini dikecilkan. Regenerasi sadar: node tools/ci/vuln-check.mjs --govuln=<file> --audit=<file> --emit-baseline",
   "diukur": "2026-10-07",
-  "go": [
-    "GO-2026-5004",
-    "GO-2026-5676",
-    "GO-2026-5970"
-  ],
+  "go": [],
   "npm": [
     "GHSA-2883-xcg3-v3hh",
     "GHSA-52cp-r559-cp3m",
