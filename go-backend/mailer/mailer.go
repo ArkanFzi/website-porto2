@@ -68,7 +68,7 @@ func kirim(user, pass, to string, msg *gomail.Message) error {
 	}
 	defer conn.Close()
 
-	// Sekali di sini, absolut, dan.covering seluruh percakapan: handshake TLS ikut memakai
+	// Sekali di sini, absolut, dan mencakup seluruh percakapan: handshake TLS ikut memakai
 	// conn yang sama karena tls.Client hanya membungkusnya.
 	if err := conn.SetDeadline(time.Now().Add(batasPercakapan)); err != nil {
 		return fmt.Errorf("SMTP %s: memasang batas waktu: %w", addr, err)
@@ -152,7 +152,7 @@ func pilihMekanisme(c *smtp.Client, user, pass string) (smtp.Auth, error) {
 }
 
 // loginAuth adalah mekanisme SASL LOGIN: dua tantangan 334 berturut-turut, masing-masing
-// dijawab satu baris kredensial. Plaintextnya identik dengan puny gomail (auth.go:10-46);
+// dijawab satu baris kredensial. Plaintextnya identik dengan punya gomail (auth.go:10-46);
 // nama tipenya dipertahankan supaya perbandingan dengan pustaka itu tetap terbaca.
 type loginAuth struct {
 	username string
