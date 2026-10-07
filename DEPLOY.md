@@ -179,7 +179,13 @@ menjalankan server Next.js. Yang menangkap adalah probe pasca-deploy.
 
 ## Watch (P6) — apa yang dibuktikan, dan apa yang tidak
 
-`watch.yml` jalan setiap hari 02:37 UTC dan menulis satu baris ke ringkasan run. Ia **bukan
+`watch.yml` punya cron `37 2 * * *` (02:37 UTC), tapi **run-nya baru dibuat ±6,6 jam kemudian**:
+#7 `09:35:08Z`, #8 `09:23:21Z`, #9 `09:12:39Z` pada 05/06/07 Oktober — `created_at` sama dengan
+`run_started_at`, dan ekspresi cron-nya identik di ketiga SHA (`git show <sha>:.github/workflows/watch.yml`).
+Sudah dicatat lebih dulu di TODO.md (F10 di §8 + baris A0 di §9.0, 2026-10-06) — yang bertambah
+cuma dua sampel dan pola selisih yang mengecil ±11 menit per hari (6 j 58 m → 6 j 46 m → 6 j 35 m).
+Dibaca sebagai batas manfaat: probe ini tidak bisa dipakai untuk sesuatu yang harus diketahui pada
+jam 03:00. Isi run-nya satu baris ringkasan per hari, dan workflow ini **bukan
 gerbang**: tidak ada merge yang menunggunya, dan tidak ada satu langkah pun yang punya akses tulis.
 Isinya tiga hal:
 
@@ -559,18 +565,33 @@ kalau trigger tidak lagi membutuhkannya.
 
 ## Catatan operasional
 
-- **Riwayat run** (snapshot 2026-10-07 13:45 UTC): workflow lama `Build, Test and Deploy to Cloud
-  Run` 15 run → 9 success, 5 failure, 1 cancelled. `CI` **127** run → 124 success, 3 failure.
-  `Deploy to Cloud Run` **44** run → 37 success, 6 failure, 1 cancelled (failure termasuk drill
-  rollback #18 yang memang merusak produksi dengan sengaja). `Watch` 9 run → 8 success, 1 failure.
-  Angka ini diambil per-status lewat REST, bukan dari satu halaman: `?status=success&per_page=1`
-  lalu baca `total_count` (menjumlahkan `conclusion` dari `?per_page=100` memberi angka yang
-  salah begitu totalnya > 100 — terjadi pada `CI` diukurannya 100 vs 127).
-- **Merge dokumen tidak men-deploy — sekarang terukur, bukan sekadar dijaga `paths-ignore`.**
+- **Riwayat run** (snapshot 2026-10-07 13:45 UTC; `CI`/`Watch`/`Deploy` dibaca ulang 14:54 UTC):
+  workflow lama `Build, Test and Deploy to Cloud
+  Run` 15 run → 9 success, 5 failure, 1 cancelled. `CI` **129** run → **126 success, 3 failure**
+  (yang ke-129 adalah `push: main` dari merge dokumen `#61`; gerbang tes memang tidak punya
+  filter path). `Deploy to Cloud Run` **44** run → 37 success, 6 failure, 1 cancelled, dan 44 itu
+  = 42 `push` + 2 `workflow_dispatch` (failure termasuk drill rollback #18 yang memang merusak
+  produksi dengan sengaja). `Watch` 9 run → 8 success, 1 failure = 3 `schedule` + 6
+  `workflow_dispatch`.
+  **Cara mengukur yang benar (dan koreksi atas caraku sebelumnya):** tarik SEMUA baris lewat
+  `per_page=100` + `page=N`, lalu `group_by(.conclusion)`. Angkanya menutup persis di ketiga
+  workflow (126+3=129, 37+6+1=44, 8+1=9). Yang kutulis di bullet ini sebelumnya —"`?status=X` lalu
+  baca `total_count`"— baru terbukti tidak stabil: `ci.yml?status=success&per_page=1` mengembalikan
+  **117** satu kali, lalu **126** tiga kali berturut-turut pada selang menit yang sama. Penyebab
+  selisih 9 itu tidak kujelaskan; yang jelas `total_count` tersaring bukan angka yang layak
+  dipakai sendirian. Yang tetap tidak berubah: menjumlahkan `conclusion` dari SATU halaman
+  `?per_page=100` memberi angka yang salah begitu totalnya > 100 (terjadi pada `CI` diukurannya
+  100 vs 127 — karena itu paginasi wajib, bukan opsional).
+- **Merge dokumen tidak men-deploy — sekarang terukur tiga kali, dua dari sisi berlawanan.**
   `#59` (dua file `.md`, `ad767c6`) menghasilkan **0 run** `deploy.yml`: `total_count` 43 → 43.
   Kasus kontrolnya pada jam yang sama: `#60` (isi `go-backend/mailer/*`) men-sulut `Deploy #44`,
-  43 → 44. Sebelumnya merge isi `.md` saja membangun ulang dan mengganti produksi (lihat run
-  workflow lama pada `2501378`/`2d024ab`), karena workflow lama menyulut `push: main` tanpa filter.
+  43 → 44. Sampel ketiga: `#61` (dua file `.md`, mendarat sebagai `10fc112`, 1 orang tua) →
+  `deploy.yml` **44 → 44** dan **0 run pada SHA itu**, sementara `ci.yml` 128 → **129** dan
+  `CI #129` hijau. Produksi memang tidak berubah dan itu kucek, bukan kuasumsikan: revisi live
+  tetap `portfolio-be-00040-p45` / `portfolio-fe-00039-7n5`, image backend tetap
+  `sha256:feb1177138…`, `/api/health` 200. Sebelumnya merge isi `.md` saja membangun ulang dan
+  mengganti produksi (lihat run workflow lama pada `2501378`/`2d024ab`), karena workflow lama
+  menyulut `push: main` tanpa filter.
 - **Men-merge lewat REST tanpa `merge_method` = mendapat merge commit.** Default field itu adalah
   `merge` (`gh` tidak tersedia di mesin ini, jadi semua merge di sini panggilan REST). `#58` ku-merge
   tanpa field itu → `main` menyimpan `fad9aaf` dengan 2 orang tua dan pesan `Merge pull request #58 …`;
@@ -601,7 +622,13 @@ kalau trigger tidak lagi membutuhkannya.
   publik: render **5,572 s**, lalu hit dalam jendela cache **2,204 s** (byte identik), dan hit yang sama
   di runner CI **12 ms** — jadi latency yang sampai pengunjung didominasi jaringan/lapisan Cloud Run,
   bukan lagi oleh Chromium. Dibaca ulang setelah `Deploy #44` (revisi baru, cache dingin): render
-  **5,539 s** → hit **1,800 s**, byte tetap identik. Yang tidak berubah: cold start kontainer
+  **5,539 s** → hit **1,800 s**, byte tetap identik. Satu pengukuran lagi menambahkan sisi yang
+  belum pernah terukur: setelah situs menganggur, `/api/cv` pertama menjawab **16,384 s** dengan
+  `x-cv-asal: render` (839.060 byte, lalu hit berikutnya **2,228 s** `pukulan-cache`). Selisih
+  16,384 − 5,539 = **10,845 s** adalah harga *replika dingin* (`min-instances` tidak di-set ⇒ 0),
+  dan angka itu belum kuisolasi lebih lanjut: di dalamnya ada start kontainer dan start
+  Chromium/Puppeteer, dan aku tidak bisa memisahkan keduanya dari luar. Ini data keputusan untuk
+  **E4/O3** (`minInstances`), bukan sekadar catatan latency. Yang tidak berubah: cold start kontainer
   (replika baru = cache kosong).
 - **Artifact Registry: retensi sudah kebijakan aktif, bukan wacana.** Repo `portfolio-app`
   (`us-central1`) memegang dua policy: `keep-recent-5` (`KEEP`, `mostRecentVersions.keepCount = 5`) dan
