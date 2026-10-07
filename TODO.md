@@ -2926,6 +2926,24 @@ start kontainer (4,689 s, dan itu pun jarang karena uptime checks menghangatkan 
 Keputusan tetap milikmu; tabel di atas yang jadi dasarnya sekarang datang dari log produksi, bukan
 dari `curl` yang kutafsirkan.
 
+```bash
+# kedua tabel di atas, reproducible. CATATAN: operator pencocokan string di filter log adalah `=~`,
+# bukan `~` — pakai `~` hasilnya KOSONG tanpa error (terukur dua kali hari ini).
+gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="portfolio-fe" AND httpRequest.requestUrl=~"/api/cv" AND timestamp >= "2026-10-07T00:00:00Z"' \
+  --limit 100 --order asc --format 'json(timestamp,httpRequest.latency,labels.instanceId)' \
+  | jq -r '.[] | "\(.timestamp[11:19]) \(.httpRequest.latency) inst=\(.labels.instanceId[0:12])"'
+
+gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="portfolio-fe" AND timestamp >= "2026-10-07T09:00:00Z" AND timestamp < "2026-10-07T16:00:00Z"' \
+  --limit 20000 --format 'json(timestamp,httpRequest.userAgent)' \
+  | jq -r '[.[] | select(.httpRequest)] | "request=\(length) uptime=\([.[] | select(.httpRequest.userAgent | test("UptimeChecks"))] | length)"'
+
+# umur instance = permintaan pertama yang tercatat padanya
+gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="portfolio-fe" AND timestamp >= "2026-10-07T00:00:00Z"' \
+  --limit 20000 --order asc --format 'json(timestamp,httpRequest,labels.instanceId,resource.labels.revision_name)' \
+  | jq -r '[.[] | select(.httpRequest)] | group_by(.labels.instanceId)
+           | .[] | "inst=\(.[0].labels.instanceId[0:12] // "null") rev=\(.[0].resource.labels.revision_name) pertama=\(.[0].timestamp[11:19]) terakhir=\(.[-1].timestamp[11:19]) permintaan=\(length)"'
+```
+
 ### Satu observasi yang lewat di pull log yang sama: probe `.env` dan `.git/config`
 
 Bukan bagian dari E7/S1, tapi tercatat di pull log yang sama dan layak ditulis daripada menguap:
