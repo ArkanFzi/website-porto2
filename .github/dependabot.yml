@@ -16,6 +16,32 @@ version: 2
 #     scan menyatakan keadaan, bot menawarkan perbaikan.
 
 updates:
+  # Dua Dockerfile base image sekarang di-pin ke versi + digest. Pin tanpa bot = pin yang
+  # membusuk diam-diam, jadi ekosistem `docker` ikut ditutup.
+  - package-ecosystem: docker
+    directory: "/go-backend"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:39"
+      timezone: "UTC"
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: chore(deps)
+      include: scope
+
+  - package-ecosystem: docker
+    directory: "/nextjs-frontend"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:42"
+      timezone: "UTC"
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: chore(deps)
+      include: scope
+
   - package-ecosystem: npm
     directory: "/nextjs-frontend"
     schedule:
