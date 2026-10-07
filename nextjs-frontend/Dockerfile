@@ -3,7 +3,7 @@
 # repositori Alpine menghapus versi lama, jadi pin versi paket akan merusak build beberapa
 # minggu kemudian. Chromium datang dari repositori pada tanggal build — batas yang perlu
 # diketahui, bukan detail yang tersembunyi. Dependabot ekosistem `docker` menutup pin base.
-FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS base
+FROM node:26-alpine@sha256:0b36e8c136b94cd4fcf02188228e76c31ad5872eef3fec8cbd2eee500cfd9e80 AS base
 
 FROM base AS deps
 RUN apk add --no-cache libc6-compat
