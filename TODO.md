@@ -2937,12 +2937,42 @@ gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.serv
   --limit 20000 --format 'json(timestamp,httpRequest.userAgent)' \
   | jq -r '[.[] | select(.httpRequest)] | "request=\(length) uptime=\([.[] | select(.httpRequest.userAgent | test("UptimeChecks"))] | length)"'
 
+# tabel sisi backend: ganti service_name, dan lihat bahwa tidak ada satu pun baris UptimeChecks
+gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="portfolio-be" AND timestamp >= "2026-10-07T09:00:00Z" AND timestamp < "2026-10-07T16:00:00Z"' \
+  --limit 20000 --order asc --format 'json(timestamp,httpRequest.userAgent,httpRequest.latency,labels.instanceId,resource.labels.revision_name)' \
+  | jq -r '[.[] | select(.httpRequest)] | "request=\(length) uptime=\([.[] | select(.httpRequest.userAgent | test("UptimeChecks"))] | length)", (group_by(.labels.instanceId) | .[] | "inst=\(.[0].labels.instanceId[0:12]) rev=\(.[0].resource.labels.revision_name) \([.[] | .httpRequest.latency | rtrimstr("s") | tonumber] | max) maks")'
+
 # umur instance = permintaan pertama yang tercatat padanya
 gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="portfolio-fe" AND timestamp >= "2026-10-07T00:00:00Z"' \
   --limit 20000 --order asc --format 'json(timestamp,httpRequest,labels.instanceId,resource.labels.revision_name)' \
   | jq -r '[.[] | select(.httpRequest)] | group_by(.labels.instanceId)
            | .[] | "inst=\(.[0].labels.instanceId[0:12] // "null") rev=\(.[0].resource.labels.revision_name) pertama=\(.[0].timestamp[11:19]) terakhir=\(.[-1].timestamp[11:19]) permintaan=\(length)"'
 ```
+
+### Sisi backend: 22 permintaan dalam 7 jam, dan harga replika standby-nya < 1 detik
+
+Asimetri kedua service ini yang membuat `minInstances` tidak bisa diputuskan dengan satu angka:
+
+| jendela (09:00–16:00 UTC) | siapa | permintaan ke `portfolio-be` | permintaan pertama pada instance |
+|---|---|---|---|
+| 09:12:47–09:12:54 | **Watch #9** (run-nya dibuat 09:12:39) | 9 | **0,922 s** (`/api/health`), sisanya 4,8–20 ms |
+| 13:38:51–13:42:13 | langkah verifikasi `Deploy #44` | 9 | 0,0097 s — **start kontainer tidak tertangkap di baris ini**; kemungkinannya terserap oleh `--wait` pada langkah deploy, dan itu hipotesis, bukan pengukuran |
+| 14:40:53–14:41:03 | probes-ku sendiri | 2 | **0,221 s** |
+| 15:28:28–15:28:32 | probes-ku sendiri | 2 | **0,422 s** |
+
+Terukur: **22 permintaan HTTP** ke `portfolio-be` dalam jendela tujuh jam, **nol** di antaranya dari
+uptime checks —
+karena check untuk BE adalah **TCP 443** (`portfolio-be-uptime-3lw7E4A0E40`, tercatat di bagian alert
+DEPLOY.md), dan koneksi TCP tidak menghasilkan baris `run.googleapis.com/requests`. Jadi BE memang
+menganggur di nol replika, tapi harga yang dibayar untuk satu permintaan pertama sesudah menganggur
+adalah **0,22–0,92 detik**, bukan 9 detik. Untuk konteks: catatan lama `/api/certificates` 1,7 s cold
+masih berdiri (endpoint itu menyentuh Cloud SQL; hari ini yang pertama dipukul adalah `/api/health`).
+
+Gabungan kedua tabel inilah isi **S13**: FE (yang dilihat pengunjung) dihangatkan 99,0 % oleh uptime
+checks sendiri dan 9 detik yang hilang ada di dalam kontainer → `minInstances` tidak membeli apa pun;
+BE benar-benar tidur tapi bangunnya < 1 detik → `minInstances` membeli < 1 detik dengan biaya
+per-jam. Yang menguntungkan di kedua sisi adalah **S12** (render pemanasan saat boot), dan itu kode,
+bukan konfigurasi.
 
 ### Satu observasi yang lewat di pull log yang sama: probe `.env` dan `.git/config`
 
@@ -2998,7 +3028,7 @@ diukur.
 | **S11** (baru) | metode "`?status=X` → `total_count`" ditulis di DEPLOY.md sebagai cara benar | Turunkan derajatnya jadi pemeriksaan sekunder. wajib: paginasi penuh + `group_by(.conclusion)`. Alasan terukur: `ci.yml?status=success` memberi 117 lalu 126 (×3) untuk pertanyaan yang sama; yang menutup adalah 126+3=129. |
 | **E7** | terbukti 2 sampel | **tiga sampel, dua sisi**: `#59` 43→43, `#60` (kode) 43→44, `#61` 44→44 dengan `CI #129` tetap tersulut. |
 | **E4** (bukan butir ini) dan **O3** (tidak ada) | kusedia menyebut keduanya sebagai "butir minInstances" | **Koreksi:** `E4` = `cancel-in-progress` CI, sudah hijau sejak F3; seri `O` tidak ada di file ini. Butir standby replika yang kumaksud sekarang bernama **S13**, dan isinya sudah diukur. |
-| **S13** (baru) | sempat kutulis di draf sebagai "**E4/O3**" — **dua ID itu salah: E4 adalah butir `cancel-in-progress` CI (`main.go` tidak bersangkutan, lihat §7/tabel E), dan seri `O` tidak ada di file ini** (satu-satunya `O5` yang dipakai di baris S3 adalah rujukan ke daftar opsi lama). | Butir yang sebenarnya: apakah `min-instances=0` pada `portfolio-fe` layak diganti replika standby. Jawabannya sekarang punya angka dan **berbentuk "tidak"**: yang dibelinya cuma start kontainer 4,689 s, dan uptime checks (2.509 dari 2.534 permintaan 09:00–16:00 UTC) sudah menghangatkan instance lebih dulu. |
+| **S13** (baru) | sempat kutulis di draf sebagai "**E4/O3**" — **dua ID itu salah: E4 adalah butir `cancel-in-progress` CI (`main.go` tidak bersangkutan, lihat §7/tabel E), dan seri `O` tidak ada di file ini** (satu-satunya `O5` yang dipakai di baris S3 adalah rujukan ke daftar opsi lama). | Butir yang sebenarnya: apakah `min-instances=0` pada `portfolio-fe` layak diganti replika standby. Jawabannya sekarang punya angka dan **berbentuk "tidak"**: Jawaban sekarang berbentuk dua bagian dan keduanya terukur: untuk **FE** yang dibelinya cuma start kontainer 4,689 s sementara uptime checks (2.509 dari 2.534 permintaan 09:00–16:00 UTC) sudah menghangatkannya lebih dulu; untuk **BE** memang tidak ada probe HTTP (22 permintaan/7 jam, 0 uptime) tapi permintaan pertama sesudah menganggur cuma 0,22–0,92 s. |
 | **S12** (baru) | — | **Satu render pemanasan saat instance naik** (atau reuse browser) di `nextjs-frontend/src/app/api/cv/route.ts`: memangkas ±9 s untuk pengunjung pertama dengan nol rupiah, tidak seperti `minInstances`. Butuh katamu karena ini mengubah kode yang ter-deploy. Sebelum setuju: pemisahan Chromium-first-run vs Next-compile `/cv-layout` belum terukur (0 baris `cv-layout` di request log, 0 `textPayload` di stdout). |
 | **S5** | empat pengukuran CV | byte tetap empat angka yang sama (839.060); **yang berubah justru penjelasan latensinya** — label "replika dingin" gugur, diganti dua kelas server-side dari log (13,1–15,3 s render pertama per instance vs 4,0–4,8 s berikutnya). |
 
