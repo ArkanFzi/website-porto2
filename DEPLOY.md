@@ -565,17 +565,34 @@ kalau trigger tidak lagi membutuhkannya.
 
 ## Catatan operasional
 
-- **Riwayat run** (snapshot 2026-10-07 13:45 UTC; `CI`/`Watch`/`Deploy` dibaca ulang 14:54 UTC):
+- **Riwayat run** (snapshot 2026-10-07 13:45 UTC; `CI`/`Watch`/`Deploy` dibaca ulang 14:54 dan
+  **16:10 UTC** — yang bergerak cuma `CI`):
   workflow lama `Build, Test and Deploy to Cloud
-  Run` 15 run → 9 success, 5 failure, 1 cancelled. `CI` **129** run → **126 success, 3 failure**
-  (yang ke-129 adalah `push: main` dari merge dokumen `#61`; gerbang tes memang tidak punya
+  Run` 15 run → 9 success, 5 failure, 1 cancelled. `CI` **133** run → **128 success, 3 failure,
+  2 cancelled** (read 14:54 UTC: 129 run → 126 success, 3 failure, **0 cancelled**; yang ke-129
+  adalah `push: main` dari merge dokumen `#61`; gerbang tes memang tidak punya
   filter path). `Deploy to Cloud Run` **44** run → 37 success, 6 failure, 1 cancelled, dan 44 itu
   = 42 `push` + 2 `workflow_dispatch` (failure termasuk drill rollback #18 yang memang merusak
   produksi dengan sengaja). `Watch` 9 run → 8 success, 1 failure = 3 `schedule` + 6
   `workflow_dispatch`.
+  **Dua `cancelled` itu yang pertama dalam sejarah `ci.yml`, dan penyebabnya push-ku sendiri di
+  branch PR #62.** Empat push berurutan di `docs/jadwal-watch-dan-e7-sampel-3`: `#130`
+  (`d7e5607`) 15:19:44 → 15:22:06 `success` (2 m 22 s, push berikutnya baru 43 m kemudian);
+  `#131` (`5bcd279`) tercipta 16:02:54, `cancelled` 16:05:19; `#132` (`fb0860f`) tercipta
+  **16:05:16** — 3 s sebelum `#131` berhenti — lalu `cancelled` 16:07:53; `#133` (`8b6cc6c`)
+  tercipta 16:07:25 dan selesai `success`. Jadi dua run mati bukan karena galat, dan bukan
+  karena `concurrency`-nya salah tulis: run `ci.yml` yang dibiarkan selesai butuh 2 m 22 s
+  (`#130`) sampai 2 m 49 s (`#133`), dan aku push lagi tiap ±2,5 m — `#131` mati setelah 2 m 25 s
+  dan `#132` setelah 2 m 37 s, keduanya di tengah jalan, bukan sesudah gagal.
+  `cancel-in-progress: true` di gerbang tes terbukti dari **aksinya**, bukan cuma dari
+  teks YAML-nya; selama ini yang pernah terlihat di repo ini baru sisi sebaliknya
+  (`cancel-in-progress: false` pada deploy, F3). Yang harus dibedakan: `Deploy to Cloud Run`
+  tetap 44 dengan 0 run baru sepanjang empat push ini, tapi itu **bukan sampel keempat E7** —
+  keempatnya terjadi di branch, dan `deploy.yml` cuma bereaksi pada `main`. E7 membuktikan
+  merge dokumen; klaim "push di branch tidak men-deploy" tidak pernah kucoba dan tidak dibutuhkan.
   **Cara mengukur yang benar (dan koreksi atas caraku sebelumnya):** tarik SEMUA baris lewat
   `per_page=100` + `page=N`, lalu `group_by(.conclusion)`. Angkanya menutup persis di ketiga
-  workflow (126+3=129, 37+6+1=44, 8+1=9). Yang kutulis di bullet ini sebelumnya —"`?status=X` lalu
+  workflow (128+3+2=133, 37+6+1=44, 8+1=9). Yang kutulis di bullet ini sebelumnya —"`?status=X` lalu
   baca `total_count`"— baru terbukti tidak stabil: `ci.yml?status=success&per_page=1` mengembalikan
   **117** satu kali, lalu **126** tiga kali berturut-turut pada selang menit yang sama. Penyebab
   selisih 9 itu tidak kujelaskan; yang jelas `total_count` tersaring bukan angka yang layak
