@@ -90,7 +90,10 @@ checks are failing."** `main` tidak bergerak dan SHA rusak itu tidak pernah puny
    `03:53:46 CI masih queued (-), tunggu…` → 7× `CI masih in_progress` (jeda ±20,4 s) →
    `03:56:09 CI hijau untuk f863d61…: actions/runs/37568857560`, lalu build/push/deploy. Total run
    **6 m 29 s** (`created 03:53:38` → `updated 04:00:07`), jadi harga menunggu gerbang jauh lebih kecil
-   daripada dugaan "±20 menit per merge" yang sempat kutulis di TODO.md §11.
+   daripada dugaan "±20 menit per merge" yang sempat kutulis di TODO.md §11. Pengukuran kedua mengunci
+   angka itu: `Deploy #44` pada `f7e24ba` — `CI #127` hijau `13:34:47`, deploy selesai `13:39:11`,
+   total **6 m 48 s**, kedua run dilaporkan `created_at` yang sama persis (`13:32:23`) karena keduanya
+   tersulut `push: main` yang sama.
 1. **Titik rollback** dibaca dari **alokasi traffic nyata** (`status.traffic`), bukan
    `latestReadyRevisionName` — nama kedua terbukti bisa tertinggal dari revisi yang melayani
    request. Workflow mengasumsikan satu alokasi 100% dan menolak kalau ada canary.
@@ -113,7 +116,8 @@ checks are failing."** `main` tidak bergerak dan SHA rusak itu tidak pernah puny
    - `GET <fe>/api/cv` → magic byte `%PDF-` (jalur Puppeteer). Nomor yang lewat di sini **naik-turun
      mengikuti isi CV dan versi renderer**, jadi ia dicatat per pengukuran, bukan sebagai konstanta:
      774.803 byte (2026-10-05 04:13 UTC), 783.896 byte (2026-10-06 16:10 UTC), **839.060 byte**
-     (`Deploy #42` 04:00:03 UTC, dan sama persis saat dibaca ulang dari URL publik). Yang dijaga langkah
+     (`Deploy #42` 04:00:03 UTC, dan sama persis saat dibaca ulang dari URL publik; diulang lagi pada
+     `Deploy #44` 13:42 UTC — **839.060** juga, jadi angka itu stabil lintas dua revisi). Yang dijaga langkah
      ini tetap bentuknya (`%PDF-`), bukan ukurannya; rantai render→cache dijaga di `ci.yml` job `pdf`.
 6. **Rollback kedua layanan** kalau verifikasi *atau* salah satu langkah build/deploy gagal:
    `gcloud run services update-traffic --to-revisions=<revisi-sebelumnya>=100`. Bukan re-deploy,
@@ -555,11 +559,38 @@ kalau trigger tidak lagi membutuhkannya.
 
 ## Catatan operasional
 
-- **Riwayat run** (snapshot 2026-10-04 16:45 UTC): workflow lama `Build, Test and Deploy to Cloud
-  Run` 15 run → 9 success, 5 failure, 1 cancelled. `CI` 12 run → 11 success, 1 failure (PR #4,
-  memang sengaja rusak). `Deploy to Cloud Run` 4 run → 2 success, 1 failure (drill #18), 1 berjalan.
-- **Merge dokumen tidak men-deploy** sejak `paths-ignore` terpasang; sebelumnya merge isi `.md`
-  saja membangun ulang dan mengganti produksi (lihat run workflow lama pada `2501378`/`2d024ab`).
+- **Riwayat run** (snapshot 2026-10-07 13:45 UTC): workflow lama `Build, Test and Deploy to Cloud
+  Run` 15 run → 9 success, 5 failure, 1 cancelled. `CI` **127** run → 124 success, 3 failure.
+  `Deploy to Cloud Run` **44** run → 37 success, 6 failure, 1 cancelled (failure termasuk drill
+  rollback #18 yang memang merusak produksi dengan sengaja). `Watch` 9 run → 8 success, 1 failure.
+  Angka ini diambil per-status lewat REST, bukan dari satu halaman: `?status=success&per_page=1`
+  lalu baca `total_count` (menjumlahkan `conclusion` dari `?per_page=100` memberi angka yang
+  salah begitu totalnya > 100 — terjadi pada `CI` diukurannya 100 vs 127).
+- **Merge dokumen tidak men-deploy — sekarang terukur, bukan sekadar dijaga `paths-ignore`.**
+  `#59` (dua file `.md`, `ad767c6`) menghasilkan **0 run** `deploy.yml`: `total_count` 43 → 43.
+  Kasus kontrolnya pada jam yang sama: `#60` (isi `go-backend/mailer/*`) men-sulut `Deploy #44`,
+  43 → 44. Sebelumnya merge isi `.md` saja membangun ulang dan mengganti produksi (lihat run
+  workflow lama pada `2501378`/`2d024ab`), karena workflow lama menyulut `push: main` tanpa filter.
+- **Men-merge lewat REST tanpa `merge_method` = mendapat merge commit.** Default field itu adalah
+  `merge` (`gh` tidak tersedia di mesin ini, jadi semua merge di sini panggilan REST). `#58` ku-merge
+  tanpa field itu → `main` menyimpan `fad9aaf` dengan 2 orang tua dan pesan `Merge pull request #58 …`;
+  `#59`/`#60` dengan `{"merge_method":"squash","sha":"<head>"}` → 1 orang tua. Riwayat `main` yang
+  sudah terpublikasi TIDAK ditulis ulang untuk merapikan itu — force-push ke branch terproteksi,
+  apalagi SHA yang sudah jadi image produksi, bukan harga yang mau dibayar untuk satu commit rapi.
+  Bentuk payload yang dipakai:
+  `curl -X PUT --config $CFG -d "{\"merge_method\":\"squash\",\"sha\":\"$SHA\"}" $API/pulls/$N/merge`.
+- **Pemilik path API — baca ini sebelum menyebut sebuah endpoint "hilang".** URL `/api/*` yang
+  sama belum tentu dilayani service yang sama:
+
+  | path | siapa yang menjawab | sumber |
+  |---|---|---|
+  | `/api/cv`, `/api/github-profile`, `/api/github-repos` | **frontend** (route handler) | `nextjs-frontend/src/app/api/*/route.ts` |
+  | `/api/login`, `/api/auth/*`, `/api/contact`, `/api/admin/*`, `/api/certificates*`, `/api/experience*`, `/api/health` | **backend**, lewat rewrite FE | `next.config.ts:9-17` → `main.go:371-395`, `524`, `543`, `563` |
+  | `/api/projects`, `/api/admin/projects` | tidak ada di mana pun | `main.go:352` menuntutnya 404, bukan 401 |
+
+  Konsekuensi yang sudah menipu aku sekali: `GET <backend-url>/api/cv` menjawab **404** dan itu
+  perilaku yang benar. Langkah verifikasi `deploy.yml` memakai `<fe>/api/cv` karena di sanalah
+  jalur render Puppeteer itu hidup.
 - **Skala**: `min-instances` tidak di-set (⇒ 0) dan `autoscaling.knative.dev/maxScale=3` pada kedua
   revision template, `containerConcurrency=80`, `startup-cpu-boost=true`. Hanya backend yang
   memakai connector: `run.googleapis.com/vpc-access-connector=portfolio-connector` +
@@ -569,7 +600,9 @@ kalau trigger tidak lagi membutuhkannya.
   oleh dua lapisan yang berbeda di dalam proses: singleflight + cache 60 s. Terukur 2026-10-07 dari URL
   publik: render **5,572 s**, lalu hit dalam jendela cache **2,204 s** (byte identik), dan hit yang sama
   di runner CI **12 ms** — jadi latency yang sampai pengunjung didominasi jaringan/lapisan Cloud Run,
-  bukan lagi oleh Chromium. Yang tidak berubah: cold start kontainer (replika baru = cache kosong).
+  bukan lagi oleh Chromium. Dibaca ulang setelah `Deploy #44` (revisi baru, cache dingin): render
+  **5,539 s** → hit **1,800 s**, byte tetap identik. Yang tidak berubah: cold start kontainer
+  (replika baru = cache kosong).
 - **Artifact Registry: retensi sudah kebijakan aktif, bukan wacana.** Repo `portfolio-app`
   (`us-central1`) memegang dua policy: `keep-recent-5` (`KEEP`, `mostRecentVersions.keepCount = 5`) dan
   `delete-older-than-3d` (`DELETE`, `olderThan = 259200s`, `tagState = ANY`). `cleanupPolicyDryRun`

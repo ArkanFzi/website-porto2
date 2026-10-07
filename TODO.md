@@ -2599,3 +2599,160 @@ membuat "merge #48 saja" bukan jalan pintas:
 | **S5a** | `Repository Size` > jumlah `imageSizeBytes`, dan dua surface `gcloud` tidak setuju | terbuka, belum terjelaskan — lihat tabel N6 di atas. Jangan ditulis sebagai "dedup" sampai diukur ulang. |
 | **S6** | Image scratch lokal menumpuk | ±9 `porto-*` ordo 5,8 GB, bertambah `porto-fe:pr53`, `porto-fe:next164` (**basi**: `grep -rl "pukulan-cache"` = 0 file, tanpa header keamanan — sumber salah satu kesalahanku), `porto-bump-check` (sudah kuhapus). Izin yang diberikan baru untuk **kontainer**, belum untuk image. |
 | **S7** | Restore drill Cloud SQL masih 0× | masih F7 dari §8; PITR aktif ≠ pemulihan terbukti. |
+
+## 13. S1 ditutup, E7 terbukti, dan satu merge yang salah metode (ditulis 2026-10-07 13:48 UTC)
+
+Semua angka di bagian ini adalah keluaran alat yang dibacakan setelah `#58`/`#59`/`#60`
+mendarat. Yang meleset dari rencanaku ditulis sebagai meleset, bukan dihaluskan.
+
+### E7 — butir terakhir daftar uji #53: merge dokumen terbukti tidak men-deploy
+
+Buktinya sepasang, bukan satu: kasus uji dan kasus kontrol pada hari yang sama, supaya
+"0 run" tidak bisa berarti "aku lupa mengecek".
+
+| merge | isi | `deploy.yml total_count` sebelum → sesudah | run baru |
+|---|---|---|---|
+| `#59` → `ad767c6` (squash) | `TODO.md` +187, `DEPLOY.md` +54/−5, nol kode, nol workflow | 43 → **43** | **0** |
+| `#60` → `f7e24ba` (squash) | `go-backend/mailer/*` | 43 → **44** | `Deploy #44` |
+
+Dua perintah, dan satu jebakan yang menjebakan aku duluan: `total_count` di endpoint
+**workflow** menghitung seluruh run workflow itu apa pun branch-nya, jadi ia hanya berarti
+kalau dibaca bersama filter `head_sha`.
+
+```bash
+curl -s --config $CFG "$API/actions/workflows/deploy.yml/runs?per_page=1" | jq .total_count
+curl -s --config $CFG "$API/actions/workflows/deploy.yml/runs?head_sha=$SHA&per_page=100" \
+  | jq '[.workflow_runs[] | select(.head_sha == "'"$SHA"'")] | length'
+```
+
+Sejak §10 kalimat "merge isi `.md` saja tidak membangun ulang produksi" kutulis sebagai
+*harapan yang dijaga `paths-ignore`*. Sekarang **terukur**. Yang dulu membuat celahnya ada:
+workflow lama menyulut `push: main` tanpa filter apa pun (lihat run `2501378`/`2d024ab`).
+
+### Kesalahan prosesku sendiri: `#58` jadi merge commit, bukan squash
+
+`PUT /pulls/58/merge` kupanggil tanpa field `merge_method`. Default GitHub untuk field itu
+adalah **`merge`**, bukan `squash` — jadi yang mendarat di `main` adalah `fad9aaf` dengan
+pesan `Merge pull request #58 from …`. Terukur dari `git log -1 --format=%P | wc -w`:
+
+| commit | PR | jumlah orang tua | bentuk |
+|---|---|---|---|
+| `fad9aaf` | #58 | 2 | merge commit — **di luar niatku** |
+| `ad767c6` | #59 | 1 | squash |
+| `f7e24ba` | #60 | 1 | squash |
+
+Yang sengaja TIDAK kulakukan: menulis ulang `main` (force-push) untuk merapikan itu. Riwayat
+yang sudah terpublikasi di branch terproteksi — dan sudah jadi image yang sedang serve
+produksi, `portfolio-be-00039-4lt` digest `sha256:aa905fcf…` — bukan tempat membersihkan
+kecerobohan. Harga membiarkannya cuma satu commit tambahan di log.
+
+Aturan yang kupakai sejak saat itu, dan yang membuat #59/#60 benar: **setiap** panggilan
+merge mengirim `merge_method` **dan** `sha` head, tanpa peduli sekuat apa pun keyakinanku
+pada nilai default. ID baru **S8** untuk ini — bukan pekerjaan, tapi pagar cara kerja.
+
+### S1 — apa yang sebenarnya bocor, dan apa yang sekarang memotong
+
+Framing-ku di tabel S* salah dan harus dibetulkan dulu sebelum isinya dicoret. Aku menulis
+"dialog yang macet menahan POST pengunjung sampai timeout Cloud Run 300 s". Ternyata
+`handleContact` menjawab **201 lebih dulu** dan baru mengirim email di goroutine latar
+(`main.go:669`, dihitung di `undungEmail`). Yang bocor bukan latensi pengunjung, melainkan
+**goroutine + socket tanpa satu baris log pun**: surat hilang diam-diam, dan tidak ada yang
+menyebutnya di `/api/health` maupun di log layanan.
+
+A/B pada satu stub yang sama — server menjawab `220` lalu diam selamanya, koneksi tetap
+terbuka (stub yang menutup socket menghasilkan EOF, dan EOF bukan kondisi yang diuji):
+
+```
+BUKTI: gomail.DialAndSend masih menggantung setelah 5s pada stub yang diam setelah greeting
+BUKTI: kirim() memotong setelah 12.011s, err=SMTP 127.0.0.1:43913: greeting: read tcp …: i/o timeout
+```
+
+12,011 s itu bukan angka yang kukarang dan bukan kebetulan: ia sama dengan
+`batasPercakapan` dan sama dengan `batasMatikan` (`main.go:243`). Satu percakapan SMTP tidak
+mungkin lagi memakan seluruh jendela shutdown; sebelumnya tidak ada batas sama sekali, dan
+`Dialer` memang tidak menyediakan pegangan (`d.Timeout undefined`).
+
+Tes yang di-commit (`go-backend/mailer/batas_waktu_test.go`, tiga tes tingkat atas):
+
+| tes | tenggat dipadatkan ke | dipotong pada | assert tambahan |
+|---|---|---|---|
+| diam setelah greeting | 600 ms | **602 ms** | `errors.Is(err, os.ErrDeadlineExceeded)` dan error menyebut `EHLO` |
+| diam sesudah `354` (titik penutup pesan tidak dijawab) | 800 ms | **801 ms** | tenggat + stub mencatat `AUTH`/`MAIL FROM`/`RCPT TO`/`DATA` benar-benar diterima + error menyebut `menutup pesan` |
+| server hanya mengiklankan `AUTH LOGIN` | — (tidak macet, kembali `nil`) | — | mekanismenya LOGIN, bukan PLAIN; dua tantangan 334 dijawab dua baris yang base64-nya **equal** dengan user & pass |
+
+Bagian yang paling kunikmati dari tes ini adalah **batas bawahnya** (`lepas >= tenggat/2` di
+`cekTenggat`): tanpa itu, `err != nil` dari sebab lain — EOF, connection refused, mekanisme
+salah — membuat tes hijau sambil menguji hal yang salah.
+
+Yang sengaja **disalin**, tidak "disederhanakan": urutan seleksi mekanisme (`smtp.go:90-105`:
+CRAM-MD5 → LOGIN hanya jika PLAIN tidak diiklankan → PLAIN), `tlsConfig =
+&tls.Config{ServerName: host}`, dan amplop `MAIL FROM` = akun yang diautentikasi (gomail
+mengambilnya dari header `From`, dan `From` memang diisi `user`). `gomail.Message` tetap
+dipakai, sekarang murni sebagai pembangun MIME lewat `msg.WriteTo(w)` — empat tes di
+`mailer_test.go` tidak tersentuh dan tetap hijau (tiga di antaranya justru menguji header:
+From/To/Subject, Reply-To bukan alamat, CRLF tidak jadi baris header baru), begitu juga dua tes
+stub di `smtp_ditolak_test.go`. Angka suite: `go test ./mailer/ -count=1` → `ok 1.413s`
+(9 tes tingkat atas), `go test ./... -race -count=1` → `ok backend 1.262s / ok mailer 2.428s`,
+`gofmt -l .` kosong, `go vet ./...` bersih (satu keluhan IPv6 ditutup `net.JoinHostPort`),
+`docker build ./go-backend` exit 0. Yang tetap **tidak** terbukti: percakapan Gmail yang
+sungguhan — itu B3, dan bukan bagian S1.
+
+### Produksi setelah `Deploy #44` (dibaca 13:42 UTC, revisi live `portfolio-be-00040-p45`)
+
+| baca | hasil |
+|---|---|
+| merge → selesai | `CI #127` **2 m 24 s** (`13:32:23`→`13:34:47`), `Deploy #44` **6 m 48 s** (`13:32:23`→`13:39:11`), keduanya `success` |
+| image live | `portfolio-be-00040-p45` = `sha256:feb1177138…` = tag `f7e24ba902b7…` |
+| `GET <be>/api/health` | 200, `{"db":"ok","status":"ok"}`, 0,782 s |
+| `GET <fe>/api/cv` #1 | 200, **839.060 byte**, 5,539 s, `x-cv-asal: render` |
+| `GET <fe>/api/cv` #2 (<60 s) | 200, 839.060 byte, **1,800 s**, `x-cv-asal: pukulan-cache`, byte identik, `%PDF-1.4` |
+| `GET <fe>/` | 200, 40.693 byte, 0 kemunculan `Application error` |
+| `GET <be>/api/certificates` | 200, 607 byte, 0,336 s |
+| header FE | HSTS `max-age=31536000; includeSubDomains`, `nosniff`, `DENY`, `strict-origin-when-cross-origin` — **CSP tetap absen** (S3 = O5) |
+
+Enam menit empat puluh delapan juga membuat ramalan "±20 menit per merge" di §11 semakin jauh
+salah: dua pengukuran terakhir (6 m 29 s dan 6 m 48 s) berdekatan, dan keduanya adalah merge
+kode yang benar-benar men-deploy.
+
+### Dua pembacaan yang salah, dan keduanya terjadi hari ini
+
+1. **`GET https://portfolio-be-….run.app/api/cv` menjawab 404** dan sempat kutafsirkan sebagai
+   dugaan regresi. `/api/cv` bukan milik backend sama sekali — ia route handler Next.js.
+   Peta yang benar, diukur dari kode (bukan dari tebakan), dan kucatat di sini karena
+   `/api/projects` yang dari tadi ada di kepalaku **tidak ada**:
+
+   | path | pemilik | sumber |
+   |---|---|---|
+   | `/api/cv`, `/api/github-profile`, `/api/github-repos` | **frontend** | `nextjs-frontend/src/app/api/*/route.ts` |
+   | `/api/login`, `/api/auth/*`, `/api/contact`, `/api/admin/*`, `/api/certificates*`, `/api/experience*`, `/api/health` | backend, lewat rewrite FE | `next.config.ts:9-17` → `main.go:371-395,524,543,563` |
+   | `/api/projects`, `/api/admin/projects` | **tidak ada di mana pun** | `main.go:352` justru menuntutnya 404, bukan 401 |
+
+   Jadi 404 di URL backend untuk `/api/cv` adalah perilaku yang benar. Cara cek yang kupakai
+   sebelum menyebut apa pun "hilang": `ls nextjs-frontend/src/app/api/` lalu
+   `grep -nE 'source: "/api' nextjs-frontend/next.config.ts`.
+2. **Watcher yang kutulis sendiri salah hitung.** `grep -c` menghitung **baris** yang cocok,
+   dan aku mencetak seluruh daftar check-run dalam SATU baris — kondisinya tidak pernah
+   terpenuhi, watcher berjalan sampai timeout, dan satu siklus tunggu terbuang. Yang benar
+   `grep -o pola | wc -l`. Ini cacat pada alat ukurku, bukan pada repo, dan catatan §12 tentang
+   "empat bug cara membaca gcloud" sekarang punya saudara dari sisi CI lokal.
+
+### Riwayat run, snapshot 2026-10-07 13:45 UTC
+
+| workflow | total | success | failure | cancelled |
+|---|---|---|---|---|
+| `CI` (`ci.yml`) | 127 | 124 | 3 | 0 |
+| `Deploy to Cloud Run` (`deploy.yml`) | 44 | 37 | 6 | 1 |
+| `Watch` (`watch.yml`) | 9 | 8 | 1 | 0 |
+
+`deploy.yml` 44 run itu sekarang termasuk satu yang **tidak** tersulut: merge #59. Itu
+bukan kebetulan dan sudah dicatat di bullet `paths-ignore` DEPLOY.md.
+
+### Perubahan tabel butir
+
+| ID | Sebelum | Sesudah |
+|---|---|---|
+| **S1** | terbuka | **selesai di `f7e24ba`** (PR #60, deploy #44, produksi dibaca ulang). Sisa: B3, dan itu bukan bagian S1. |
+| **E7** | "butir terakhir daftar uji #53, belum diuji" | **terbukti: 0 run** dari merge dokumen, dengan kasus kontrol dari merge kode. |
+| **S5** | angka CV perlu disinkronkan | DEPLOY.md sekarang memuat empat pengukuran: 774.803 / 783.896 / 839.060 (×2, `#42` dan `#44`)) — dan latensinya dipisah: render vs hit cache. |
+| **S6** | ±9 image `porto-*` | `porto-s1-check` sempat kubuat (build verifikasi `docker build ./go-backend`) dan kuhapus pada hari yang sama; hitungan sisa tidak berubah. |
+| **S8** (baru) | — | `merge_method` + `sha` wajib eksplisit di tiap `PUT /pulls/*/merge`. Alasan terukur: #58 jadi merge commit. Sudah berlaku di #59 dan #60. |
