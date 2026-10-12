@@ -2,6 +2,7 @@ package mailer
 
 import (
 	"bufio"
+	"crypto/tls"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -84,6 +85,7 @@ func (p *perekam) ada(want string) bool {
 type stubSMTP struct {
 	address string
 	rec     perekam
+	cert    tls.Certificate
 
 	// AUTH yang diiklankan, mis. "PLAIN" atau "LOGIN". Ini yang menentukan mekanisme
 	// mana yang dipilih pilihMekanisme.
@@ -92,9 +94,20 @@ type stubSMTP struct {
 	// "" = percakapan lengkap sampai queued. "greeting" = jawab 220 lalu diam.
 	// "DATA" = bicara normal sampai 354 lalu diam terhadap titik penutup pesan.
 	diamPada string
+
+	// iklanSTARTTLS=false membuat stub menjawab EHLO tanpa kemampuan STARTTLS: satu-satunya
+	// jalan menguji gerbang yang baru dipasang di mailer.go.
+	iklanSTARTTLS bool
 }
 
 func startStub(t *testing.T, iklankanAUTH, diamPada string) *stubSMTP {
+	t.Helper()
+	return startStubPenuh(t, iklankanAUTH, diamPada, true)
+}
+
+// startStubPenuh adalah bentuk dengan kemampuan STARTTLS bisa dimatikan. Pembungkus startStub
+// di atas ada supaya test tenggat yang sudah ada tidak ikut berubah saat gerbang TLS masuk.
+func startStubPenuh(t *testing.T, iklankanAUTH, diamPada string, iklanSTARTTLS bool) *stubSMTP {
 	t.Helper()
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -103,7 +116,16 @@ func startStub(t *testing.T, iklankanAUTH, diamPada string) *stubSMTP {
 	}
 	t.Cleanup(func() { ln.Close() })
 
-	s := &stubSMTP{address: ln.Addr().String(), iklankanAUTH: iklankanAUTH, diamPada: diamPada}
+	cert, pool := sertifikatTLSStub(t)
+	pasangCAStub(t, pool)
+
+	s := &stubSMTP{
+		address:       ln.Addr().String(),
+		iklankanAUTH:  iklankanAUTH,
+		diamPada:      diamPada,
+		iklanSTARTTLS: iklanSTARTTLS,
+		cert:          cert,
+	}
 	tahan := make(chan struct{})
 	t.Cleanup(func() { close(tahan) })
 
@@ -113,14 +135,16 @@ func startStub(t *testing.T, iklankanAUTH, diamPada string) *stubSMTP {
 			return
 		}
 		defer conn.Close()
-		s.serve(conn, bufio.NewReader(conn), tahan)
+		s.serve(conn, tahan)
 	}()
 
 	return s
 }
 
-func (s *stubSMTP) serve(conn net.Conn, r *bufio.Reader, tahan <-chan struct{}) {
-	fmt.Fprintf(conn, "220 stub.test ESMTP\r\n")
+func (s *stubSMTP) serve(conn net.Conn, tahan <-chan struct{}) {
+	sal := &saluranStub{conn: conn, r: bufio.NewReader(conn), cert: s.cert}
+
+	fmt.Fprintf(sal.conn, "220 stub.test ESMTP\r\n")
 	if s.diamPada == "greeting" {
 		<-tahan
 		return
@@ -131,11 +155,11 @@ func (s *stubSMTP) serve(conn net.Conn, r *bufio.Reader, tahan <-chan struct{}) 
 		loginTahap int
 	)
 	kredensialDiterima := func() {
-		fmt.Fprintf(conn, "235 2.7.0 Authentication successful\r\n")
+		fmt.Fprintf(sal.conn, "235 2.7.0 Authentication successful\r\n")
 	}
 
 	for {
-		line, err := r.ReadString('\n')
+		line, err := sal.r.ReadString('\n')
 		if err != nil {
 			return
 		}
@@ -146,40 +170,49 @@ func (s *stubSMTP) serve(conn net.Conn, r *bufio.Reader, tahan <-chan struct{}) 
 		case badanPesan && up != ".":
 			// Baris badan pesan: bukan perintah, tidak dibalas.
 		case strings.HasPrefix(up, "EHLO"), strings.HasPrefix(up, "HELO"):
-			fmt.Fprintf(conn, "250-stub.test\r\n250-AUTH %s\r\n250 8BITMIME\r\n", s.iklankanAUTH)
+			if s.iklanSTARTTLS {
+				fmt.Fprintf(sal.conn, "250-stub.test\r\n250-STARTTLS\r\n250-AUTH %s\r\n250 8BITMIME\r\n", s.iklankanAUTH)
+			} else {
+				fmt.Fprintf(sal.conn, "250-stub.test\r\n250-AUTH %s\r\n250 8BITMIME\r\n", s.iklankanAUTH)
+			}
+		case up == "STARTTLS":
+			if err := naikTLS(sal); err != nil {
+				s.rec.tulis("STARTTLS GAGAL: " + err.Error())
+				return
+			}
 		case strings.HasPrefix(up, "AUTH LOGIN"):
 			loginTahap = 1
-			fmt.Fprintf(conn, "334 VXNlcm5hbWU6\r\n") // "Username:"
+			fmt.Fprintf(sal.conn, "334 VXNlcm5hbWU6\r\n") // "Username:"
 		case strings.HasPrefix(up, "AUTH"):
 			// AUTH PLAIN: kredensial sudah ikut di baris ini.
 			kredensialDiterima()
 		case loginTahap == 1:
 			loginTahap = 2
-			fmt.Fprintf(conn, "334 UGFzc3dvcmQ6\r\n") // "Password:"
+			fmt.Fprintf(sal.conn, "334 UGFzc3dvcmQ6\r\n") // "Password:"
 		case loginTahap == 2:
 			loginTahap = 0
 			kredensialDiterima()
 		case strings.HasPrefix(up, "MAIL FROM"):
-			fmt.Fprintf(conn, "250 2.1.0 Ok\r\n")
+			fmt.Fprintf(sal.conn, "250 2.1.0 Ok\r\n")
 		case strings.HasPrefix(up, "RCPT TO"):
-			fmt.Fprintf(conn, "250 2.1.5 Ok\r\n")
+			fmt.Fprintf(sal.conn, "250 2.1.5 Ok\r\n")
 		case strings.HasPrefix(up, "DATA"):
-			fmt.Fprintf(conn, "354 End data with <CR><LF>.<CR><LF>\r\n")
+			fmt.Fprintf(sal.conn, "354 End data with <CR><LF>.<CR><LF>\r\n")
 			if s.diamPada == "DATA" {
 				// Body dan baris titik tetap mengalir masuk, tapi tidak pernah dijawab.
-				io.Copy(io.Discard, r)
+				io.Copy(io.Discard, sal.r)
 				<-tahan
 				return
 			}
 			badanPesan = true
 		case up == ".":
 			badanPesan = false
-			fmt.Fprintf(conn, "250 2.0.0 Ok: queued\r\n")
+			fmt.Fprintf(sal.conn, "250 2.0.0 Ok: queued\r\n")
 		case strings.HasPrefix(up, "QUIT"):
-			fmt.Fprintf(conn, "221 2.0.0 Bye\r\n")
+			fmt.Fprintf(sal.conn, "221 2.0.0 Bye\r\n")
 			return
 		default:
-			fmt.Fprintf(conn, "250 2.0.0 Ok\r\n")
+			fmt.Fprintf(sal.conn, "250 2.0.0 Ok\r\n")
 		}
 	}
 }
@@ -205,6 +238,35 @@ func kredensialStub(t *testing.T) {
 
 	t.Setenv("EMAIL_USER", "kuis@stub.test")
 	t.Setenv("EMAIL_PASS", strings.Repeat("x", 16))
+}
+
+// Gerbang TLS di kirim(): server yang tidak mengiklankan STARTTLS harus ditolak sebelum satu
+// byte kredensial pun keluar. Bukti yang penting di sini justru apa yang TIDAK diterima stub —
+// karena kegagalan yang diganti adalah "kirim tapi plaintext", dan itu tetap rc=0 di sisi
+// pengirim.
+func TestServerTanpaSTARTTLS_DitolakSebelumKredensialKeluar(t *testing.T) {
+	stub := startStubPenuh(t, "PLAIN", "", false)
+	stub.arah(t)
+	kredensialStub(t)
+
+	err := SendEmail("penerima@example.test", "balas@example.test", "halo", "isi")
+	if err == nil {
+		t.Fatal("server tanpa STARTTLS tapi pengiriman lolos")
+	}
+	if !strings.Contains(err.Error(), "STARTTLS") {
+		t.Fatalf("error tidak menunjuk STARTTLS sebagai alasan, dapat: %v", err)
+	}
+	// Klasifikasi harus tetap "gagal kirim": ErrNotConfigured membuat main.go mencatat
+	// "email dilewati", dan itu menyembunyikan server yang sebenarnya berbahaya.
+	if errors.Is(err, ErrNotConfigured) {
+		t.Fatalf("penolakan STARTTLS diklasifikasikan sebagai kredensial belum ada: %v", err)
+	}
+	if stub.rec.ada("AUTH") {
+		t.Fatalf("kredensial sempat dikirim di jalur plaintext.\nDiterima: %v", stub.rec.semua())
+	}
+	if !stub.rec.ada("EHLO") {
+		t.Fatalf("percakapan tidak pernah mulai, jadi penolakan ini belum terbukti dari EHLO.\nDiterima: %v", stub.rec.semua())
+	}
 }
 
 // Server menjawab greeting lalu diam. Titik paling awal yang bisa macet.

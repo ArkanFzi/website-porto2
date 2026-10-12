@@ -835,7 +835,11 @@ jobs:
           cmp -s /tmp/cv.pdf /tmp/cv2.pdf || { echo "yang datang dari cache bukan byte yang sama dengan hasil render"; exit 1; }
           echo "cache CV terbukti: render lalu pukulan-cache, $((t1 - t0)) ms, byte identik ($(wc -c < /tmp/cv2.pdf) byte)"
 
-          command -v pdftotext > /dev/null || sudo apt-get install -y --no-install-recommends poppler-utils
+          # Daftar paket di image runner sudah basi sebelum install dijalankan. Pada run #109
+          # (2026-10-12) apt mencoba mengambil pool `libpoppler134 24.02.0-1ubuntu9.9` yang sudah
+          # dihapus mirror → 404 → exit 100, padahal seluruh uji PDF di atas baris ini sudah lolos.
+          # Index di-refresh dulu supaya URL-nya datang dari daftar yang masih benar.
+          command -v pdftotext > /dev/null || { sudo apt-get update -o Acquire::Retries=3 > /dev/null && sudo apt-get install -y --no-install-recommends poppler-utils; }
           command -v pdftotext > /dev/null || { echo "pdftotext tetap tidak tersedia setelah install"; exit 1; }
           pdftotext -layout /tmp/cv.pdf /tmp/cv.txt
           if ! grep -qi "$PENANDA" /tmp/cv.txt; then
