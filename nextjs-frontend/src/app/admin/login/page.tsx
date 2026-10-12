@@ -31,8 +31,16 @@ export default function LoginPage() {
                 throw new Error("Invalid username or password");
             }
 
-            const data = await res.json();
-            setAuthToken(data.token);
+            // res.ok saja tidak cukup. String( undefined ) adalah "undefined" — truthy — jadi
+            // satu respons 200 tanpa field token sudah cukup untuk membuat gerbang klien di
+            // admin/layout.tsx menganggap sesi ada dan mengirim "Bearer undefined".
+            const data = (await res.json().catch(() => null)) as { token?: unknown } | null;
+            const token = data?.token;
+            if (typeof token !== "string" || token === "") {
+                throw new Error("Login tidak selesai: server tidak mengembalikan token.");
+            }
+
+            setAuthToken(token);
             router.push("/admin/dashboard");
         } catch (err) {
             setError(err instanceof Error ? err.message : "Failed to login");
