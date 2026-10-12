@@ -5,10 +5,15 @@ name: Scan
 # branch protection). Di sini `paths:` justru aman dan perlu: tidak ada alasan menjalankan
 # `npm ci` + `govulncheck` untuk perubahan README.
 #
-# `schedule` ada karena kerentanan terbit tanpa ada yang menyentuh kode: angka yang jadi baseline
-# hari ini (3 GO + 60 GHSA) berasal dari basis-data advisori GitHub per 2026-10-06, bukan dari
-# commit kita. Tanpa jadwal, temuan baru tidak akan terlihat sampai ada PR yang kebetulan mengubah
-# lockfile.
+# `schedule` ada karena kerentanan terbit tanpa ada yang menyentuh kode: angka di
+# tools/ci/vuln-baseline.json berasal dari basis-data advisori GitHub pada hari ia diukur (lihat
+# kunci `diukur`), bukan dari commit kita. Tanpa jadwal, temuan baru tidak akan terlihat sampai ada
+# PR yang kebetulan mengubah lockfile.
+#
+# Dua hal yang membuat angkanya berarti: govulncheck jalan di DALAM image golang yang di-pin di
+# go-backend/Dockerfile (bukan toolchain runner — lihat langkah scan di bawah), dan npm audit
+# dibatasi --omit=dev. Yang dibandingkan adalah apa yang di-deploy, bukan apa yang kebetulan
+# terpasang di mesin build.
 #
 # Batas yang perlu diketahui sejak awal: cron GitHub HANYA dijalankan dari branch default. Jadi
 # sebelum PR ini mendarat di main, jadwalnya belum aktif — dan kalau nanti ada PR yang mengubah
@@ -27,6 +32,9 @@ on:
       - "nextjs-frontend/package-lock.json"
       - "go-backend/go.mod"
       - "go-backend/go.sum"
+      # govulncheck sekarang berjalan di dalam image yang disebut file ini: ganti versi atau
+      # digest = ganti toolchain = ganti angkanya. Scan wajib ikut jalan.
+      - "go-backend/Dockerfile"
       - "tools/ci/vuln-baseline.json"
       - "tools/ci/vuln-check.mjs"
       - ".github/workflows/scan.yml"
@@ -63,10 +71,19 @@ jobs:
           cache: npm
           cache-dependency-path: nextjs-frontend/package-lock.json
 
-      - name: Setup Go
-        uses: actions/setup-go@0aaccfd150d50ccaeb58ebd88d36e91967a5f35b6 # v5.4.0
-        with:
-          go-version-file: go-backend/go.mod
+      - name: Baca image Go dari Dockerfile produksi
+        id: go-base
+        run: |
+          img=$(sed -n 's|^FROM \(golang:[^ ]*\).*|\1|p' go-backend/Dockerfile | head -n1)
+          [ -n "$img" ] || { echo "tidak menemukan FROM golang:... di go-backend/Dockerfile"; exit 1; }
+          # Digest wajib. Tanpa pin, "image yang sama dengan produksi" cuma klaim: tag bergerak bisa
+          # berjarak satu minor dari yang benar-benar dibangun dan di-deploy.
+          case "$img" in
+            *@sha256:*) ;;
+            *) echo "FROM golang harus di-pin digest, yang terbaca: $img"; exit 1 ;;
+          esac
+          echo "image=$img" >> "$GITHUB_OUTPUT"
+          echo "scan akan berjalan di dalam $img"
 
       - name: npm audit — hanya dependensi produksi
         working-directory: nextjs-frontend
@@ -88,14 +105,26 @@ jobs:
           jq -e '.metadata.vulnerabilities | has("total")' /tmp/audit.json > /dev/null
           jq -r '"audit produksi: \(.metadata.vulnerabilities | to_entries | map("\(.key)=\(.value)") | join(" "))"' /tmp/audit.json
 
-      - name: govulncheck — hanya yang benar-benar dipanggil kode
-        working-directory: go-backend
+      - name: govulncheck — di dalam image yang di-deploy
         run: |
-          # rc=3 berarti ada temuan yang terpanggil; itu keadaan hari ini (x/text, quic-go, pgx).
-          # Sama seperti npm di atas: rc-nya bukan vonis, keluarannya yang jadi bahan perbandingan.
-          go run golang.org/x/vuln/cmd/govulncheck@latest ./... > /tmp/govuln.txt 2>&1 || true
+          # govulncheck melaporkan stdlib dari toolchain yang MENJALANKANNYA, bukan dari image kita.
+          # Diukur 2026-10-12: dengan `go-version-file: go-backend/go.mod` (PR #48 baru menaikkan
+          # direktifnya ke go 1.26.0) runner melapor 26 temuan "terpanggil", dan 22 di antaranya
+          # stdlib go1.26 — GO-2026-6617 mencetak "Found in: net/http@go1.26, Fixed in: go1.26.9" —
+          # sementara image produksi (golang:1.27-alpine, go1.27.2) hanya punya 4. Tripwire itu
+          # mengukur kerentanan alat build CI, bukan kerentanan yang di-deploy, dan angkanya
+          # menyewa perhatian untuk hal yang salah.
+          # Yang dijalankan sekarang image-nya sendiri, jadi tidak ada lagi tebakan versi:
+          # GOTOOLCHAIN=local menutup jalan keluar — kalau go.mod menuntut lebih baru dari image
+          # ini, scan mati merah, bukan diam-diam mengunduh toolchain lain lalu memindai itu.
+          # rc-nya tetap bukan vonis (3 = ada temuan terpanggil); keluarannya yang dibandingkan.
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE/go-backend:/app:ro" -w /app \
+            -e GOTOOLCHAIN=local -e GOCACHE=/tmp/gocache -e GOMODCACHE=/tmp/gomod -e GOPATH=/tmp/gopath \
+            "${{ steps.go-base.outputs.image }}" \
+            sh -c 'go run golang.org/x/vuln/cmd/govulncheck@latest ./...' > /tmp/govuln.txt 2>&1 || true
           n=$(grep -c '^Vulnerability #' /tmp/govuln.txt || true)
-          echo "govulncheck: $n kerentanan terpanggil, id: $(grep -oE 'GO-[0-9]{4}-[0-9]+' /tmp/govuln.txt | sort -u | tr '\n' ' ')"
+          echo "govulncheck (${{ steps.go-base.outputs.image }}): $n kerentanan terpanggil, id: $(grep -oE 'GO-[0-9]{4}-[0-9]+' /tmp/govuln.txt | sort -u | tr '\n' ' ')"
           # Ketiadaan sama sekali Blok Symbol bisa berarti "bersih" ATAU "scan mati di tengah jalan".
           # Yang kedua tidak boleh lolos jadi hijau; grep di bawah memastikan berkasnya memang keluaran
           # govulncheck, bukan kosong karena gagal unduh modul.
