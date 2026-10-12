@@ -42,6 +42,15 @@ function ambilToken(): { boleh: boolean; tungguDetik: number } {
     return { boleh: true, tungguDetik: 0 };
 }
 
+// Batas keras satu render. Render sehat terukur 13,1–15,3 s pada 2026-10-07; 45 s adalah ±3×
+// terburuk yang pernah terbukti, jadi ia tidak pernah memotong render yang sebenarnya jalan.
+//
+// Yang dilindungi bukan respons pengunjung — itu toh sudah pulang dengan 500 — melainkan
+// instance-nya. page.pdf() tidak punya timeout sendiri, dan promise yang tidak pernah settle
+// membuat `sedangMeras` di bawah tetap menggantung selamanya: setiap GET /api/cv berikutnya
+// menunggu Chromium yang sudah macet itu sampai replikanya didaur ulang.
+const BATAS_RENDER_MS = 45_000;
+
 async function renderPdf(): Promise<Uint8Array> {
     const browser = await puppeteer.launch({
         headless: true,
@@ -54,17 +63,27 @@ async function renderPdf(): Promise<Uint8Array> {
         ],
     });
 
+    // Menutup browser adalah satu-satunya jalan membuat page.pdf() yang sedang menggantung
+    // jadi gagal: target yang mati membuat panggilan itu reject, promise singleflight settle,
+    // dan permintaan berikutnya boleh mencoba render baru.
+    const penunggu = setTimeout(() => {
+        browser.close().catch(() => undefined);
+    }, BATAS_RENDER_MS);
+
     try {
         const page = await browser.newPage();
         const port = process.env.PORT || '3000';
-        await page.goto(`http://127.0.0.1:${port}/cv-layout`, { waitUntil: 'networkidle0' });
+        await page.goto(`http://127.0.0.1:${port}/cv-layout`, { waitUntil: 'networkidle0', timeout: 30_000 });
         return await page.pdf({
             format: 'A4',
             printBackground: true,
             margin: { top: '0px', bottom: '0px', left: '0px', right: '0px' },
         });
     } finally {
-        await browser.close();
+        clearTimeout(penunggu);
+        // close() pada browser yang sudah ditutup oleh penunggu di atas akan melempar;
+        // membiarkannya berarti menutupi galat render yang justru ingin kita lihat.
+        await browser.close().catch(() => undefined);
     }
 }
 
