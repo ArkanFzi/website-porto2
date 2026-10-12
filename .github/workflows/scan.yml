@@ -113,7 +113,7 @@ jobs:
           # stdlib go1.26 — GO-2026-6617 mencetak "Found in: net/http@go1.26, Fixed in: go1.26.9" —
           # sementara image produksi (golang:1.27-alpine, go1.27.2) hanya punya 4. Tripwire itu
           # mengukur kerentanan alat build CI, bukan kerentanan yang di-deploy, dan angkanya
-          # menyewa perhatian untuk hal yang salah.
+          # mengalihkan perhatian ke hal yang salah.
           # Yang dijalankan sekarang image-nya sendiri, jadi tidak ada lagi tebakan versi:
           # GOTOOLCHAIN=local menutup jalan keluar — kalau go.mod menuntut lebih baru dari image
           # ini, scan mati merah, bukan diam-diam mengunduh toolchain lain lalu memindai itu.
