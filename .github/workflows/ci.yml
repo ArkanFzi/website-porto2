@@ -64,10 +64,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.3
 
+      - name: Baca versi Node dari image produksi
+        id: node-base
+        run: |
+          # Yang dites di CI harus runtime yang sama dengan yang melayani pengunjung. Selama job
+          # ini mengunci angkanya sendiri, bump node di Dockerfile tidak pernah teruji di PR mana
+          # pun: hijau cuma membuktikan build sukses pada runtime yang tidak dipakai produksi.
+          # Angka dibaca dari `FROM node:` supaya dua tempat tidak bisa drift lagi.
+          v=$(sed -n 's|^FROM node:\([0-9][0-9]*\)-alpine.*|\1|p' nextjs-frontend/Dockerfile | head -n1)
+          [ -n "$v" ] || { echo "tidak menemukan FROM node:<major>-alpine di nextjs-frontend/Dockerfile"; exit 1; }
+          echo "versi=$v" >> "$GITHUB_OUTPUT"
+          echo "CI akan memakai Node $v, sama dengan basis image yang di-deploy"
+
       - name: Setup Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 20
+          node-version: ${{ steps.node-base.outputs.versi }}
           cache: npm
           cache-dependency-path: nextjs-frontend/package-lock.json
 
