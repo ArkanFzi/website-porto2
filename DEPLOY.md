@@ -179,7 +179,13 @@ menjalankan server Next.js. Yang menangkap adalah probe pasca-deploy.
 
 ## Watch (P6) — apa yang dibuktikan, dan apa yang tidak
 
-`watch.yml` jalan setiap hari 02:37 UTC dan menulis satu baris ke ringkasan run. Ia **bukan
+`watch.yml` punya cron `37 2 * * *` (02:37 UTC), tapi **run-nya baru dibuat ±6,6 jam kemudian**:
+#7 `09:35:08Z`, #8 `09:23:21Z`, #9 `09:12:39Z` pada 05/06/07 Oktober — `created_at` sama dengan
+`run_started_at`, dan ekspresi cron-nya identik di ketiga SHA (`git show <sha>:.github/workflows/watch.yml`).
+Sudah dicatat lebih dulu di TODO.md (F10 di §8 + baris A0 di §9.0, 2026-10-06) — yang bertambah
+cuma dua sampel dan pola selisih yang mengecil ±11 menit per hari (6 j 58 m → 6 j 46 m → 6 j 35 m).
+Dibaca sebagai batas manfaat: probe ini tidak bisa dipakai untuk sesuatu yang harus diketahui pada
+jam 03:00. Isi run-nya satu baris ringkasan per hari, dan workflow ini **bukan
 gerbang**: tidak ada merge yang menunggunya, dan tidak ada satu langkah pun yang punya akses tulis.
 Isinya tiga hal:
 
@@ -559,18 +565,57 @@ kalau trigger tidak lagi membutuhkannya.
 
 ## Catatan operasional
 
-- **Riwayat run** (snapshot 2026-10-07 13:45 UTC): workflow lama `Build, Test and Deploy to Cloud
-  Run` 15 run → 9 success, 5 failure, 1 cancelled. `CI` **127** run → 124 success, 3 failure.
-  `Deploy to Cloud Run` **44** run → 37 success, 6 failure, 1 cancelled (failure termasuk drill
-  rollback #18 yang memang merusak produksi dengan sengaja). `Watch` 9 run → 8 success, 1 failure.
-  Angka ini diambil per-status lewat REST, bukan dari satu halaman: `?status=success&per_page=1`
-  lalu baca `total_count` (menjumlahkan `conclusion` dari `?per_page=100` memberi angka yang
-  salah begitu totalnya > 100 — terjadi pada `CI` diukurannya 100 vs 127).
-- **Merge dokumen tidak men-deploy — sekarang terukur, bukan sekadar dijaga `paths-ignore`.**
+- **Riwayat run** (snapshot 2026-10-07 13:45 UTC; `CI`/`Watch`/`Deploy` dibaca ulang 14:54, 16:10 dan
+  **16:21 UTC** — yang bergerak cuma `CI`):
+  workflow lama `Build, Test and Deploy to Cloud
+  Run` 15 run → 9 success, 5 failure, 1 cancelled. `CI` **135** run → **129 success, 3 failure,
+  3 cancelled**; dua bacaan sebelumnya ada di dalam angka yang sama: 14:54 UTC = 129 run → 126
+  success, 3 failure, **0 cancelled**, 16:10 UTC = 133 run → 128 success, 3 failure, 2 cancelled.
+  (Yang ke-129 adalah `push: main` dari merge dokumen `#61`; gerbang tes memang tidak punya
+  filter path). `Deploy to Cloud Run` **44** run → 37 success, 6 failure, 1 cancelled, dan 44 itu
+  = 42 `push` + 2 `workflow_dispatch` (failure termasuk drill rollback #18 yang memang merusak
+  produksi dengan sengaja). `Watch` 9 run → 8 success, 1 failure = 3 `schedule` + 6
+  `workflow_dispatch`.
+  **Tiga `cancelled` itu yang pertama dalam sejarah `ci.yml` — nol sepanjang 129 run pertama — dan
+  penyebabnya push-ku sendiri di branch PR #62.** Enam push di `docs/jadwal-watch-dan-e7-sampel-3`:
+  `#130` (`d7e5607`) 15:19:44 → 15:22:06 `success`; `#131` (`5bcd279`) tercipta 16:02:54,
+  `cancelled` 16:05:19; `#132` (`fb0860f`) tercipta **16:05:16** — 3 s sebelum `#131` berhenti — lalu
+  `cancelled` 16:07:53; `#133` (`8b6cc6c`) tercipta 16:07:25 → `success` 16:10:14; `#134`
+  (`df74f6e`) 16:14:37 → `cancelled` 16:16:51; `#135` (`eb66dc6`) 16:16:35 → `success` 16:19:09.
+  Tiga yang mati bukan karena galat dan bukan karena `concurrency`-nya salah tulis: run `ci.yml` yang
+  dibiarkan selesai butuh 2 m 22 s (`#130`) sampai 2 m 49 s (`#133`), dan aku push lagi tiap ±2,5 m —
+  `#131` mati setelah 2 m 25 s dan `#132` setelah 2 m 37 s, keduanya di tengah jalan, bukan sesudah
+  gagal. Yang bertahan juga menjelaskan batasnya: `#131` dibatalkan oleh `#132`, `#132` oleh `#133`,
+  `#134` oleh `#135` — selalu push yang datang **selagi run sebelumnya masih berjalan**; `#130` dan
+  `#133` selamat karena push berikutnya baru datang 43 m dan 4 m 23 s sesudah run-nya selesai.
+  `cancel-in-progress: true` di gerbang tes dengan begitu terbukti dari **aksinya**, bukan cuma dari
+  teks YAML-nya; selama ini yang pernah terlihat di repo ini baru sisi sebaliknya
+  (`cancel-in-progress: false` pada deploy, F3). Angka `CI` di atas jelas bergerak selama PR masih
+  dibuka — yang layak disalin dari bullet ini adalah **pembacaan + jam + metodenya**, bukan
+  totalnya. Yang harus dibedakan: `Deploy to Cloud Run` tetap 44 dengan 0 run baru sepanjang enam
+  push ini, tapi itu **bukan sampel keempat E7** — keenamnya terjadi di branch, dan `deploy.yml` cuma
+  bereaksi pada `main`. E7 membuktikan merge dokumen; klaim "push di branch tidak men-deploy" tidak
+  pernah kucoba dan tidak dibutuhkan.
+  **Cara mengukur yang benar (dan koreksi atas caraku sebelumnya):** tarik SEMUA baris lewat
+  `per_page=100` + `page=N`, lalu `group_by(.conclusion)`. Angkanya menutup persis di ketiga
+  workflow (129+3+3=135, 37+6+1=44, 8+1=9; pada bacaan 14:54 UTC: 126+3=129). Yang kutulis di bullet
+  ini sebelumnya —"`?status=X` lalu
+  baca `total_count`"— baru terbukti tidak stabil: `ci.yml?status=success&per_page=1` mengembalikan
+  **117** satu kali, lalu **126** tiga kali berturut-turut pada selang menit yang sama. Penyebab
+  selisih 9 itu tidak kujelaskan; yang jelas `total_count` tersaring bukan angka yang layak
+  dipakai sendirian. Yang tetap tidak berubah: menjumlahkan `conclusion` dari SATU halaman
+  `?per_page=100` memberi angka yang salah begitu totalnya > 100 (terjadi pada `CI` diukurannya
+  100 vs 127 — karena itu paginasi wajib, bukan opsional).
+- **Merge dokumen tidak men-deploy — sekarang terukur tiga kali, dua dari sisi berlawanan.**
   `#59` (dua file `.md`, `ad767c6`) menghasilkan **0 run** `deploy.yml`: `total_count` 43 → 43.
   Kasus kontrolnya pada jam yang sama: `#60` (isi `go-backend/mailer/*`) men-sulut `Deploy #44`,
-  43 → 44. Sebelumnya merge isi `.md` saja membangun ulang dan mengganti produksi (lihat run
-  workflow lama pada `2501378`/`2d024ab`), karena workflow lama menyulut `push: main` tanpa filter.
+  43 → 44. Sampel ketiga: `#61` (dua file `.md`, mendarat sebagai `10fc112`, 1 orang tua) →
+  `deploy.yml` **44 → 44** dan **0 run pada SHA itu**, sementara `ci.yml` 128 → **129** dan
+  `CI #129` hijau. Produksi memang tidak berubah dan itu kucek, bukan kuasumsikan: revisi live
+  tetap `portfolio-be-00040-p45` / `portfolio-fe-00039-7n5`, image backend tetap
+  `sha256:feb1177138…`, `/api/health` 200. Sebelumnya merge isi `.md` saja membangun ulang dan
+  mengganti produksi (lihat run workflow lama pada `2501378`/`2d024ab`), karena workflow lama
+  menyulut `push: main` tanpa filter.
 - **Men-merge lewat REST tanpa `merge_method` = mendapat merge commit.** Default field itu adalah
   `merge` (`gh` tidak tersedia di mesin ini, jadi semua merge di sini panggilan REST). `#58` ku-merge
   tanpa field itu → `main` menyimpan `fad9aaf` dengan 2 orang tua dan pesan `Merge pull request #58 …`;
@@ -601,8 +646,20 @@ kalau trigger tidak lagi membutuhkannya.
   publik: render **5,572 s**, lalu hit dalam jendela cache **2,204 s** (byte identik), dan hit yang sama
   di runner CI **12 ms** — jadi latency yang sampai pengunjung didominasi jaringan/lapisan Cloud Run,
   bukan lagi oleh Chromium. Dibaca ulang setelah `Deploy #44` (revisi baru, cache dingin): render
-  **5,539 s** → hit **1,800 s**, byte tetap identik. Yang tidak berubah: cold start kontainer
-  (replika baru = cache kosong).
+  **5,539 s** → hit **1,800 s**, byte tetap identik. **Koreksi penting dari log `run.googleapis.com/requests`
+  (2026-10-07):** angka 16,384 s yang sempat kutulis di sini sebagai "harga replika dingin"
+  **salah label**. Server-side, permintaan itu 13,104 s pada instance yang sudah hidup 31 menit;
+  yang benar adalah **render pertama pada sebuah instance = 13,1–15,3 s (4 sampel) vs render
+  berikutnya pada instance yang sama = 4,0–4,8 s (5 sampel)** — dua kelompok yang tidak tumpang
+  tindih. Start kontainer sendiri terukur 4,689 s (`/` pertama instance baru), dan itu jarang
+  terjadi: 2.509 dari 2.534 permintaan `portfolio-fe` 09:00:05–15:59:43 UTC adalah uptime checks
+  (satu tiap 10,03 detik) sehingga kontainer praktis tidak pernah scale ke nol. Selisih klien−server
+  juga terukur: 16,384↔13,104 s (3,28 s), 2,228↔0,034 s (2,19 s), 5,504↔3,985 s (1,52 s).
+  Konsekuensinya butir **standby replika** (TODO.md **S13**) kehilangan alasannya: yang ±9 s itu ada
+  di dalam kontainer yang sudah hidup (`puppeteer.launch()`/`browser.close()` per render,
+  `route.ts:45-69`), dan yang menghapusnya adalah render pemanasan saat boot, bukan replika standby.
+  Angka lengkap + dua hal yang belum terisolasi: TODO.md §14. Yang tidak berubah: replika baru
+  memulai dengan cache kosong.
 - **Artifact Registry: retensi sudah kebijakan aktif, bukan wacana.** Repo `portfolio-app`
   (`us-central1`) memegang dua policy: `keep-recent-5` (`KEEP`, `mostRecentVersions.keepCount = 5`) dan
   `delete-older-than-3d` (`DELETE`, `olderThan = 259200s`, `tagState = ANY`). `cleanupPolicyDryRun`

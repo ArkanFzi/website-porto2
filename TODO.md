@@ -292,7 +292,7 @@ error gorm atau `r.Run` yang dibuang** (PR #29).
 | 2 | Branch protection `main` | **Diberikan dan terpasang.** `required_status_checks.contexts = ["go","web","api"]`, `strict` tetap `false` (kompensasinya: `ci.yml` ikut tersulut `push: main`) |
 | 3 | Cabut kunci statis `github-cd` | **Sudah tidak relevan — dan bukan karena aku.** `gcloud iam service-accounts keys list` kini hanya mengembalikan 1 kunci `SYSTEM_MANAGED`; kunci `USER_MANAGED` (valid sampai 2028-09-22) yang tercatat di §1 sudah tidak ada saat diperiksa ulang 16:45 UTC. Aku tidak menghapusnya dan tidak bisa memastikan siapa yang menghapus — kalau itu kamu, bagus; kalau bukan, itu pertanyaan sendiri. |
 | 4 | Runtime SA tanpa `roles/editor` | **Selesai (F4 + F5 + F6).** F5: `spec.template.spec.serviceAccountName` kedua service = `portfolio-runtime@…`, terukur 02:46 UTC lewat assertion `deploy.yml` (log run #26) dan lewat `gcloud`. F6 (opsi B, 04:04 – 04:13 UTC): dua SA khusus VM dipasang (`agentic-watchdog@`, `hermes-openclaw@`) dengan 12 binding — 21 pasangan (SA, binding) — yang semuanya datang dari pengukuran — termasuk satu yang menyelamatkan pipa alert: `agentic-alerts-sub` **tidak punya binding apa pun** dan `consume` hari itu hanya datang dari `editor`. `roles/editor` se-proyek kini **1 pemegang**: `486641216758@cloudservices.gserviceaccount.com`. Downtime swap terukur 79 s dan 40 s (audit `instances.stop`→`start` selesai), cabut `editor` 04:07:56.5 UTC; sesudahnya `/api/health` 200 `{"db":"ok","status":"ok"}`, beranda 40.699 byte (0 `Application error`), `/api/cv` 774.803 byte `%PDF-1.4`, Watch run #6 `success` `rows=17 merah=0`, heartbeat watchdog `pubsubSubscriber=True` 30 s setelah `start` selesai. Yang tersisa di SA compute: `roles/pubsub.publisher` project-level, **dua binding storage tingkat resource** (`objectAdmin` pada `gs://pickertime-pb-backups`, `objectViewer` pada `gs://pickertime-pb-deploys`) dan **`roles/secretmanager.secretAccessor` pada 6 secret** — temuan terakhir ini justru keluar *setelah* cabut, dan itu salahku yang ketahuan (vestigial juga: 0 kunci `USER_MANAGED` di ke-6 SA) — angka lengkap + tiga pembacaan salah yang kukoreksi di §8 bagian F6 |
-| 5 | `watch.yml` membuat issue otomatis | **Hold atas keputusanmu (4a), sampai 8 hari baris `schedule` terkumpul.** `issues: write` tetap tidak diberi. Perubahan 2026-10-05: Watch sekarang **bisa** membaca state cloud lewat identitas `github-watch@…` yang cuma memegang `roles/run.viewer` (F8) dan sudah membuktikannya dari runner — Watch #4 `rows=17 merah=0`, Watch #5 `rows=19 merah=0`. Status terukur 02:59:50 UTC: `state=active`, **`next_run_at=null`**, `event=schedule` di repo masih **0**, 2 jam 23 menit lewat cron. Dua penyebab umum kubuang dengan pengukuran: repo `public` dan plan `pro`. Re-check paling cepat 2026-10-12 |
+| 5 | `watch.yml` membuat issue otomatis | **Hold atas keputusanmu (4a), sampai 8 hari baris `schedule` terkumpul.** `issues: write` tetap tidak diberi. Perubahan 2026-10-05: Watch sekarang **bisa** membaca state cloud lewat identitas `github-watch@…` yang cuma memegang `roles/run.viewer` (F8) dan sudah membuktikannya dari runner — Watch #4 `rows=17 merah=0`, Watch #5 `rows=19 merah=0`. Status terukur 02:59:50 UTC: `state=active`, **`next_run_at=null`**, `event=schedule` di repo masih **0**, 2 jam 23 menit lewat cron. Dua penyebab umum kubuang dengan pengukuran: repo `public` dan plan `pro`. Re-check paling cepat 2026-10-12. **KOREKSI 2026-10-07 09:12 UTC — `event=schedule` sudah 3 baris dan `next_run_at=null` tetap null:** #7 `3e0265a` 2026-10-05 09:35:08Z, #8 `03b2876` 2026-10-06 09:23:21Z, #9 `ad767c6` 2026-10-07 09:12:39Z, ketiganya `success`, #9 `rows=17 merah=0` (log run 37599025116, langkah selesai 09:13:22). Jadi kalimat "kemungkinan besar ini yang membuatnya tidak tersulut" di atas adalah **kesalahanku membaca `next_run_at`**, bukan temuan tentang cron: field itu null pada workflow yang terbukti tetap tersulut tiga hari berturut-turut. **KOREKSI ATAS KOREKSINYA (jam yang sama, hari yang sama):** kalimat lanjutanku "cron-nya sekitar 09:xx" juga salah. Cron `watch.yml` adalah `37 2 * * *` (02:37 UTC) di ketiga SHA, dan 09:1x itu adalah **waktu run dibuat** — jadi `schedule` di repo ini tersulut **±6,6 jam setelah cronnya** (6 j 58 m / 6 j 46 m / 6 j 35 m, mengecil ±11 menit per hari). Pengukuranku 02:59:50 UTC itu 22 m 50 s **sesudah** cron dan 6 j 35 m **sebelum** run-nya muncul. Tabel, cara mengukur dan prediksi yang bisa difalsifikasi: §14. **Dan keterlambatan ini bukan sesuatu yang baru kunyatakan: F10 (§8) + A0 (§9.0) sudah menuliskannya 2026-10-06** — jadi kalimat "2 jam 23 menit lewat cron" di atas salah dua kali (salah jam, dan mengabaikan catatan yang sudah ada). Tanggal baca yang sah: **2026-10-13 03:00 UTC** (angka F10), bukan 2026-10-12 yang kutulis di baris ini sebelumnya. Jendela tunggunya tinggal 5 baris `schedule` hijau lagi |
 | 6 | `staging`, `chore/bughunter-ci` | **Selesai (F1).** `git ls-remote --heads origin` **16 → 2**: 13 branch yang sudah jadi ancestor `main` (termasuk `staging` `1f2486b`) dihapus bersama `chore/bughunter-ci` `bd38b93` yang isinya dibuang. Sebelum hapus: `porto2-branch-backup-2026-10-05.bundle` (6.768.151 byte, `sha256:85677cee…`) dan pemulihan dites di repo sementara — `staging` kembali ke `1f2486b`, `chore/bughunter-ci` ke `bd38b93`. Yang **kutahan** atas nama keputusanmu: `chore/gerbang-ci` `e3ce49d`, ahead 2 commit (PR #1, isinya sudah tersuperseded oleh PR #2 — 7 file yang disentuhnya semua ADA di `main`, `ci.yml` beda 20 baris). Hitungan "10 cabang" yang kupakai kemarin salah, angka yang benar 13 + 2 |
 
 ---
@@ -2756,3 +2756,280 @@ bukan kebetulan dan sudah dicatat di bullet `paths-ignore` DEPLOY.md.
 | **S5** | angka CV perlu disinkronkan | DEPLOY.md sekarang memuat empat pengukuran: 774.803 / 783.896 / 839.060 (×2, `#42` dan `#44`)) — dan latensinya dipisah: render vs hit cache. |
 | **S6** | ±9 image `porto-*` | `porto-s1-check` sempat kubuat (build verifikasi `docker build ./go-backend`) dan kuhapus pada hari yang sama; hitungan sisa tidak berubah. |
 | **S8** (baru) | — | `merge_method` + `sha` wajib eksplisit di tiap `PUT /pulls/*/merge`. Alasan terukur: #58 jadi merge commit. Sudah berlaku di #59 dan #60. |
+
+## 14. Sampel ketiga E7, dan dua angka yang menjatuhkan alasanku sendiri (ditulis 2026-10-07 14:45–16:21 UTC)
+
+### E7, sampel ketiga: merge dokumen lagi, `deploy.yml` diam lagi
+
+`#61` (`docs/s1-dan-e7`, dua file `.md`, nol kode) di-squash-merge dan yang mendarat di `main`
+adalah `10fc11253da9c2bdd2757e1e3950828ae9568d4a` (`10fc112`), 1 orang tua — bukan merge commit.
+Angka yang kubaca sebelum dan sesudah, dengan jeda 45 detik:
+
+| baca | sebelum merge | sesudah merge |
+|---|---|---|
+| `deploy.yml total_count` | 44 | **44** |
+| run `deploy.yml` pada SHA merge | — | **0** |
+| `ci.yml total_count` | 128 | **129** (tersulut `push: main`, `CI #129` `success`) |
+
+Tiga sampel sekarang: `#59` 43→43, `#60` (kode) 43→44, `#61` 44→44. Yang membedakan bukan
+"PR dokumen" secara umum, tapi **`paths-ignore` pada `deploy.yml`** — dan ia terbukti dari kedua
+sisinya: dua merge dokumen diam (0 run), satu merge kode menyala. `ci.yml` sengaja **tidak** memasang
+filter apa pun, jadi angka 129 itu juga bagian dari rancangan: gerbang tes tetap jalan untuk
+perubahan dokumen.
+
+Produksi tidak berubah dan itu ikut kucek, bukan kuasumsikan: `portfolio-be-00040-p45` dan
+`portfolio-fe-00039-7n5` tetap revisi live, image backend tetap `sha256:feb1177138…`,
+`/api/health` 200 `{"db":"ok","status":"ok"}`.
+
+### Angka yang menjatuhkan alasanku sendiri: `next_run_at=null` bukan sinyal
+
+Baris §6 butir 5 sudah kukoreksi di tempatnya; intinya di sini: pada 2026-10-05 02:59:50 UTC
+aku membaca `state=active` + **`next_run_at=null`** + `event=schedule` masih 0, lalu menulis
+"kemungkinan besar ini yang membuatnya tidak tersulut". Hari ini `event=schedule` sudah **3
+baris** — #7 `3e0265a` 2026-10-05 09:35:08Z, #8 `03b2876` 2026-10-06 09:23:21Z, #9 `ad767c6`
+2026-10-07 09:12:39Z, ketiganya `success` — dan **`next_run_at` tetap `null`**. Field itu jadi
+bukti bahwa workflow-mu tidak akan pernah tersulut, padahal tidak ada yang salah dengan cron-nya.
+
+Dua kesalahan yang tumpang tindih di situ, dan keduanya milikku:
+
+1. **Salah tafsir field.** Yang menyalakan schedule adalah `event=schedule` pada run, bukan
+   perkiraan waktu di objek workflow. Aturan baru (ID **S9**): `next_run_at` tidak dipakai
+   lagi sebagai diagnosis; kalau perlu membuktikan penyalaan, hitung run per event.
+2. **Salah duga jendela — dan koreksiku sendiri di bawah ini juga salah, diluruskan oleh subseksi
+   berikutnya.** Aku
+   sempat menulis bahwa "cron-nya sekitar 09:1x". Tidak. Cron `watch.yml` adalah **`37 2 * * *`
+   = 02:37 UTC** pada ketiga SHA itu (`git show <sha>:.github/workflows/watch.yml | grep cron:`,
+   baris 36 di ketiganya). Yang 09:1x adalah **kapan run-nya benar-benar dibuat**. Jadi
+   pengukuranku 02:59:50 UTC itu 22 menit 50 detik **sesudah** cron, dan 6 jam 35 menit
+   **sebelum** run hari itu muncul. Dua-duanya salah arah, satu akar: aku menyimpulkan jadwal
+   dari satu pembacaan tanpa pernah membandingkan `created_at` run dengan ekspresi cronnya.
+
+```bash
+# cara yang benar, dan murah
+curl -s --config $CFG "$API/actions/workflows/watch.yml/runs?per_page=100" \
+  | jq -r '(.workflow_runs | group_by(.event) | map("\(.[0].event)=\(length)") | join(" "))'
+#   hari ini: total=9 → schedule=3 workflow_dispatch=6
+```
+
+Isi run #9-nya sendiri: `rows=17 merah=0`, langkah selesai `09:13:22Z` (±43 s dari mulai).
+Angka `rows` bergerak antar-hari (Watch #5 pernah `rows=19`) karena ia hitungan baris tabel
+hari itu, bukan konstanta — tidak ada yang perlu dicurigai dari selisih itu, tapi juga tidak
+boleh ditulis sebagai "jumlah probe tetap 17".
+
+### Yang tertunda bukan cuma run: koreksiku di §6 menyalakan ulang sesuatu yang sudah dicatat F10
+
+Tabel ini bukan temuan baru, dan bagian paling memalukan dari hari ini justru itu:
+
+| run | `head_sha` | cron | `created_at` = `run_started_at` | selisih dari 02:37 |
+|---|---|---|---|---|
+| Watch #7 | `3e0265a` | 2026-10-05 02:37Z | 2026-10-05 **09:35:08Z** | **6 jam 58 m 08 s** |
+| Watch #8 | `03b2876` | 2026-10-06 02:37Z | 2026-10-06 **09:23:21Z** | **6 jam 46 m 21 s** |
+| Watch #9 | `ad767c6` | 2026-10-07 02:37Z | 2026-10-07 **09:12:39Z** | **6 jam 35 m 02 s** |
+
+F10 (§8) **sudah** mencatat bahwa cron `37 2 * * *` menghasilkan satu baris `event=schedule` yang
+datang 6 jam 58 menit setelah menit cron-nya, sudah memakai angka itu untuk menggeser tanggal
+re-check dari 2026-10-12 ke **2026-10-13 03:00 UTC**, dan baris **A0** di §9.0 (ditulis 2026-10-06)
+sudah menambahkan enam pembacaan pada hari itu (02:37:11 → 03:31:31 UTC) yang semuanya masih
+`schedule=1`.
+Jadi ketika aku menulis di §6 butir 5 bahwa "cron-nya sekitar 09:xx", aku tidak hanya salah —
+aku mengarang ulang kesimpulan yang ada di file yang sama, beberapa baris di bawah yang sedang
+kuedit. Aturan kerja yang gagal di sini: mengoreksi catatan tanpa mencari catatan itu (`grep -n
+"37 2 \|schedule"`) lebih dulu.
+
+Yang memang baru dari hari ini cuma dua hal:
+
+1. **Dua sampel tambahan** (#8, #9), sehingga selisihnya sekarang tiga titik: 6 j 58 m → 6 j 46 m →
+   6 j 35 m, **mengecil ±11 menit per hari** (−11 m 47 s, lalu −11 m 19 s). Tiga titik monoton tidak
+   membuktikan drift; yang membuktikannya hari ke-4 dan ke-5. Prediksi yang bisa difalsifikasi:
+   #10 ≈ **09:01 UTC pada 2026-10-08**, #15 ≈ **08:05 UTC pada 2026-10-13**. Meleset → klaim drift
+   dicabut.
+2. **Ekspresi cron-nya kubaca langsung dari ketiga SHA** (`git show <sha>:.github/workflows/watch.yml`,
+   baris 36, identik `"37 2 * * *"`), jadi hipotesis "cron pernah diubah lalu dikembalikan" tertutup.
+   `next_run_at` masih `null` pada objek workflow yang sama.
+
+Konsekuensi operasionalnya tetap seperti yang sudah ditulis F10, dan ini bukan arkeologi: `watch.yml`
+adalah satu-satunya probe yang membandingkan produksi dengan assertion `deploy.yml`, sementara
+alert-nya lahir dari cron 02:37 dan baru sampai sekitar **jam 09:12** — ±6,6 jam untuk sesuatu yang
+bernama "watch". Karena itu §6 butir 5 (kasih `issues: write` atau tidak) harus diputuskan dengan
+angka itu di tangan, dan tanggal yang sah untuk membaca jumlah barisnya tetap **2026-10-13 03:00 UTC**
+(bukan 2026-10-12 yang kutulis di baris §6 — sudah kukoreksi di tempatnya).
+
+Yang **tidak** kujelaskan: kenapa penundaannya sebesar itu. Dugaan defaultku tadi ("GitHub memang
+menunda `schedule` saat beban tinggi") tidak bisa kubuktikan dari mesin ini — WebFetch dokumen
+kena batas API hari ini — jadi kalimat itu aku buang dan tidak kunyatakan alasannya. Penyebab yang
+kubuang dengan data: repo ini `private=false` / `visibility=public`, dan `event=schedule` di seluruh
+repo **hanya** 3 baris ini — jadi bukan workflow lain yang menyita antrean penyalaan.
+
+```bash
+# tabel di atas, reproducible
+API=https://api.github.com/repos/ArkanFzi/website-porto2
+curl -s --config $CFG "$API/actions/runs?event=schedule&per_page=100" \
+  | jq -r '.workflow_runs[] | "\(.name) #\(.run_number) \(.head_sha[0:7]) created=\(.created_at) started=\(.run_started_at) \(.conclusion)"'
+for s in 3e0265a 03b2876 ad767c6; do git show $s:.github/workflows/watch.yml | sed -n '36p'; done
+```
+
+### `/api/cv`: angka "16,4 s replika dingin" yang kutulis 20 menit lalu itu salah, dan log permintaan mematahkannya
+
+Yang kutulis di draf awal subseksi ini: 16,384 s terjadi karena `min-instances` tidak di-set ⇒
+replika dingin, selisih 10,845 s = harga replika. Log `run.googleapis.com/requests` milik Cloud Run
+mematahkan itu. Empat belas permintaan `/api/cv` hari 2026-10-07, **server-side**:
+
+| kelas | server-side | sampel (waktu UTC, instance) |
+|---|---|---|
+| **render pertama pada sebuah instance** | **13,104 – 15,252 s** | 03:59:48 = 15,066 (`…71a`, instance lahir 03:59:43) · 04:46:36 = 15,252 (`…46`, lahir 04:46:25) · 13:38:52 = 14,288 (`…5b`, lahir 13:38:43) · 14:40:54 = 13,104 (`…f4`, `/api/cv` pertamanya) |
+| **render berikutnya, instance yang sama** | **3,985 – 4,766 s** | 04:01:27 = 4,202 · 04:57:49 = 4,224 · 09:12:49 = 4,766 · 13:42:05 = 4,118 · 15:28:30 = 3,985 |
+| hit cache < 60 s | **8 – 34 ms** | 04:01:32 = 13,8 ms · 04:57:54 = 8,3 ms · 13:42:11 = 20,0 ms · 14:41:21 = 34,1 ms |
+| posisi dalam instance tidak diketahui | 5,052 s | 00:45:42 pada `…66` (instance ini lebih tua dari jendela log hari ini) |
+
+Keduanya tidak tumpang tindih sedikit pun (13,1 di atas vs 5,05 di bawah), dan penjelasannya bukan
+replika: **instance `…f4` sudah hidup 31 menit** ketika menerima 13,104 s itu (lahir 14:09:14 lewat
+permintaan `/` pertama yang butuh 4,689 s = start kontainer), dan sepanjang 31 menit itu `/` diminta
+terus-menerus.
+
+Kenapa kontainer hampir tidak pernah dingin: **2.534 permintaan** masuk ke `portfolio-fe` antara
+09:00:05 dan 15:59:43 UTC (jendela 6 j 59 m 38 s = 25.178 detik), dan **2.509 di antaranya (99,0 %)
+berasal dari `GoogleStackdriverMonitoring-UptimeChecks`** — rata-rata satu permintaan tiap 9,94
+detik; 10,03 detik kalau hanya uptime checks yang dihitung. Instance berganti generasi empat kali
+hari ini (…66 → …71a → …46 → …5b → …f4), dan **tiga di antaranya tepat berimpit dengan pergantian
+revisi**: 03:59:43 (→00037), 04:46:25 (→00038), 13:38:43 (→00039). Yang keempat, `…5b`→`…f4` pada
+14:09:14, terjadi **di revision yang sama** dan tidak kutafsirkan. Artinya `min-instances=0` hari
+ini praktis tidak pernah tertagih ke pengunjung: yang menyalakan kontainer baru adalah deploy, bukan
+sepi trafik.
+
+Client-side vs server-side, dan sisa yang harus dibayar jaringan:
+
+| permintaan | `curl` (klien) | log (server) | selisih |
+|---|---|---|---|
+| 14:40:54 render pertama `…f4` | 16,384 s | 13,104 s | 3,28 s |
+| 14:41:21 hit cache | 2,228 s | 0,034 s | **2,19 s** |
+| 15:28:30 render berikutnya | 5,504 s | 3,985 s | 1,52 s |
+
+Jadi hitungan yang benar: **±9 s** (13,1–15,3 vs 4,0–4,8) hidup **di dalam kontainer yang sudah
+hidup**, per instance pertama, bukan per replika. Catatan lama "13,9 s cold / 5,8 s warm" di bullet
+Skala DEPLOY.md adalah fenotipe yang sama dengan label yang sama salahnya.
+
+Yang **tidak** bisa kuisolasi dari luar, dan ini bukan malas menyebutnya: di dalam ±9 s itu ada
+(a) Chromium first-run (`puppeteer.launch()` + `browser.close()` **per render** — `route.ts:45-69`,
+tidak ada browser pool) dan (b) `/cv-layout` pertama yang dikompilasi/dilayani Next lewat loopback.
+Dua-duanya kubuang sebagai sumber bukti: `page.goto` internal tidak tercatat di request log
+(terukur: **0 baris** memuat `cv-layout` sepanjang hari) dan stdout kontainer kosong pada jendela
+14:40:40–14:41:40 (terukur: hanya 8 baris request log, nol `textPayload`). Yang bisa memisahkan
+keduanya cuma render pemanasan saat boot atau instrumentasi di rute itu — **perubahan kode**, jadi
+butuh katamu (ID baru **S12**).
+
+Konsekuensinya untuk butir **standby replika** berubah arah (ID barunya **S13** di tabel bawah), dan
+ini bagian yang penting: `minInstances=1` tidak menyentuh ±9 s itu sama sekali. Yang dibelinya cuma
+start kontainer (4,689 s, dan itu pun jarang karena uptime checks menghangatkan instance setiap
+10,03 detik) — jadi uangnya dibayar untuk sesuatu yang sudah terjadi gratis. Yang memang menghapus
+9 s bagi pengunjung pertama adalah **satu render pemanasan saat instance naik**, nol rupiah.
+
+Keputusan tetap milikmu; tabel di atas yang jadi dasarnya sekarang datang dari log produksi, bukan
+dari `curl` yang kutafsirkan.
+
+```bash
+# kedua tabel di atas, reproducible. CATATAN: operator pencocokan string di filter log adalah `=~`,
+# bukan `~` — pakai `~` hasilnya KOSONG tanpa error (terukur dua kali hari ini).
+gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="portfolio-fe" AND httpRequest.requestUrl=~"/api/cv" AND timestamp >= "2026-10-07T00:00:00Z"' \
+  --limit 100 --order asc --format 'json(timestamp,httpRequest.latency,labels.instanceId)' \
+  | jq -r '.[] | "\(.timestamp[11:19]) \(.httpRequest.latency) inst=\(.labels.instanceId[0:12])"'
+
+gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="portfolio-fe" AND timestamp >= "2026-10-07T09:00:00Z" AND timestamp < "2026-10-07T16:00:00Z"' \
+  --limit 20000 --format 'json(timestamp,httpRequest.userAgent)' \
+  | jq -r '[.[] | select(.httpRequest)] | "request=\(length) uptime=\([.[] | select(.httpRequest.userAgent | test("UptimeChecks"))] | length)"'
+
+# tabel sisi backend: ganti service_name, dan lihat bahwa tidak ada satu pun baris UptimeChecks
+gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="portfolio-be" AND timestamp >= "2026-10-07T09:00:00Z" AND timestamp < "2026-10-07T16:00:00Z"' \
+  --limit 20000 --order asc --format 'json(timestamp,httpRequest.userAgent,httpRequest.latency,labels.instanceId,resource.labels.revision_name)' \
+  | jq -r '[.[] | select(.httpRequest)] | "request=\(length) uptime=\([.[] | select(.httpRequest.userAgent | test("UptimeChecks"))] | length)", (group_by(.labels.instanceId) | .[] | "inst=\(.[0].labels.instanceId[0:12]) rev=\(.[0].resource.labels.revision_name) \([.[] | .httpRequest.latency | rtrimstr("s") | tonumber] | max) maks")'
+
+# umur instance = permintaan pertama yang tercatat padanya
+gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="portfolio-fe" AND timestamp >= "2026-10-07T00:00:00Z"' \
+  --limit 20000 --order asc --format 'json(timestamp,httpRequest,labels.instanceId,resource.labels.revision_name)' \
+  | jq -r '[.[] | select(.httpRequest)] | group_by(.labels.instanceId)
+           | .[] | "inst=\(.[0].labels.instanceId[0:12] // "null") rev=\(.[0].resource.labels.revision_name) pertama=\(.[0].timestamp[11:19]) terakhir=\(.[-1].timestamp[11:19]) permintaan=\(length)"'
+```
+
+### Sisi backend: 22 permintaan dalam 7 jam, dan harga replika standby-nya < 1 detik
+
+Asimetri kedua service ini yang membuat `minInstances` tidak bisa diputuskan dengan satu angka:
+
+| jendela (09:00–16:00 UTC) | siapa | permintaan ke `portfolio-be` | permintaan pertama pada instance |
+|---|---|---|---|
+| 09:12:47–09:12:54 | **Watch #9** (run-nya dibuat 09:12:39) | 9 | **0,922 s** (`/api/health`), sisanya 4,8–20 ms |
+| 13:38:51–13:42:13 | langkah verifikasi `Deploy #44` | 9 | 0,0097 s — **start kontainer tidak tertangkap di baris ini**; kemungkinannya terserap oleh `--wait` pada langkah deploy, dan itu hipotesis, bukan pengukuran |
+| 14:40:53–14:41:03 | probes-ku sendiri | 2 | **0,221 s** |
+| 15:28:28–15:28:32 | probes-ku sendiri | 2 | **0,422 s** |
+
+Terukur: **22 permintaan HTTP** ke `portfolio-be` dalam jendela tujuh jam, **nol** di antaranya dari
+uptime checks —
+karena check untuk BE adalah **TCP 443** (`portfolio-be-uptime-3lw7E4A0E40`, tercatat di bagian alert
+DEPLOY.md), dan koneksi TCP tidak menghasilkan baris `run.googleapis.com/requests`. Jadi BE memang
+menganggur di nol replika, tapi harga yang dibayar untuk satu permintaan pertama sesudah menganggur
+adalah **0,22–0,92 detik**, bukan 9 detik. Untuk konteks: catatan lama `/api/certificates` 1,7 s cold
+masih berdiri (endpoint itu menyentuh Cloud SQL; hari ini yang pertama dipukul adalah `/api/health`).
+
+Gabungan kedua tabel inilah isi **S13**: FE (yang dilihat pengunjung) dihangatkan 99,0 % oleh uptime
+checks sendiri dan 9 detik yang hilang ada di dalam kontainer → `minInstances` tidak membeli apa pun;
+BE benar-benar tidur tapi bangunnya < 1 detik → `minInstances` membeli < 1 detik dengan biaya
+per-jam. Yang menguntungkan di kedua sisi adalah **S12** (render pemanasan saat boot), dan itu kode,
+bukan konfigurasi.
+
+### Satu observasi yang lewat di pull log yang sama: probe `.env` dan `.git/config`
+
+Bukan bagian dari E7/S1, tapi tercatat di pull log yang sama dan layak ditulis daripada menguap:
+`arkfazone-portofolio.elarisnoir.my.id` dipprobe **10 path `.env*`** pada 03:44:54–03:45:27 UTC oleh
+UA `CertLabBot/1.0 (certificate research)`, dan `.git/config` dua kali (05:55:15, 12:36:00) dari UA
+Safari/Chrome biasa. Yang terukur di log: varian `http://` dijawab **302** (redirect ke https,
+ditambah 13 permintaan tanpa `instanceId` — sebagian tidak pernah menyentuh kontainer), dan untuk
+`.env*` lanjutan `https:` -nya **tercatat** dan dijawab **404** — tidak ada satu pun isi file yang
+sampai. `.git/config` berhenti di 302 dan lanjutan https-nya tidak muncul di log sama sekali, jadi
+vonis untuk yang satu itu **belum** bisa kubacakan dari data ini.
+
+### `total_count` berfilter mengembalikan dua angka untuk pertanyaan yang sama
+
+Bullet "Riwayat run" di DEPLOY.md selama ini menyebut caraku mengukur yang "benar": `?status=X`
+lalu baca `total_count`. Hari ini metode itu menghasilkan **117** satu kali, lalu **126** tiga kali
+berturut-turut, pada `ci.yml` dan dalam rentang beberapa menit:
+
+```bash
+API=https://api.github.com/repos/ArkanFzi/website-porto2
+for i in 1 2 3; do curl -s --config $CFG "$API/actions/workflows/ci.yml/runs?status=success&per_page=1" | jq .total_count; done
+#   117   ← pembacaan pertama (14:5x UTC)
+#   126 126 126   ← tiga pembacaan berikutnya
+```
+
+Angka yang benar diketahui dari cara yang lebih murah untuk diverifikasi silang: tarik semua baris
+lalu `group_by(.conclusion)`.
+
+```bash
+for p in 1 2; do curl -s --config $CFG "$API/actions/workflows/ci.yml/runs?per_page=100&page=$p"; done \
+  | jq -s '"baris=\([.[].workflow_runs[]]|length)", ([.[].workflow_runs[]] | group_by(.conclusion) | map("\(.[0].conclusion)=\(length)") | join(" "))"' -r
+#   baris=129 → failure=3 success=126   (126+3 = 129, dan status semua run: completed=129)
+```
+
+Yang tertutup dengan cara itu: `deploy.yml` 44 = 37 success + 6 failure + 1 cancelled
+(42 `push` + 2 `workflow_dispatch`), `watch.yml` 9 = 8 success + 1 failure
+(3 `schedule` + 6 `workflow_dispatch`), `ci.yml` 129 = 126 + 3. Selisih 9 pada angka 117 itu
+**tidak kujelaskan** — yang bisa kugugurkan cuma penjelasan "ada run yang belum selesai":
+`skipped`, `queued` dan `in_progress` ketiganya 0, dan seluruh 129 run berstatus `completed`. Aturan baru (ID **S11**): `total_count` dari query
+berfilter `status=` tidak boleh dipakai sendirian; selalu paginasi penuh + `group_by(.conclusion)`,
+dan pakai `status=completed` (129) sebagai pemeriksaan bahwa tidak ada baris yang hilang.
+
+Perbaikan yang keluar dari sini: angka `CI` hari ini adalah **129 run, 126 success, 3 failure**
+— bukan "125 success, 4 failure" yang sempat kutulis sambil lalu di draf bullet ini sebelum
+diukur.
+
+### Perubahan tabel butir (§14)
+
+| ID | Sebelum | Sesudah |
+|---|---|---|
+| **S9** (baru) | — | `next_run_at` **tidak dipakai lagi** sebagai diagnosis penyalaan `schedule`. Yang sah: hitung run per event. Alasan terukur: tiga run `schedule` mendarat sementara field itu `null` terus. |
+| **S10** (baru) | — | **Bukan temuan baru:** F10 (§8) dan A0 (§9.0) sudah mencatat `schedule` Watch datang ±6,6 jam setelah cron 02:37 UTC. Yang ditambahkan #8 dan #9 → selisih mengecil ±11 m/hari, dan tesis "drift" difalsifikasikan: #10 ≈ 09:01 UTC pada 2026-10-08, #15 ≈ 08:05 UTC pada 2026-10-13. Meleset → klaim drift dicabut. Tanggal baca yang sah tetap **2026-10-13 03:00 UTC** seperti F10, dan keputusan §6 butir 5 wajib menyebut latensi ±6,6 jam. |
+| **S11** (baru) | metode "`?status=X` → `total_count`" ditulis di DEPLOY.md sebagai cara benar | Turunkan derajatnya jadi pemeriksaan sekunder. wajib: paginasi penuh + `group_by(.conclusion)`. Alasan terukur: `ci.yml?status=success` memberi 117 lalu 126 (×3) untuk pertanyaan yang sama; yang menutup adalah 126+3=129 **pada pembacaan 14:54 UTC** — bacaan 16:10 UTC menutup di 128+3+2=133, lihat **S14**. Metode paginasinya yang tetap benar, angkanya yang berumur pendek. |
+| **E7** | terbukti 2 sampel | **tiga sampel, dua sisi**: `#59` 43→43, `#60` (kode) 43→44, `#61` 44→44 dengan `CI #129` tetap tersulut. |
+| **E4** (bukan butir ini) dan **O3** (tidak ada) | kusedia menyebut keduanya sebagai "butir minInstances" | **Koreksi:** `E4` = `cancel-in-progress` CI, sudah hijau sejak F3; seri `O` tidak ada di file ini. Butir standby replika yang kumaksud sekarang bernama **S13**, dan isinya sudah diukur. |
+| **S13** (baru) | sempat kutulis di draf sebagai "**E4/O3**" — **dua ID itu salah: E4 adalah butir `cancel-in-progress` CI (`main.go` tidak bersangkutan, lihat §7/tabel E), dan seri `O` tidak ada di file ini** (satu-satunya `O5` yang dipakai di baris S3 adalah rujukan ke daftar opsi lama). | Butir yang sebenarnya: apakah `min-instances=0` pada `portfolio-fe` layak diganti replika standby. Jawabannya sekarang punya angka dan **berbentuk "tidak"**: Jawaban sekarang berbentuk dua bagian dan keduanya terukur: untuk **FE** yang dibelinya cuma start kontainer 4,689 s sementara uptime checks (2.509 dari 2.534 permintaan 09:00–16:00 UTC) sudah menghangatkannya lebih dulu; untuk **BE** memang tidak ada probe HTTP (22 permintaan/7 jam, 0 uptime) tapi permintaan pertama sesudah menganggur cuma 0,22–0,92 s. |
+| **S12** (baru) | — | **Satu render pemanasan saat instance naik** (atau reuse browser) di `nextjs-frontend/src/app/api/cv/route.ts`: memangkas ±9 s untuk pengunjung pertama dengan nol rupiah, tidak seperti `minInstances`. Butuh katamu karena ini mengubah kode yang ter-deploy. Sebelum setuju: pemisahan Chromium-first-run vs Next-compile `/cv-layout` belum terukur (0 baris `cv-layout` di request log, 0 `textPayload` di stdout). |
+| **S5** | empat pengukuran CV | byte tetap empat angka yang sama (839.060); **yang berubah justru penjelasan latensinya** — label "replika dingin" gugur, diganti dua kelas server-side dari log (13,1–15,3 s render pertama per instance vs 4,0–4,8 s berikutnya). |
+| **S14** (baru) | snapshot "Riwayat run" di DEPLOY.md (14:54 UTC): `CI` 129 run → 126 success, 3 failure, **0 cancelled** | Baca ulang dengan metode yang sama (paginasi + `group_by`): 16:10 UTC = **133** → 128/3/**2 cancelled**; 16:21 UTC = **135** → **129 success, 3 failure, 3 cancelled**. Tiga `cancelled` itu **yang pertama dalam sejarah `ci.yml`** (nol sepanjang 129 run pertama) dan penyebabnya push-ku sendiri di branch PR #62: `#131`/`#132` tercipta 16:02:54 dan 16:05:16 lalu mati 16:05:19 dan 16:07:53; `#134` menyusul mati 16:16:51. Run yang dibiarkan selesai butuh 2 m 22 s (`#130`)–2 m 49 s (`#133`), dan aku push lagi tiap ±2,5 m. Batasnya ikut terbaca: `#131` dibatalkan `#132`, `#132` oleh `#133`, `#134` oleh `#135` — selalu push yang datang selagi run sebelumnya berjalan; `#130` dan `#133` selamat karena push berikutnya datang 43 m dan 4 m 23 s sesudahnya. Jadi `cancel-in-progress: true` di gerbang tes terbukti dari **aksinya**, bukan dari teks YAML-nya; selama ini yang terbukti cuma `false` di sisi deploy (F3). Konsekuensi untuk dokumen ini: **angka total `CI` tidak layak ditulis tanpa stempel jam**, karena setiap push ke PR yang masih terbuka berpotensi menggesernya. **Bukan sampel keempat E7**: `deploy.yml` tetap 44 run dengan 0 baru, tapi keenam push itu terjadi di branch dan `deploy.yml` hanya bereaksi pada `main` — jadi nol-run ini tidak menguji `paths-ignore` sama sekali. Bukti E7 tetap tiga sampel merge. |
+
