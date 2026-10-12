@@ -37,7 +37,7 @@ export default function CVLayout() {
         <div className="flex justify-center">
           <div className="w-48 h-48 rounded-full overflow-hidden border-4 border-white shadow-sm relative">
             <Image 
-              src="/FotoDiriFix.png" 
+              src="/FotoDiriFix.webp"
               alt="M. Arkan Fauzi" 
               fill
               className="object-cover object-top"

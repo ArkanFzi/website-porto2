@@ -90,7 +90,7 @@ const About: React.FC = () => {
                 viewport={{ once: true, margin: "-100px" }}
                 transition={{ duration: 1.5, ease: "easeOut" }}
                 className="absolute inset-0 bg-cover bg-[center_5%] transition-transform duration-1000 group-hover:scale-105"
-                style={{ backgroundImage: "url('/FotoDiriFix.png')" }}
+                style={{ backgroundImage: "url('/FotoDiriFix.webp')" }}
               />
               <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors duration-1000" />
             </motion.div>
