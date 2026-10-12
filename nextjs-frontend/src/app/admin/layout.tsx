@@ -2,15 +2,17 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { getAuthToken } from "@/lib/auth";
+import { adaSesi } from "@/lib/auth";
 import { Sidebar } from "@/components/Admin/Sidebar";
 
 const BELUM_TERSEDIA = "belum-terbaca";
-const TANPA_TOKEN = "tanpa-token";
-const PAKAI_TOKEN = "pakai-token";
+const SESI_KOSONG = "tanpa-sesi";
+const SESI_ADA = "ada-sesi";
 
 const EMPTY_SUBSCRIBE = () => () => {};
-const getTokenStatus = () => (getAuthToken() ? PAKAI_TOKEN : TANPA_TOKEN);
+// Penanda kehadiran sesi, bukan kredensial (lihat src/lib/auth.ts). Gerbang ini hanya
+// menentukan spinner vs redirect; yang menahan data admin tetap cookie di AuthMiddleware.
+const getStatusSesi = () => (adaSesi() ? SESI_ADA : SESI_KOSONG);
 // Nilai hidrasi sengaja dibedakan dari kedua nilai client agar efek mount pertama
 // tidak melempar ke login hanya karena localStorage belum sempat terbaca.
 const getInitialStatus = () => BELUM_TERSEDIA;
@@ -22,11 +24,11 @@ export default function AdminLayout({
 }) {
     const router = useRouter();
     const pathname = usePathname();
-    const status = useSyncExternalStore(EMPTY_SUBSCRIBE, getTokenStatus, getInitialStatus);
+    const status = useSyncExternalStore(EMPTY_SUBSCRIBE, getStatusSesi, getInitialStatus);
 
     useEffect(() => {
         if (pathname === "/admin/login") return;
-        if (status === TANPA_TOKEN) router.push("/admin/login");
+        if (status === SESI_KOSONG) router.push("/admin/login");
     }, [pathname, router, status]);
 
     // Login page layout — render independently of auth state
@@ -34,7 +36,7 @@ export default function AdminLayout({
         return <main className="min-h-screen bg-[#050000]">{children}</main>;
     }
 
-    if (status !== PAKAI_TOKEN) {
+    if (status !== SESI_ADA) {
         return (
             <div className="min-h-screen bg-[#050000] flex items-center justify-center">
                 <div className="w-8 h-8 border-4 border-accent-primary border-t-transparent rounded-full animate-spin"></div>
