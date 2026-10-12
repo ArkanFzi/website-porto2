@@ -298,10 +298,12 @@ func initDB() {
 	// Try loading .env file if exists
 	_ = godotenv.Load()
 
-	dsn := os.Getenv("DATABASE_URL")
-	if dsn == "" {
-		dsn = "host=localhost user=root password=rootpassword dbname=portfolio_db port=5433 sslmode=disable TimeZone=Asia/Jakarta"
-	}
+	// requireEnv, bukan default localhost. Sebelum ini DSN yang hilang jatuh ke
+	// "host=localhost user=root password=rootpassword ... port=5433", jadi kontainer yang
+	// secrets-nya tidak ter-mount tetap sempat start dan development ikut membawa
+	// nama pengguna + sandi yang tidak ada hubungannya dengan lingkungan itu. Development
+	// sekarang menyetel DATABASE_URL sendiri lewat .env di baris di atas.
+	dsn := requireEnv("DATABASE_URL")
 
 	var err error
 	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
@@ -565,7 +567,20 @@ func main() {
 	log.Println("Server running on port 8080")
 	// http.Server, bukan r.Run: r.Run tidak pernah melihat SIGTERM, jadi request yang sedang
 	// berjalan dan email yang sedang dikirim berhenti di tengah percakapan tanpa jejak di log.
-	srv := &http.Server{Addr: ":8080", Handler: r}
+	//
+	// Timeout dipasang karena ketiadaannya tidak terlihat: tanpa ReadHeaderTimeout koneksi
+	// yang membuka socket lalu diam memegang worker selamanya, dan tanpa WriteTimeout respons
+	// ke klien yang berhenti membaca menahan koneksi sampai Cloud Run yang memutus.
+	// Angka di atas jauh di atas yang pernah terukur (login/CRUD < 1 s; satu-satunya jalur
+	// lambat, SMTP, sudah keluar dari request path lewat goroutine + undungEmail).
+	srv := &http.Server{
+		Addr:              ":8080",
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 
 	sinyal, batalkanSinyal := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer batalkanSinyal()
@@ -661,24 +676,32 @@ func handleContact(c *gin.Context) {
 		return
 	}
 
-	adminEmail := getEnv("ADMIN_EMAIL", "muhammadarkanfauzi9@gmail.com")
+	// Tanpa fallback alamat pribadi. Dulu getEnv("ADMIN_EMAIL", "muhammadarkanfauzi9@gmail.com")
+	// membuat secret yang hilang tetap mengirim isi pesan orang lain ke inbox seseorang, dan
+	// tidak ada satu baris log pun yang membedakan "ADMIN_EMAIL diset" dari "secret tidak ada".
+	// Pesan tetap disimpan; yang dilewati hanya emailnya, dengan alasan yang terbaca di log.
+	adminEmail := os.Getenv("ADMIN_EMAIL")
 	fullBody := fmt.Sprintf("Pesan dari: %s (%s)\n\nIsi Pesan:\n%s", row.Name, row.Email, row.Body)
 
-	// Add dilakukan sinkron di sini, bukan di dalam goroutine: kalau tidak, proses yang
-	// menutup bisa melihat hitungan nol tepat pada saat pengiriman baru saja dimulai.
-	undungEmail.Add(1)
-	go func() {
-		defer undungEmail.Done()
-		err := pengirimEmail(adminEmail, row.Email, "Contact Form: "+row.Subject, fullBody)
-		switch {
-		case err == nil:
-			log.Printf("contact %s: email terkirim ke %s", row.ID, adminEmail)
-		case errors.Is(err, mailer.ErrNotConfigured):
-			log.Printf("contact %s: email dilewati, %v", row.ID, err)
-		default:
-			log.Printf("contact %s: gagal kirim email: %v", row.ID, err)
-		}
-	}()
+	if adminEmail == "" {
+		log.Printf("contact %s: email dilewati, ADMIN_EMAIL tidak diset (pesan tersimpan di DB)", row.ID)
+	} else {
+		// Add dilakukan sinkron di sini, bukan di dalam goroutine: kalau tidak, proses yang
+		// menutup bisa melihat hitungan nol tepat pada saat pengiriman baru saja dimulai.
+		undungEmail.Add(1)
+		go func() {
+			defer undungEmail.Done()
+			err := pengirimEmail(adminEmail, row.Email, "Contact Form: "+row.Subject, fullBody)
+			switch {
+			case err == nil:
+				log.Printf("contact %s: email terkirim ke %s", row.ID, adminEmail)
+			case errors.Is(err, mailer.ErrNotConfigured):
+				log.Printf("contact %s: email dilewati, %v", row.ID, err)
+			default:
+				log.Printf("contact %s: gagal kirim email: %v", row.ID, err)
+			}
+		}()
+	}
 
 	c.JSON(http.StatusCreated, gin.H{
 		"id":      row.ID,
