@@ -5,7 +5,7 @@
 //   node docs/verify/browser-probe.mjs /cv-layout
 //   node docs/verify/browser-probe.mjs --mock=/api/certificates:500 /dossier/certificates
 //   node docs/verify/browser-probe.mjs --mock=/api/certificates:putus /dossier/certificates
-//   node docs/verify/browser-probe.mjs --token=palsu /admin/dashboard
+//   ADMIN_PASS=... node docs/verify/browser-probe.mjs --login /admin/dashboard
 import { createRequire } from 'node:module';
 
 // puppeteer adalah dependency nextjs-frontend, dan ESM mencari node_modules dari direktori file ini,
@@ -20,15 +20,45 @@ const opsi = {};
 const path = [];
 for (const a of argv) {
     if (a.startsWith('--mock=')) opsi.mock = a.slice(7);
-    else if (a.startsWith('--token=')) opsi.token = a.slice(8);
+    else if (a === '--login') opsi.login = true;
     else path.push(a);
 }
 if (path.length === 0) {
-    console.error('pakai: browser-probe.mjs [--mock=<potongan-url>:<status|putus>] [--token=<isi>] <path> ...');
+    console.error('pakai: browser-probe.mjs [--mock=<potongan-url>:<status|putus>] [--login] <path> ...');
     process.exit(2);
 }
 // mock hanya berlaku untuk SATU url supaya tidak ada rute lain yang ikut berubah diam-diam.
 const mock = opsi.mock ? { tertangkap: opsi.mock.split(':')[0], status: opsi.mock.split(':')[1] } : null;
+
+// Kredensial asli, bukan token karangan. Sesi admin pindah ke cookie HttpOnly `porto_sesi` yang
+// dicetak POST /api/login; kunci lama `admin_token` di localStorage sudah tidak dibaca server, jadi
+// menaruh nilai apa pun di sana hanya menghasilkan halaman 401 yang terlihat seperti temuan.
+async function ambilCookieSesi() {
+    if (!process.env.ADMIN_PASS) {
+        console.error('--login butuh ADMIN_PASS (sama dengan secret Cloud Run backend); tanpa itu tidak ada sesi yang bisa dibuat');
+        process.exit(2);
+    }
+    const r = await fetch(`${FE}/api/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ username: process.env.ADMIN_USER ?? 'admin', password: process.env.ADMIN_PASS }),
+    });
+    if (!r.ok) {
+        // Nilai kredensial tidak boleh muncul di log; kode status + pesan server sudah cukup.
+        console.error(`login gagal: HTTP ${r.status} ${JSON.stringify(await r.json().catch(() => null))}`);
+        process.exit(1);
+    }
+    const semua = typeof r.headers.getSetCookie === 'function'
+        ? r.headers.getSetCookie()
+        : String(r.headers.get('set-cookie') ?? '').split(/,\s*(?=[a-zA-Z0-9_-]+=)/);
+    const hit = semua.find((k) => k.startsWith('porto_sesi=') && k.length > 'porto_sesi='.length + 1);
+    if (!hit) {
+        console.error(`login 200 tapi tidak ada porto_sesi di Set-Cookie (dapat: ${semua.map((k) => k.split('=')[0]).join(', ') || 'kosong'})`);
+        process.exit(1);
+    }
+    return hit.split(';')[0];
+}
+const cookieSesi = opsi.login ? await ambilCookieSesi() : null;
 
 const browser = await puppeteer.launch({
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome',
@@ -60,15 +90,17 @@ for (const p of path) {
             });
         });
     }
-    if (opsi.token) {
-        // Kunci sebenarnya adalah admin_token (src/lib/auth.ts:3) — menaruh "token" menghasilkan
-        // halaman yang sama dan nol informasi, jadi kunci salah = hasil nol, bukan temuan.
-        await page.goto(FE + p, { waitUntil: 'domcontentloaded', timeout: 45000 });
-        await page.evaluate((k, v) => localStorage.setItem(k, v), 'admin_token', opsi.token);
+    if (cookieSesi) {
+        const [nama, nilai] = cookieSesi.split('=');
+        await page.setCookie({ name: nama, value: nilai, url: FE, httpOnly: true, sameSite: 'Lax', secure: FE.startsWith('https') });
+        // admin/layout.tsx memutuskan "tampilkan" vs "lempar ke /admin/login" dari penanda
+        // localStorage, bukan dari cookie. Tanpa ini halaman terverifikasi pun terbaca kosong.
+        await page.evaluateOnNewDocument((k) => localStorage.setItem(k, '1'), 'admin_sesi');
     }
 
-    // domcontentloaded + jeda tetap, bukan networkidle: '/' tidak pernah idle (FotoDiriFix.png >3s),
-    // dan networkidle2 membuat probe timeouts tanpa mengukur apa pun.
+    // domcontentloaded + jeda tetap, bukan networkidle: sebagian halaman memanggil /api/* dari
+    // klien dan ada yang tidak pernah benar-benar diam, jadi networkidle membuat probe timeouts
+    // tanpa mengukur apa pun. Jeda 7 s memberi waktu render data yang datang belakangan.
     await page.goto(FE + p, { waitUntil: 'domcontentloaded', timeout: 45000 });
     await new Promise((r) => setTimeout(r, 7000));
 
@@ -84,7 +116,7 @@ for (const p of path) {
         };
     }, KATA_ERROR);
 
-    hasil.push({ path: p, mock: mock ? `${mock.tertangkap}→${mock.status}` : null, token: !!opsi.token, api, ...info, err: err.slice(0, 4) });
+    hasil.push({ path: p, mock: mock ? `${mock.tertangkap}→${mock.status}` : null, sesi: !!cookieSesi, api, ...info, err: err.slice(0, 4) });
     await page.close();
 }
 
