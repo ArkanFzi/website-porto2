@@ -22,6 +22,9 @@ const kontakSah = `{"name":"Uji","email":"pengunjung@example.test","subject":"Ha
 // grup yang sama dan Add test berikutnya menabrak kontrak sync.WaitGroup.
 func bilikKontak(t *testing.T) {
 	t.Helper()
+	// Alamat admin tidak lagi ditebak dari kode (dulu fallback ke inbox pribadi), jadi test
+	// yang menguji jalur kirim wajib mengisinya sendiri.
+	t.Setenv("ADMIN_EMAIL", "admin@uji.test")
 	lama, lamaUngg := pembatasKontak, undungEmail
 	pembatasKontak = &pembatasLaju{token: kontakBurst, burst: kontakBurst, refill: kontakRefillEach}
 	undungEmail = &sync.WaitGroup{}
@@ -148,5 +151,37 @@ func TestEmailGagalTidakMengunciPembilang(t *testing.T) {
 	}
 	if !tungguSelesai(undungEmail, 2*time.Second) {
 		t.Fatal("kiriman gagal meninggalkan pembilang tidak nol")
+	}
+}
+
+// Arah sebaliknya dari fallback yang dihapus: ADMIN_EMAIL kosong tidak boleh lagi diam-diam
+// berakhir di inbox seseorang. Yang wajib tetap terjadi adalah pesan tersimpan dan pengunjung
+// pulang dengan 201 — yang hilang hanya suretnya.
+func TestAdminEmailKosong_PesanTersimpanTanpaSatuSureatPun(t *testing.T) {
+	bilikKontak(t)
+	t.Setenv("ADMIN_EMAIL", "")
+
+	var tersimpan, terkirim atomic.Int32
+	simpan := func(*ContactMessage) error {
+		tersimpan.Add(1)
+		return nil
+	}
+	kirim := func(string, string, string, string) error {
+		terkirim.Add(1)
+		return nil
+	}
+	sisipContact(t, simpan, kirim)
+
+	if rec := postContact(); rec.Code != http.StatusCreated {
+		t.Fatalf("harap 201, dapat %d: %s", rec.Code, rec.Body.String())
+	}
+	if !tungguSelesai(undungEmail, time.Second) {
+		t.Fatal("pembilang tidak bersih")
+	}
+	if tersimpan.Load() != 1 {
+		t.Fatalf("pesan tidak tersimpan: %d kali", tersimpan.Load())
+	}
+	if terkirim.Load() != 0 {
+		t.Fatalf("ADMIN_EMAIL kosong tapi %d suretnya tetap berangkat", terkirim.Load())
 	}
 }

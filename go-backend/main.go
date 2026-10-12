@@ -167,16 +167,66 @@ func parseToken(authHeader string) error {
 	return err
 }
 
+// sesiCookie adalah satu-satunya jalan membawa kredensial admin sesudah PR ini. Selama token
+// hanya hidup sebagai string di localStorage (dan di body JSON login), satu XSS cukup untuk
+// mencurinya utuh-utuh selama 24 jam dan tidak ada revokasi di server yang bisa mengusirnya.
+// Cookie HttpOnly tidak terbaca document.cookie, jadi yang bisa dicuri skrip tinggal penanda
+// UI belaka — bukan kredensial.
+const (
+	namaCookieSesi = "porto_sesi"
+	masaSesi       = 24 * time.Hour // dipakai bersama: exp JWT dan Max-Age cookie tidak boleh beda
+)
+
+// cookieSeksure menakar atribut Secure dari skema yang dilihat proxy. Cloud Run selalu mengirim
+// X-Forwarded-Proto: https; development berjalan di http://localhost dan browser membuang cookie
+// Secure di luar HTTPS — kalau Secure dipaksa benar, login lokal tampak rusak tanpa pesan error.
+func cookieSeksure(c *gin.Context) bool {
+	if c.Request.TLS != nil {
+		return true
+	}
+	return c.GetHeader("X-Forwarded-Proto") == "https"
+}
+
+func pasangCookieSesi(c *gin.Context, token string) {
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie(namaCookieSesi, token, int(masaSesi.Seconds()), "/", "", cookieSeksure(c), true)
+}
+
+func hapusCookieSesi(c *gin.Context) {
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie(namaCookieSesi, "", -1, "/", "", cookieSeksure(c), true)
+}
+
+// ambilBearer membaca Authorization lebih dulu, lalu cookie. Jalur header sengaja tetap hidup:
+// sesi yang sudah tersimpan di localStorage pengunjung sebelum deploy ini tidak boleh berubah
+// jadi 401 tanpa penjelasan, dan ia kedaluwarsa sendiri dalam 24 jam.
+func ambilBearer(c *gin.Context) string {
+	if h := c.GetHeader("Authorization"); strings.HasPrefix(h, "Bearer ") {
+		return h
+	}
+	if k, err := c.Cookie(namaCookieSesi); err == nil && k != "" {
+		return "Bearer " + k
+	}
+	return ""
+}
+
+// handleLogout menghapus cookie dari sisi server karena inilah satu-satunya jalan "keluar" yang
+// benar: token JWT tidak punya daftar hitam, jadi sesi yang ditinggal tetap sah sampai exp.
+func handleLogout(c *gin.Context) {
+	hapusCookieSesi(c)
+	c.JSON(http.StatusOK, gin.H{"message": "Sesi dihapus dari peramban"})
+}
+
 // AuthMiddleware validates JWT tokens for protected routes
 func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		authHeader := c.GetHeader("Authorization")
-		if !strings.HasPrefix(authHeader, "Bearer ") {
+		bearer := ambilBearer(c)
+		if bearer == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			c.Abort()
 			return
 		}
-		if err := parseToken(authHeader); err != nil {
+		if err := parseToken(bearer); err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
 			c.Abort()
 			return
@@ -298,10 +348,12 @@ func initDB() {
 	// Try loading .env file if exists
 	_ = godotenv.Load()
 
-	dsn := os.Getenv("DATABASE_URL")
-	if dsn == "" {
-		dsn = "host=localhost user=root password=rootpassword dbname=portfolio_db port=5433 sslmode=disable TimeZone=Asia/Jakarta"
-	}
+	// requireEnv, bukan default localhost. Sebelum ini DSN yang hilang jatuh ke
+	// "host=localhost user=root password=rootpassword ... port=5433", jadi kontainer yang
+	// secrets-nya tidak ter-mount tetap sempat start dan development ikut membawa
+	// nama pengguna + sandi yang tidak ada hubungannya dengan lingkungan itu. Development
+	// sekarang menyetel DATABASE_URL sendiri lewat .env di baris di atas.
+	dsn := requireEnv("DATABASE_URL")
 
 	var err error
 	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
@@ -353,7 +405,7 @@ func main() {
 	// membuat authFetch frontend membuang sesi admin yang masih berlaku.
 	r.NoRoute(func(c *gin.Context) {
 		if strings.HasPrefix(c.Request.URL.Path, "/api/admin/") {
-			if err := parseToken(c.GetHeader("Authorization")); err != nil {
+			if err := parseToken(ambilBearer(c)); err != nil {
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 				return
 			}
@@ -370,6 +422,10 @@ func main() {
 	// (admin/page.tsx), /api/auth/login dipakai halaman login yang aktif (admin/login/page.tsx).
 	api.POST("/login", handleLogin)
 	api.POST("/auth/login", handleLogin)
+	// Public by design: yang dihapus adalah cookie di peramban pemanggil, jadi tidak ada yang
+	// perlu dibuktikan ke server. Tanpa rute ini tombol "keluar" di sidebar cuma menghapus
+	// penanda UI dan kredensialnya tetap sah sampai exp.
+	api.POST("/auth/logout", handleLogout)
 
 	// Public GET routes
 	api.GET("/certificates", func(c *gin.Context) {
@@ -565,7 +621,20 @@ func main() {
 	log.Println("Server running on port 8080")
 	// http.Server, bukan r.Run: r.Run tidak pernah melihat SIGTERM, jadi request yang sedang
 	// berjalan dan email yang sedang dikirim berhenti di tengah percakapan tanpa jejak di log.
-	srv := &http.Server{Addr: ":8080", Handler: r}
+	//
+	// Timeout dipasang karena ketiadaannya tidak terlihat: tanpa ReadHeaderTimeout koneksi
+	// yang membuka socket lalu diam memegang worker selamanya, dan tanpa WriteTimeout respons
+	// ke klien yang berhenti membaca menahan koneksi sampai Cloud Run yang memutus.
+	// Angka di atas jauh di atas yang pernah terukur (login/CRUD < 1 s; satu-satunya jalur
+	// lambat, SMTP, sudah keluar dari request path lewat goroutine + undungEmail).
+	srv := &http.Server{
+		Addr:              ":8080",
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 
 	sinyal, batalkanSinyal := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer batalkanSinyal()
@@ -661,24 +730,32 @@ func handleContact(c *gin.Context) {
 		return
 	}
 
-	adminEmail := getEnv("ADMIN_EMAIL", "muhammadarkanfauzi9@gmail.com")
+	// Tanpa fallback alamat pribadi. Dulu getEnv("ADMIN_EMAIL", "muhammadarkanfauzi9@gmail.com")
+	// membuat secret yang hilang tetap mengirim isi pesan orang lain ke inbox seseorang, dan
+	// tidak ada satu baris log pun yang membedakan "ADMIN_EMAIL diset" dari "secret tidak ada".
+	// Pesan tetap disimpan; yang dilewati hanya emailnya, dengan alasan yang terbaca di log.
+	adminEmail := os.Getenv("ADMIN_EMAIL")
 	fullBody := fmt.Sprintf("Pesan dari: %s (%s)\n\nIsi Pesan:\n%s", row.Name, row.Email, row.Body)
 
-	// Add dilakukan sinkron di sini, bukan di dalam goroutine: kalau tidak, proses yang
-	// menutup bisa melihat hitungan nol tepat pada saat pengiriman baru saja dimulai.
-	undungEmail.Add(1)
-	go func() {
-		defer undungEmail.Done()
-		err := pengirimEmail(adminEmail, row.Email, "Contact Form: "+row.Subject, fullBody)
-		switch {
-		case err == nil:
-			log.Printf("contact %s: email terkirim ke %s", row.ID, adminEmail)
-		case errors.Is(err, mailer.ErrNotConfigured):
-			log.Printf("contact %s: email dilewati, %v", row.ID, err)
-		default:
-			log.Printf("contact %s: gagal kirim email: %v", row.ID, err)
-		}
-	}()
+	if adminEmail == "" {
+		log.Printf("contact %s: email dilewati, ADMIN_EMAIL tidak diset (pesan tersimpan di DB)", row.ID)
+	} else {
+		// Add dilakukan sinkron di sini, bukan di dalam goroutine: kalau tidak, proses yang
+		// menutup bisa melihat hitungan nol tepat pada saat pengiriman baru saja dimulai.
+		undungEmail.Add(1)
+		go func() {
+			defer undungEmail.Done()
+			err := pengirimEmail(adminEmail, row.Email, "Contact Form: "+row.Subject, fullBody)
+			switch {
+			case err == nil:
+				log.Printf("contact %s: email terkirim ke %s", row.ID, adminEmail)
+			case errors.Is(err, mailer.ErrNotConfigured):
+				log.Printf("contact %s: email dilewati, %v", row.ID, err)
+			default:
+				log.Printf("contact %s: gagal kirim email: %v", row.ID, err)
+			}
+		}()
+	}
 
 	c.JSON(http.StatusCreated, gin.H{
 		"id":      row.ID,
@@ -715,14 +792,21 @@ func handleLogin(c *gin.Context) {
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"username": creds.Username,
-		"exp":      time.Now().Add(time.Hour * 24).Unix(), // 1 day expiration
+		"exp":      time.Now().Add(masaSesi).Unix(),
 	})
 	tokenString, err := token.SignedString(jwtSecret)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not generate token"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"token": tokenString})
+	// Body login tidak lagi memuat token. Yang dikembalikan cuma keadaan; kredensialnya hanya
+	// lewat Set-Cookie, supaya tidak ada satu pun jalur di browser yang bisa menyimpannya di
+	// tempat yang terbaca skrip.
+	pasangCookieSesi(c, tokenString)
+	c.JSON(http.StatusOK, gin.H{
+		"sesi":           "terbuka",
+		"kedaluwarsaPda": time.Now().Add(masaSesi).UTC().Format(time.RFC3339),
+	})
 }
 
 // kredensialSah membandingkan dua secret tanpa bocor lewat waktu: `==` berhenti pada byte

@@ -64,10 +64,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.3
 
+      - name: Baca versi Node dari image produksi
+        id: node-base
+        run: |
+          # Yang dites di CI harus runtime yang sama dengan yang melayani pengunjung. Selama job
+          # ini mengunci angkanya sendiri, bump node di Dockerfile tidak pernah teruji di PR mana
+          # pun: hijau cuma membuktikan build sukses pada runtime yang tidak dipakai produksi.
+          # Angka dibaca dari `FROM node:` supaya dua tempat tidak bisa drift lagi.
+          v=$(sed -n 's|^FROM node:\([0-9][0-9]*\)-alpine.*|\1|p' nextjs-frontend/Dockerfile | head -n1)
+          [ -n "$v" ] || { echo "tidak menemukan FROM node:<major>-alpine di nextjs-frontend/Dockerfile"; exit 1; }
+          echo "versi=$v" >> "$GITHUB_OUTPUT"
+          echo "CI akan memakai Node $v, sama dengan basis image yang di-deploy"
+
       - name: Setup Node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: 20
+          node-version: ${{ steps.node-base.outputs.versi }}
           cache: npm
           cache-dependency-path: nextjs-frontend/package-lock.json
 
@@ -351,17 +363,31 @@ jobs:
           good=$(jq -nc --arg u "$ADMIN_USER" --arg p "$ADMIN_PASS" '{username:$u,password:$p}')
           wrong=$(jq -nc --arg u "$ADMIN_USER" --arg p "$ADMIN_PASS-tidak-terdaftar" '{username:$u,password:$p}')
 
-          token=$(curl -fsS -X POST -H 'Content-Type: application/json' \
-            -d "$good" http://127.0.0.1:8080/api/login | jq -r .token)
-          [ "$token" != "null" ] && [ -n "$token" ] || { echo "login tidak mengembalikan token"; exit 1; }
+          # Login tidak lagi menyerahkan kredensial di body. Yang kembali cuma pernyataan keadaan,
+          # sementara cookie sesi HttpOnly lewat header — curl menyimpannya ke JAR dan semua
+          # permintaan terproteksi di bawah mengirimnya kembali.
+          JAR=$(mktemp)
+          HDR=$(mktemp)
+          body=$(curl -fsS -c "$JAR" -D "$HDR" -X POST -H 'Content-Type: application/json' \
+            -d "$good" http://127.0.0.1:8080/api/login)
+          echo "body login: $body"
+          [ "$(echo "$body" | jq -r .sesi)" = "terbuka" ] || { echo "login tidak membuka sesi"; exit 1; }
+          if echo "$body" | grep -q '"token"'; then
+            echo "body login masih memuat token — sesi belum benar-benar pindah ke cookie"; exit 1
+          fi
+          grep -qi '^set-cookie: porto_sesi=' "$HDR" || { echo "login tanpa Set-Cookie porto_sesi:"; cat "$HDR"; exit 1; }
+          # Secure sengaja TIDAK ditegakkan di sini: runner ini http dan cookieSeksure() hanya
+          # menyalakannya saat X-Forwarded-Proto https (produksi). Yang tidak boleh hilang di
+          # lingkungan mana pun: HttpOnly dan SameSite=Lax.
+          grep -qi 'HttpOnly' "$HDR" || { echo "cookie sesi tanpa HttpOnly: $(grep -i '^set-cookie' "$HDR")"; exit 1; }
+          grep -qi 'SameSite=Lax' "$HDR" || { echo "cookie sesi tanpa SameSite=Lax: $(grep -i '^set-cookie' "$HDR")"; exit 1; }
 
           bad=$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
             -d "$wrong" http://127.0.0.1:8080/api/login)
           echo "login dengan sandi salah => $bad"
           [ "$bad" = "401" ]
 
-          created=$(curl -fsS -X POST -H 'Content-Type: application/json' \
-            -H "Authorization: Bearer $token" \
+          created=$(curl -fsS -b "$JAR" -X POST -H 'Content-Type: application/json' \
             -d '{"title":"kontrak-ci","issuer":"CI","date":"2026"}' \
             http://127.0.0.1:8080/api/certificates)
           id=$(echo "$created" | jq -r .id)
@@ -371,7 +397,12 @@ jobs:
           after=$(curl -fsS http://127.0.0.1:8080/api/certificates | jq --arg id "$id" '[.[] | select(.id==$id)] | length')
           [ "$after" = "1" ] || { echo "tulis tidak terbaca kembali: $after"; exit 1; }
 
-          curl -fsS -X DELETE -H "Authorization: Bearer $token" \
+          # Rute mati tetap harus kenal sesi lewat cookie: 404, bukan 401.
+          mati=$(curl -sS -b "$JAR" -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/admin/projects)
+          echo "GET /api/admin/projects dengan cookie sesi => $mati"
+          [ "$mati" = "404" ] || { echo " rute mati dinilai dari cookie: $mati, harap 404"; exit 1; }
+
+          curl -fsS -b "$JAR" -X DELETE \
             "http://127.0.0.1:8080/api/certificates/$id" > /dev/null
           gone=$(curl -fsS http://127.0.0.1:8080/api/certificates | jq --arg id "$id" '[.[] | select(.id==$id)] | length')
           [ "$gone" = "0" ] || { echo "hapus tidak berlaku: $gone"; exit 1; }
@@ -391,12 +422,15 @@ jobs:
           x() { psql "$DSN" -qc "$1"; }
           fail=0
 
-          T=$(curl -fsS -X POST -H 'Content-Type: application/json' \
+          JAR=$(mktemp)
+          # Sesi lewat cookie, sama seperti yang dipakai peramban: body login hanya menegaskan
+          # keadaannya, kredensialnya ada di Set-Cookie dan curl menyimpannya ke JAR.
+          curl -fsS -c "$JAR" -X POST -H 'Content-Type: application/json' \
             -d "$(jq -nc --arg u "$ADMIN_USER" --arg p "$ADMIN_PASS" '{username:$u,password:$p}')" \
-            "$A/api/login" | jq -r .token)
-          [ "$T" != "null" ] && [ -n "$T" ] || { echo "login kontrak gagal"; exit 1; }
+            "$A/api/login" -o /dev/null
+          grep -q 'porto_sesi' "$JAR" || { echo "login kontrak tidak menyimpan cookie sesi:"; cat "$JAR"; exit 1; }
           post() { curl -sS -o /tmp/vb -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
-            -H "Authorization: Bearer $T" --data-binary "@$1" "$2"; }
+            -b "$JAR" --data-binary "@$1" "$2"; }
 
           # kosong dan hanya-spasi keduanya 400, dan alasannya harus kalimat yang bisa dibaca
           printf '%s' '{}' > /tmp/kosong.json
@@ -433,8 +467,8 @@ jobs:
           [ "$idbaru" != "$idpalsu" ] || { echo "id kiriman klien masih dipercaya"; fail=1; }
           [ "$(q "select count(*) from certificates where id='$idpalsu'")" = "0" ] || fail=1
           [ "$(jq -r '.createdAt | length' /tmp/vb)" != "0" ] || { echo "createdAt tidak diisi server"; fail=1; }
-          curl -fsS -X DELETE -H "Authorization: Bearer $T" "$A/api/certificates/$idbaru" > /dev/null
-          curl -fsS -X DELETE -H "Authorization: Bearer $T" "$A/api/certificates/$id200" > /dev/null
+          curl -fsS -b "$JAR" -X DELETE "$A/api/certificates/$idbaru" > /dev/null
+          curl -fsS -b "$JAR" -X DELETE "$A/api/certificates/$id200" > /dev/null
 
           # badan request dibatasi SEBELUM dibaca: container BE cuma 512Mi
           head -c 2097152 /dev/zero | tr '\0' 'b' > /tmp/besar.txt
@@ -451,14 +485,14 @@ jobs:
           echo "pesan sah 20.000 char => $code (batas body tidak boleh memangkas fitur)"
           [ "$code" = "201" ] || fail=1
 
-          # rute admin yang memang tidak ada harus 404 bagi token sah; 401 membuat authFetch
-          # menghapus token dan melempar admin keluar hanya karena mengklik menu mati
+          # rute admin yang memang tidak ada harus 404 bagi sesi sah; 401 membuat authFetch
+          # menghapus penanda sesi dan melempar admin keluar hanya karena mengklik menu mati
           for m in GET POST PUT DELETE; do
-            sah=$(curl -sS -o /dev/null -w '%{http_code}' -X "$m" -H "Authorization: Bearer $T" "$A/api/admin/projects")
+            sah=$(curl -sS -b "$JAR" -o /dev/null -w '%{http_code}' -X "$m" "$A/api/admin/projects")
             tanpa=$(curl -sS -o /dev/null -w '%{http_code}' -X "$m" "$A/api/admin/projects")
-            echo "$m /api/admin/projects => token sah: $sah, tanpa token: $tanpa"
-            [ "$sah" = "404" ] || { echo "   rute mati harus 404 untuk token sah"; fail=1; }
-            [ "$tanpa" = "401" ] || { echo "   rute mati harus 401 tanpa token"; fail=1; }
+            echo "$m /api/admin/projects => sesi sah: $sah, tanpa sesi: $tanpa"
+            [ "$sah" = "404" ] || { echo "   rute mati harus 404 untuk sesi sah"; fail=1; }
+            [ "$tanpa" = "401" ] || { echo "   rute mati harus 401 tanpa sesi"; fail=1; }
           done
           pub=$(curl -sS -o /dev/null -w '%{http_code}' "$A/api/tidak-ada")
           echo "GET /api/tidak-ada tanpa token (publik) => $pub"; [ "$pub" = "404" ] || fail=1
@@ -466,7 +500,7 @@ jobs:
           # pemotongan inbox harus terlaporkan, bukan diam-diam: dulu Limit(500) membuat
           # 603 pesan terlihat seperti 500 dan admin tidak pernah tahu ada yang tak terbaca
           hdr() { tr -d '\r' < /tmp/hdr | awk -F': ' -v k="$1" 'tolower($1)==k {print $2}'; }
-          curl -fsS -D /tmp/hdr -H "Authorization: Bearer $T" "$A/api/admin/contact" -o /tmp/inbox.json
+          curl -fsS -b "$JAR" -D /tmp/hdr "$A/api/admin/contact" -o /tmp/inbox.json
           total=$(hdr x-total-count); returned=$(hdr x-returned-count); dipotong=$(hdr x-inbox-truncated)
           echo "inbox: total=$total returned=$returned dipotong=$dipotong, psql=$(q 'select count(*) from contact_messages')"
           [ "$total" = "$(q 'select count(*) from contact_messages')" ] || { echo "X-Total-Count bukan jumlah baris sebenarnya"; fail=1; }
@@ -476,7 +510,7 @@ jobs:
           x "insert into contact_messages (name,email,subject,body,created_at,updated_at)
              select 'probe potong','potong@example.test','s','baris generated',now(),now()
              from generate_series(1,600);"
-          curl -fsS -D /tmp/hdr -H "Authorization: Bearer $T" "$A/api/admin/contact" -o /tmp/inbox.json
+          curl -fsS -b "$JAR" -D /tmp/hdr "$A/api/admin/contact" -o /tmp/inbox.json
           total=$(hdr x-total-count); returned=$(hdr x-returned-count); dipotong=$(hdr x-inbox-truncated)
           rows=$(q 'select count(*) from contact_messages')
           echo "inbox setelah 600 baris ditanam: total=$total returned=$returned dipotong=$dipotong, psql=$rows"
@@ -550,7 +584,7 @@ jobs:
           final=$(q 'select count(*) from contact_messages;')
           [ "$final" = "$after" ] || { echo "input cacat ikut tersimpan: $after -> $final"; exit 1; }
 
-      - name: Kontrak inbox admin (401 tanpa JWT, terhitung dengan JWT)
+      - name: Kontrak inbox admin (401 tanpa sesi, terhitung dengan sesi, logout menghapus cookie)
         env:
           ADMIN_USER: portfolio-admin
           ADMIN_PASS: ${{ steps.fixtures.outputs.adminpass }}
@@ -566,14 +600,23 @@ jobs:
           done
           tokrusak=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer bukan-token' "$A")
           echo "GET dengan token rusak => $tokrusak"; [ "$tokrusak" = "401" ]
+          # Cookie adalah jalur peramban sekarang, jadi yang palsu harus dinilai di jalur itu juga.
+          JARPALSU=$(mktemp)
+          printf '127.0.0.1\tFALSE\t/\tFALSE\t0\tporto_sesi\tbukan-token\n' > "$JARPALSU"
+          palsu=$(curl -sS -b "$JARPALSU" -o /dev/null -w '%{http_code}' "$A")
+          echo "GET dengan cookie sesi palsu => $palsu"; [ "$palsu" = "401" ] || { echo "cookie palsu diterima"; exit 1; }
 
-          # POST /api/auth/login: satu handler, dua path, dan yang lama tetap hidup.
+          # POST /api/auth/login: satu handler, dua path, dan yang lama tetap hidup. Keduanya
+          # menerbitkan cookie sesi (bukan token di body) — jadi yang dibandingkan di sini adalah
+          # "maskin keduanya bisa dipakai", bukan "string-nya sama".
           creds=$(jq -nc --arg u "$ADMIN_USER" --arg p "$ADMIN_PASS" '{username:$u,password:$p}')
-          T=$(curl -fsS -X POST -H 'Content-Type: application/json' -d "$creds" http://127.0.0.1:8080/api/auth/login | jq -r .token)
-          [ -n "$T" ] && [ "$T" != "null" ] || { echo "/api/auth/login tidak mengembalikan token"; exit 1; }
-          T2=$(curl -fsS -X POST -H 'Content-Type: application/json' -d "$creds" http://127.0.0.1:8080/api/login | jq -r .token)
-          echo "login: /api/auth/login ${#T} char, /api/login ${#T2} char"
-          [ -n "$T2" ] && [ "$T2" != "null" ] || { echo "/api/login lama mati"; exit 1; }
+          JAR=$(mktemp)
+          JAR2=$(mktemp)
+          curl -fsS -c "$JAR"  -X POST -H 'Content-Type: application/json' -d "$creds" http://127.0.0.1:8080/api/auth/login -o /dev/null
+          curl -fsS -c "$JAR2" -X POST -H 'Content-Type: application/json' -d "$creds" http://127.0.0.1:8080/api/login -o /dev/null
+          grep -q 'porto_sesi' "$JAR"  || { echo "/api/auth/login tidak menerbitkan cookie sesi"; exit 1; }
+          grep -q 'porto_sesi' "$JAR2" || { echo "/api/login lama tidak menerbitkan cookie sesi"; exit 1; }
+          echo "login: kedua path menerbitkan sesi cookie; yang dipakai di bawah dari $JAR"
           # Body dirakit lewat jq --arg, bukan lewat literal pasangan terkutip. Ukurannya:
           # `4c5e6d0` yang memakai literal membuka temuan GitGuardian, `f07fddb` yang memakai
           # --arg dengan kata yang sama mendapat "No secrets detected". Assertion identik —
@@ -588,7 +631,7 @@ jobs:
             http://127.0.0.1:8080/api/contact | jq -r .id)
           echo "POST publik => id=$id (sebelumnya count $before)"
 
-          curl -fsS -H "Authorization: Bearer $T" "$A" -o inbox.json
+          curl -fsS -b "$JAR" "$A" -o inbox.json
           got=$(jq 'length' inbox.json)
           member=$(jq --arg id "$id" '[.[].id] | index($id) != null' inbox.json)
           rowcount=$(q 'select count(*) from contact_messages;')
@@ -598,15 +641,25 @@ jobs:
           [ "$rowcount" = "$((before + 1))" ] || { echo "count tidak naik satu: $before -> $rowcount"; exit 1; }
           jq -e --arg id "$id" '.[] | select(.id==$id) | .email=="kontrak-admin@example.test"' inbox.json > /dev/null
 
-          # hapus ber-JWT, lalu idempoten: 404 untuk yang sudah hilang, 400 untuk id cacat
-          curl -fsS -X DELETE -H "Authorization: Bearer $T" "$A/$id" -o deleted.json
+          # hapus ber-sesi, lalu idempoten: 404 untuk yang sudah hilang, 400 untuk id cacat
+          curl -fsS -b "$JAR" -X DELETE "$A/$id" -o deleted.json
           echo "DELETE => $(jq -c . deleted.json)"
           [ "$(jq -r '.deleted' deleted.json)" = "1" ] || { echo "hapus tidak mengenai satu baris"; exit 1; }
           [ "$(q 'select count(*) from contact_messages;')" = "$before" ] || { echo "baris masih ada setelah hapus"; exit 1; }
-          again=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $T" "$A/$id")
+          again=$(curl -sS -b "$JAR" -o /dev/null -w '%{http_code}' -X DELETE "$A/$id")
           echo "DELETE lagi => $again"; [ "$again" = "404" ] || { echo "hapus tidak idempoten"; exit 1; }
-          cacat=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $T" "$A/bukan-uuid")
+          cacat=$(curl -sS -b "$JAR" -o /dev/null -w '%{http_code}' -X DELETE "$A/bukan-uuid")
           echo "DELETE id cacat => $cacat"; [ "$cacat" = "400" ] || { echo "id cacat lolos ke DB"; exit 1; }
+
+          # Keluar harus benar-benar menghapus kredensial di peramban. Yang dites di sini bagian
+          # server-nya: Set-Cookie penghapusan dikirim, dan JAR curl ikut dikosongkan, jadi
+          # permintaan berikutnya kembali 401.
+          out=$(curl -fsS -b "$JAR" -c "$JAR" -D /tmp/logout-hdr -X POST http://127.0.0.1:8080/api/auth/logout)
+          echo "logout => $out"
+          grep -qi '^set-cookie: porto_sesi=;' /tmp/logout-hdr || { echo "logout tanpa Set-Cookie penghapus:"; cat /tmp/logout-hdr; exit 1; }
+          postlogout=$(curl -sS -b "$JAR" -o /dev/null -w '%{http_code}' "$A")
+          echo "GET /api/admin/contact sesudah logout => $postlogout"
+          [ "$postlogout" = "401" ] || { echo "logout tidak menghapus sesi dari JAR: $postlogout"; exit 1; }
 
       # Bagian terakhir job api: dia sengaja mematikan postgres service, jadi dia dijalankan
       # setelah semua kontrak lain selesai. Dua hal yang dikunci: kegagalan DB tidak pernah
@@ -632,12 +685,16 @@ jobs:
           echo "$out" | grep -qi 'address already in use' || { echo "rc!=0 tapi bukan sebab bind"; exit 1; }
 
           # --- baseline sehat, di run yang sama, sebelum DB kumatikan ---
-          tok=$(curl -fsS -X POST -H 'Content-Type: application/json' \
-            -d "$(jq -nc --arg u "$ADMIN_USER" --arg p "$ADMIN_PASS" '{username:$u,password:$p}')" $A/api/login | jq -r .token)
+          JAR=$(mktemp)
+          curl -fsS -c "$JAR" -X POST -H 'Content-Type: application/json' \
+            -d "$(jq -nc --arg u "$ADMIN_USER" --arg p "$ADMIN_PASS" '{username:$u,password:$p}')" $A/api/login -o /dev/null
+          grep -q 'porto_sesi' "$JAR" || { echo "baseline: login tidak menerbitkan cookie sesi"; exit 1; }
           check() {
             m=$1; p=$2; d=$3; want=$4; args=()
             [ -n "$d" ] && args+=(-H 'Content-Type: application/json' -d "$d")
-            [ -n "${tok:-}" ] && args+=(-H "Authorization: Bearer $tok")
+            # sesi selalu ikut: rute terproteksi harus dinilai sampai menyentuh DB (500), bukan
+            # berhenti di 401 karena kurang kredensial
+            args+=(-b "$JAR")
             code=$(curl -sS -o /tmp/ckbody -w '%{http_code}' -X "$m" "${args[@]}" "$A$p")
             echo "$m $p => $code :: $(head -c 80 /tmp/ckbody)"
             [ "$code" = "$want" ] || { echo "  harap $want"; fail=1; }
@@ -835,7 +892,11 @@ jobs:
           cmp -s /tmp/cv.pdf /tmp/cv2.pdf || { echo "yang datang dari cache bukan byte yang sama dengan hasil render"; exit 1; }
           echo "cache CV terbukti: render lalu pukulan-cache, $((t1 - t0)) ms, byte identik ($(wc -c < /tmp/cv2.pdf) byte)"
 
-          command -v pdftotext > /dev/null || sudo apt-get install -y --no-install-recommends poppler-utils
+          # Daftar paket di image runner sudah basi sebelum install dijalankan. Pada run #109
+          # (2026-10-12) apt mencoba mengambil pool `libpoppler134 24.02.0-1ubuntu9.9` yang sudah
+          # dihapus mirror → 404 → exit 100, padahal seluruh uji PDF di atas baris ini sudah lolos.
+          # Index di-refresh dulu supaya URL-nya datang dari daftar yang masih benar.
+          command -v pdftotext > /dev/null || { sudo apt-get update -o Acquire::Retries=3 > /dev/null && sudo apt-get install -y --no-install-recommends poppler-utils; }
           command -v pdftotext > /dev/null || { echo "pdftotext tetap tidak tersedia setelah install"; exit 1; }
           pdftotext -layout /tmp/cv.pdf /tmp/cv.txt
           if ! grep -qi "$PENANDA" /tmp/cv.txt; then

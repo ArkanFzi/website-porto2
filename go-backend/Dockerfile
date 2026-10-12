@@ -2,7 +2,7 @@
 # dibangun hari ini tidak dijamin sama dengan image yang dibangun bulan depan, dan tidak ada
 # yang bisa membuktikan mana yang jalan di produksi. Dependabot untuk ekosistem `docker`
 # sudah ditambahkan supaya pin ini tidak membusuk dalam diam.
-FROM golang:1.25-alpine@sha256:1ae0735f00daffa3aaf1363a5184c0d2dc55c78e3db4ec70241cdac97bf84b59 AS builder
+FROM golang:1.27-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS builder
 
 WORKDIR /app
 
@@ -19,7 +19,7 @@ COPY . .
 # bukan image yang senyap berubah isi.
 RUN CGO_ENABLED=0 GOOS=linux go build -o main .
 
-FROM alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8
+FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
 WORKDIR /app
 
 # Install tzdata so Postgres driver can resolve TimeZone=Asia/Jakarta

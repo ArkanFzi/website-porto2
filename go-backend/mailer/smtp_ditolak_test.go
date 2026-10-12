@@ -2,6 +2,7 @@ package mailer
 
 import (
 	"bufio"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -23,6 +24,7 @@ type smtpStub struct {
 	addr    string
 	cmds    chan []string
 	ditolak bool
+	cert    tls.Certificate
 }
 
 func startSMTPStub(t *testing.T, authDitolak bool) *smtpStub {
@@ -34,7 +36,10 @@ func startSMTPStub(t *testing.T, authDitolak bool) *smtpStub {
 	}
 	t.Cleanup(func() { ln.Close() })
 
-	s := &smtpStub{addr: ln.Addr().String(), cmds: make(chan []string, 1), ditolak: authDitolak}
+	cert, pool := sertifikatTLSStub(t)
+	pasangCAStub(t, pool)
+
+	s := &smtpStub{addr: ln.Addr().String(), cmds: make(chan []string, 1), ditolak: authDitolak, cert: cert}
 	go s.serve(ln)
 	return s
 }
@@ -48,22 +53,23 @@ func (s *smtpStub) serve(ln net.Listener) {
 		return
 	}
 	defer conn.Close()
-	fmt.Fprintf(conn, "220 stub.test ESMTP\r\n")
 
-	r := bufio.NewReader(conn)
+	sal := &saluranStub{conn: conn, r: bufio.NewReader(conn), cert: s.cert}
+	fmt.Fprintf(sal.conn, "220 stub.test ESMTP\r\n")
+
 	var (
 		badanPesan bool
 		loginTahap int // 1 = menunggu username, 2 = menunggu sandi
 	)
 	balasKredensial := func() {
 		if s.ditolak {
-			fmt.Fprintf(conn, "535 5.7.8 Username and Password not accepted\r\n")
+			fmt.Fprintf(sal.conn, "535 5.7.8 Username and Password not accepted\r\n")
 		} else {
-			fmt.Fprintf(conn, "235 2.7.0 Authentication successful\r\n")
+			fmt.Fprintf(sal.conn, "235 2.7.0 Authentication successful\r\n")
 		}
 	}
 	for {
-		line, err := r.ReadString('\n')
+		line, err := sal.r.ReadString('\n')
 		if err != nil {
 			s.cmds <- seen
 			return
@@ -76,38 +82,46 @@ func (s *smtpStub) serve(ln net.Listener) {
 		case badanPesan && up != ".":
 			// Bagian dari badan pesan: jangan dibalas, jangan dianggap perintah.
 		case strings.HasPrefix(up, "EHLO"), strings.HasPrefix(up, "HELO"):
-			fmt.Fprintf(conn, "250-stub.test\r\n250-AUTH LOGIN PLAIN\r\n250 8BITMIME\r\n")
+			fmt.Fprintf(sal.conn, "250-stub.test\r\n250-STARTTLS\r\n250-AUTH LOGIN PLAIN\r\n250 8BITMIME\r\n")
+		case up == "STARTTLS":
+			// mailer.go menolak lanjut tanpa TLS, jadi stub yang tidak bisa naik hanya bisa
+			// mengembalikan percakapan sampai titik ini.
+			if err := naikTLS(sal); err != nil {
+				seen = append(seen, "STARTTLS GAGAL: "+err.Error())
+				s.cmds <- seen
+				return
+			}
 		case strings.HasPrefix(up, "AUTH LOGIN"):
 			// LOGIN mengirim username dan sandi di dua baris menyusul, masing-masing
 			// diawali tantangan 334. Penolakan baru sah setelah baris yang kedua.
 			loginTahap = 1
-			fmt.Fprintf(conn, "334 VXNlcm5hbWU6\r\n")
+			fmt.Fprintf(sal.conn, "334 VXNlcm5hbWU6\r\n")
 		case strings.HasPrefix(up, "AUTH"):
 			// AUTH PLAIN dan bentuk lain: kredensial sudah ikut di baris ini.
 			loginTahap = 0
 			balasKredensial()
 		case strings.HasPrefix(up, "MAIL FROM"):
-			fmt.Fprintf(conn, "250 2.1.0 Ok\r\n")
+			fmt.Fprintf(sal.conn, "250 2.1.0 Ok\r\n")
 		case strings.HasPrefix(up, "RCPT TO"):
-			fmt.Fprintf(conn, "250 2.1.5 Ok\r\n")
+			fmt.Fprintf(sal.conn, "250 2.1.5 Ok\r\n")
 		case strings.HasPrefix(up, "DATA"):
 			badanPesan = true
-			fmt.Fprintf(conn, "354 End data with <CR><LF>.<CR><LF>\r\n")
+			fmt.Fprintf(sal.conn, "354 End data with <CR><LF>.<CR><LF>\r\n")
 		case up == ".":
 			badanPesan = false
-			fmt.Fprintf(conn, "250 2.0.0 Ok: queued\r\n")
+			fmt.Fprintf(sal.conn, "250 2.0.0 Ok: queued\r\n")
 		case strings.HasPrefix(up, "QUIT"):
-			fmt.Fprintf(conn, "221 2.0.0 Bye\r\n")
+			fmt.Fprintf(sal.conn, "221 2.0.0 Bye\r\n")
 			s.cmds <- seen
 			return
 		case loginTahap == 1:
 			loginTahap = 2
-			fmt.Fprintf(conn, "334 UGFzc3dvcmQ6\r\n")
+			fmt.Fprintf(sal.conn, "334 UGFzc3dvcmQ6\r\n")
 		case loginTahap == 2:
 			loginTahap = 0
 			balasKredensial()
 		default:
-			fmt.Fprintf(conn, "250 2.0.0 Ok\r\n")
+			fmt.Fprintf(sal.conn, "250 2.0.0 Ok\r\n")
 		}
 	}
 }
@@ -191,7 +205,9 @@ func TestServerMenerimaPesanKembalikanNil(t *testing.T) {
 
 	seen := percakapan(t, stub)
 	atas := strings.ToUpper(strings.Join(seen, "\n"))
-	for _, wajib := range []string{"AUTH", "MAIL FROM", "RCPT TO", "DATA"} {
+	// STARTTLS ada di daftar wajib: tanpa baris ini, test "terkirim" tetap hijau walau
+	// percakapannya berjalan plaintext — persis kondisi yang gerbang TLS baru ini tutup.
+	for _, wajib := range []string{"STARTTLS", "AUTH", "MAIL FROM", "RCPT TO", "DATA"} {
 		if !strings.Contains(atas, wajib) {
 			t.Errorf("stub tidak pernah menerima %s.\nPercakapan:\n%s", wajib, strings.Join(seen, "\n"))
 		}
