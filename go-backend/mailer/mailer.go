@@ -2,6 +2,7 @@ package mailer
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"net"
@@ -27,6 +28,11 @@ var ErrNotConfigured = errors.New("EMAIL_USER/EMAIL_PASS belum terpasang")
 var (
 	smtpHost = "smtp.gmail.com"
 	smtpPort = 587
+
+	// tlsRootCAs adalah titik sisip kedua percakapan SMTP: nil berarti pakai root store
+	// sistem, dan test menyuntik CA self-signed supaya STARTTLS bisa dibuktikan tanpa
+	// menyentuh smtp.gmail.com.
+	tlsRootCAs *x509.CertPool
 )
 
 // batasKoneksi mempertahankan angka yang selama ini dipakai gomail: 10s itu hardcoded di
@@ -88,10 +94,20 @@ func kirim(user, pass, to string, msg *gomail.Message) error {
 	}
 
 	// Gmail hanya mengiklankan AUTH sesudah STARTTLS, jadi urutannya tidak bisa dibalik.
-	if ok, _ := c.Extension("STARTTLS"); ok {
-		if err := c.StartTLS(&tls.Config{ServerName: smtpHost}); err != nil {
-			return fmt.Errorf("SMTP %s: STARTTLS: %w", addr, err)
-		}
+	// STARTTLS sendiri bukan pilihan: sebelum ini jalurnya `if ok { naik }`, artinya server
+	// yang tidak mengiklankan STARTTLS membuat percakapan lanjut plaintext dan AUTH di atas
+	// plaintext menyerahkan kredensial akun dalam bentuk yang bisa disadap. Gmail selalu
+	// mengiklankan STARTTLS di 587, jadi menolak yang tidak mengiklankannya aman.
+	if ok, _ := c.Extension("STARTTLS"); !ok {
+		return fmt.Errorf("SMTP %s: server tidak mengiklankan STARTTLS — menolak AUTH di jalur plaintext", addr)
+	}
+	if err := c.StartTLS(&tls.Config{ServerName: smtpHost, RootCAs: tlsRootCAs}); err != nil {
+		return fmt.Errorf("SMTP %s: STARTTLS: %w", addr, err)
+	}
+	// net/smtp hanya menandai koneksi TLS jika handshake benar-benar selesai; mengandalkan
+	// `err == nil` saja berarti state setengah-handshake lolos ke AUTH.
+	if state, ok := c.TLSConnectionState(); !ok || !state.HandshakeComplete {
+		return fmt.Errorf("SMTP %s: STARTTLS tanpa handshake TLS — menolak AUTH", addr)
 	}
 
 	mekanisme, err := pilihMekanisme(c, user, pass)
