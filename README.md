@@ -75,7 +75,10 @@ inbox admin menjawab **500** kalau DB gagal — sebelum PR #29 yang sama itu men
 
 - **Go 1.25**, **Gin** (HTTP), **GORM** + `gorm.io/driver/postgres`
 - **JWT** (`golang-jwt/v5`, HS256, kedaluwarsa 24 jam) untuk rute `/api/certificates` dan
-  `/api/experience` yang protected
+  `/api/experience` yang protected. Sejak perubahan ini kredensialnya dibawa sebagai **cookie
+  HttpOnly** `porto_sesi` (`SameSite=Lax`, `Secure` saat `X-Forwarded-Proto: https`), bukan lagi
+  string di `localStorage`; `Authorization: Bearer` masih diterima supaya sesi yang terbit sebelum
+  deploy tidak berubah jadi 401. `POST /api/auth/logout` menghapus cookie-nya.
 - **`gomail`** untuk SMTP — tersambung ke form kontak dan **terbukti mengirim di produksi** sejak #33
   (`EMAIL_USER` ← `portfolio-email-user`, `EMAIL_PASS` ← `portfolio-email-pass`, keduanya lewat
   `--set-secrets` di `deploy.yml`). Kalau keduanya hilang: `SendEmail` mengembalikan `ErrNotConfigured`
@@ -90,9 +93,10 @@ inbox admin menjawab **500** kalau DB gagal — sebelum PR #29 yang sama itu men
     Gmail jadi variabel paket, bukan env — permukaan konfigurasinya tetap nol), jadi penolakan
     `535 5.7.8` terbukti menghasilkan kelas error yang benar, dan penerimaan terbukti `nil`. Sebelum ini,
     cabang `gagal kirim email` hanya pernah **diasumsikan tidak muncul** oleh CI (`ci.yml:289-293`).
-- Rute: `POST /api/login`, `POST /api/auth/login`, `GET /api/certificates`, `GET /api/experience`,
-  `GET /api/health`, `POST /api/contact` (publik) + `GET /api/admin/contact`,
-  `DELETE /api/admin/contact/:id`, `POST`/`DELETE` untuk kedua koleksi (butuh Bearer token)
+- Rute: `POST /api/login`, `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/certificates`,
+  `GET /api/experience`, `GET /api/health`, `POST /api/contact` (publik) + `GET /api/admin/contact`,
+  `DELETE /api/admin/contact/:id`, `POST`/`DELETE` untuk kedua koleksi (butuh sesi — cookie
+  `porto_sesi`, atau `Authorization: Bearer` lama)
 
 ### Infrastruktur
 

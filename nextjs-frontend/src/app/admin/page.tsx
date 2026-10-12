@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Award, Briefcase, Plus, Trash2, ShieldCheck, LogOut, Lock } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { authFetch } from "@/lib/auth";
+import { adaSesi, authFetch, keluarSesi, tandaiSesi } from "@/lib/auth";
 import { readApiError } from "@/lib/apiError";
 
 interface Certificate {
@@ -72,8 +72,7 @@ export default function AdminDashboard() {
     };
 
     useEffect(() => {
-        const token = localStorage.getItem("admin_token");
-        if (token) {
+        if (adaSesi()) {
             setIsLoggedIn(true);
             fetchData();
         }
@@ -90,21 +89,24 @@ export default function AdminDashboard() {
                 body: JSON.stringify(loginForm)
             });
 
-            const data = await res.json();
-            if (res.ok && data.token) {
-                localStorage.setItem("admin_token", data.token);
+            const data = await res.json().catch(() => null);
+            // "sesi": "terbuka" adalah satu-satunya tanda sukses. Token tidak lagi lewat sini —
+            // ia datang sebagai cookie HttpOnly, jadi halaman ini tidak pernah memegang
+            // kredensial yang bisa dibaca skrip.
+            if (res.ok && data?.sesi === "terbuka") {
+                tandaiSesi();
                 setIsLoggedIn(true);
                 fetchData();
             } else {
-                setLoginError(data.error || "Login failed");
+                setLoginError(data?.error || "Login failed");
             }
         } catch (error) {
             setLoginError("Failed to connect to server");
         }
     };
 
-    const handleLogout = () => {
-        localStorage.removeItem("admin_token");
+    const handleLogout = async () => {
+        await keluarSesi();
         setIsLoggedIn(false);
     };
 
