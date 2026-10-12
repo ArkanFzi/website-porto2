@@ -54,9 +54,11 @@ func sesiAdmin() func() {
 	return func() { adminUser, adminPass, jwtSecret = oldUser, oldPass, oldSecret }
 }
 
-// Kata kunci yang benar harus menghasilkan token yang benar-benar diterima AuthMiddleware.
-// Tanpa assertion ini, "login hijau" cuma membuktikan handler menjawab 200.
-func TestLoginKredensialSahMenghasilkanTokenYangDiterima(t *testing.T) {
+// Kata kunci yang benar harus menghasilkan kredensial yang benar-benar diterima AuthMiddleware.
+// Tanpa assertion ini, "login hijau" cuma membuktikan handler menjawab 200. Bentuknya ikut
+// berpindah bersama implementasinya: kredensial sekarang datang sebagai cookie HttpOnly,
+// bukan field token di body (lihat sesi_cookie_test.go untuk alasan pemindahan itu).
+func TestLoginKredensialSahMenghasilkanSesiYangDiterima(t *testing.T) {
 	defer sesiAdmin()()
 	resetLogin()
 
@@ -64,17 +66,20 @@ func TestLoginKredensialSahMenghasilkanTokenYangDiterima(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("harap 200, dapat %d: %s", rec.Code, rec.Body.String())
 	}
-	token := rec.Body.String()
-	i := strings.Index(token, `"token":"`)
-	if i < 0 {
-		t.Fatalf("body tidak memuat token: %s", token)
+
+	var token string
+	for _, k := range rec.Result().Cookies() {
+		if k.Name == namaCookieSesi {
+			token = k.Value
+		}
 	}
-	token = token[i+len(`"token":"`):]
-	token = token[:strings.Index(token, `"`)]
+	if token == "" {
+		t.Fatalf("login sukses tanpa cookie %s. Body: %s", namaCookieSesi, rec.Body.String())
+	}
 
 	rec2 := cobaValidasiToken(token)
 	if rec2.Code != http.StatusOK {
-		t.Fatalf("token sah ditolak middleware: %d %s", rec2.Code, rec2.Body.String())
+		t.Fatalf("sesi sah ditolak middleware: %d %s", rec2.Code, rec2.Body.String())
 	}
 }
 

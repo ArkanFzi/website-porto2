@@ -186,7 +186,7 @@ function resolve(call, { backends, urlRewrites, handlers }) {
     if (hit.protected && call.fn !== "authFetch") {
       return {
         ok: false,
-        why: `${hit.method} ${hit.path} ada di group "${hit.group}" yang menuntut Bearer token, tapi dipanggil pakai ${call.fn}() tanpa header Authorization`,
+        why: `${hit.method} ${hit.path} ada di group "${hit.group}" yang menuntut sesi, tapi dipanggil pakai ${call.fn}() — cookie memang ikut, tapi 401 tidak akan membersihkan penanda lokal`,
       };
     }
     return { ok: true, via: `rewrite ${rw.source} -> ${hit.method} ${hit.path}` };

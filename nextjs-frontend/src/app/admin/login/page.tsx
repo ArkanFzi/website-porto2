@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { setAuthToken } from "@/lib/auth";
+import { tandaiSesi } from "@/lib/auth";
 import { Shield } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -32,15 +32,15 @@ export default function LoginPage() {
             }
 
             // res.ok saja tidak cukup. String( undefined ) adalah "undefined" — truthy — jadi
-            // satu respons 200 tanpa field token sudah cukup untuk membuat gerbang klien di
-            // admin/layout.tsx menganggap sesi ada dan mengirim "Bearer undefined".
-            const data = (await res.json().catch(() => null)) as { token?: unknown } | null;
-            const token = data?.token;
-            if (typeof token !== "string" || token === "") {
-                throw new Error("Login tidak selesai: server tidak mengembalikan token.");
+            // satu respons 200 tanpa field apa pun sudah cukup untuk membuat gerbang klien di
+            // admin/layout.tsx menganggap sesi ada. Yang ditunggu sekarang pernyataan keadaan
+            // dari server; kredensialnya lewat Set-Cookie dan tidak pernah dibaca kode ini.
+            const data = (await res.json().catch(() => null)) as { sesi?: unknown } | null;
+            if (data?.sesi !== "terbuka") {
+                throw new Error("Login tidak selesai: server tidak membuka sesi.");
             }
 
-            setAuthToken(token);
+            tandaiSesi();
             router.push("/admin/dashboard");
         } catch (err) {
             setError(err instanceof Error ? err.message : "Failed to login");

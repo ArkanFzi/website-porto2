@@ -3,14 +3,16 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Inbox, LogOut } from "lucide-react";
-import { removeAuthToken } from "@/lib/auth";
+import { keluarSesi } from "@/lib/auth";
 
 export function Sidebar() {
     const pathname = usePathname();
     const router = useRouter();
 
-    const handleLogout = () => {
-        removeAuthToken();
+    // Ditunggu sampai selesai baru berpindah: keluar tanpa menghapus cookie cuma terlihat
+    // seperti keluar, kredensialnya tetap sah sampai exp 24 jam.
+    const handleLogout = async () => {
+        await keluarSesi();
         router.push("/admin/login");
     };
 
