@@ -21,12 +21,24 @@ Ditulis apa adanya, karena sebagian situs ini belum berfungsi dan daftarnya dija
 [`tools/ci/api-baseline.json`](tools/ci/api-baseline.json). Selama sebuah jalur masih mati, CI ikut
 mengetahuinya; kalau diperbaiki tanpa memperbarui baseline, CI justru merah.
 
-**Kolom di bawah adalah hasil audit sebelum M11.** Yang sudah berubah sejak itu: form kontak menulis
-ke `contact_messages` dan menjawab `201 {id}`; `/api/cv` ikut memuat daftar sertifikat;
-`/admin/dashboard` membaca + menghapus kotak masuk lewat `GET`/`DELETE /api/admin/contact` ber-JWT,
-dan `POST /api/auth/login` akhirnya ada; `seedData()` + `AutoMigrate` tidak lagi jalan saat start.
-Yang masih mati persis seperti tertulis: lima rute `/api/admin/projects` dan empat tulis
-`/api/certificates` + `/api/experience` dari `/admin/page.tsx` (fetch polos tanpa `Authorization`).
+**Kolom di bawah adalah hasil audit sebelum M11, sudah direkonsiliasi dengan keadaan hari ini.**
+Yang berubah sejak audit itu: form kontak menulis ke `contact_messages` dan menjawab `201 {id}`;
+`/api/cv` ikut memuat daftar sertifikat; `seedData()` + `AutoMigrate` tidak lagi jalan saat start;
+inbox admin (`GET`/`DELETE /api/admin/contact`) sudah terbukti menghitung POST publik lewat API —
+di CI, pada DB sementara runner (`ci.yml` langkah "Kontrak inbox admin"); dan sesi admin pindah dari
+`localStorage` ke cookie HttpOnly (`porto_sesi`) dengan `POST /api/auth/logout` (#65, `31709a0`).
+
+Dua klaim lama di bawah sudah tidak berlaku dan itu yang perlu dibaca hati-hati:
+
+- **"lima rute `/api/admin/projects` mati"** — bukan mati, **memang tidak pernah ada**. Tidak ada
+  `src/app/admin/projects/page.tsx` (isi `src/app/admin/`: `page.tsx`, `dashboard/`, `login/`,
+  `layout.tsx`) dan tidak ada satu pun rute `/api/admin/projects` di `main.go`. Yang terukur di CI
+  #65 justru jawaban yang benar untuk subtree tak terdaftar: **404 dengan sesi sah, 401 tanpa sesi,
+  4/4 metode** (GET/POST/PUT/DELETE).
+- **"empat tulis `/api/certificates` + `/api/experience` dari `/admin/page.tsx` lewat fetch polos
+  tanpa `Authorization`"** — keempatnya sekarang lewat `authFetch`, dan tripwire
+  [`tools/ci/api-contract-check.mjs`](tools/ci/api-contract-check.mjs) menolak regresi bentuk itu:
+  21 pemanggilan (14 unik) semuanya **hidup**, `dead_paths: []` dan `stub_handlers: []`.
 
 | Fitur | Status |
 |---|---|
@@ -37,8 +49,8 @@ Yang masih mati persis seperti tertulis: lima rute `/api/admin/projects` dan emp
 | `/api/cv` — PDF dari halaman `/cv-layout` lewat Puppeteer | jalan, tapi **tanpa daftar sertifikat** |
 | `/api/github-repos`, `/api/github-profile` | jalan |
 | Form kontak | **jalan penuh** — `Contact.tsx` mengirim ke `POST /api/contact` di Go, pesan masuk ke `contact_messages` dan dijawab `201 {id}`; stub lama `src/app/api/contact/route.ts` (menahan 1 s lalu menjawab `success: true` tanpa menulis apa pun) sudah dihapus. Notifikasi email **terbukti hidup di produksi**: POST 2026-10-06 00:51 UTC menjawab `201` dalam 28,75 ms dan 3,171 s kemudian mencetak `contact 4e8d174a-…: email terkirim ke muhammadarkanfauzi9@gmail.com`, pesannya sampai ke Gmail. Kalau kredensial hilang, #31 membuat jalurnya berhenti **sebelum** socket dibuka dan tercatat sebagai `email dilewati` — bukan disamarkan jadi kegagalan Gmail. **`Reply-To` sekarang dipasang** (#37, `29757ca`): tombol Balas membalas ke alamat pengunjung, dan nilai yang bukan alamat tidak pernah masuk header (gerbang `mail.ParseAddress` di dalam paket, dengan 6 input jahat sebagai test). Yang masih tersisa dari baris ini: `subject` dibakar di `Contact.tsx:24` sebagai `Visionary Project : <nama>` — bukan pilihan pengunjung, dan header `Reply-To` pada pesan yang benar-benar datang baru terbukti oleh satu POST produksi lagi |
-| Halaman admin (`/admin`, `/admin/projects`, `/admin/dashboard`) | **sebagian hidup** — `POST /api/auth/login` sekarang ada di backend (token terbit) dan `/admin/dashboard` membaca + menghapus kotak masuk lewat `GET`/`DELETE /api/admin/contact` yang ber-JWT (401 untuk siapa pun tanpa token, terukur di produksi); yang tetap mati: lima rute `/api/admin/projects` dan empat tulis `/api/certificates` + `/api/experience` dari `/admin/page.tsx` (fetch polos tanpa `Authorization`) |
-| Login admin (`POST /api/auth/login` + JWT) | **dipakai** — `/admin/login` memanggilnya; `POST /api/login` yang lama masih terdaftar dan menunjuk handler yang sama, jadi keduanya menerbitkan token yang sama |
+| Halaman admin (`/admin`, `/admin/dashboard`, `/admin/login`) | **hidup bertiga** — `/admin` (`page.tsx`) menulis & menghapus sertifikat/pengalaman lewat `authFetch`, `/admin/dashboard` membaca & menghapus kotak masuk lewat `GET`/`DELETE /api/admin/contact`, `/admin/login` membuka sesi. `/admin/projects` **tidak ada** (lihat catatan rekonsiliasi di atas), dan `Sidebar` hanya menautkan `/admin/dashboard` — jadi CRUD di `/admin` reachable lewat URL, bukan lewat menu |
+| Login admin (`POST /api/auth/login` + JWT) | **dipakai** — `/admin/login` memanggilnya; `POST /api/login` yang lama masih terdaftar dan menunjuk handler yang sama, jadi keduanya menerbitkan sesi yang sama. Kredensialnya tidak lagi lewat body: `Set-Cookie: porto_sesi` (HttpOnly, SameSite=Lax, Secure saat `X-Forwarded-Proto: https`), `Authorization: Bearer` tetap diterima untuk sesi yang terbit sebelum #65, dan `POST /api/auth/logout` menghapus cookie-nya |
 
 `/api/cv` dulu kosong daftar sertifikatnya karena `src/app/cv-layout/page.tsx` memanggil
 `http://localhost:8080` secara hardcoded — origin itu tidak ada di dalam container frontend.
@@ -47,8 +59,10 @@ container start) dijadwalkan sebagai **M11** — kontak, inbox admin, CV dan jal
 (PR #22, #24, #25, #27, #29, #31 untuk jalur email yang tidak butuh kredensial, dan #33 untuk memasang
 `EMAIL_USER`/`EMAIL_PASS` sebagai secret berversi di revisi produksi). **Satu POST lewat form publik**
 (2026-10-06 00:51 UTC) membuktikan SMTP menerima, lalu **#38** (`e99cf67`) membuang bentuk kredensial dari
-`ci.yml` dan **#37** (`29757ca`) memasang `Reply-To`. Yang tersisa dari M11 cuma **lima dead path admin** dan
-**migration berversi**; satu klausa E13 masih menunggu login-mu: hitungan `+1` di `/admin/dashboard`.
+`ci.yml` dan **#37** (`29757ca`) memasang `Reply-To`. Yang tersisa dari M11 sekarang cuma
+**migration berversi** — lima "dead path admin" yang dulu disebut di sini sudah direkonsiliasi di
+catatan atas (empat jalur tulis kini lewat `authFetch`, satu-sisanya tidak pernah ada). Satu klausa
+E13 masih menunggu login-mu: hitungan `+1` di `/admin/dashboard` lewat API, bukan lewat `psql`.
 Termasuk di dalamnya: **13 error gorm yang dibuang itu sekarang nol**, diukur oleh
 `go-backend/cmd/audit-ignored` (13 → 6 → 0 pada `c78cb19` / `0204b70` / `bf11c2d`) dan dikunci jadi langkah
 CI yang bisa merah, bersama satu `r.Run` yang dulu keluar dengan `rc=0` walaupun portnya sudah dipakai.
