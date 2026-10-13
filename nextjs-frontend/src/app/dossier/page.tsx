@@ -14,7 +14,7 @@ import SuperCTA from "@/components/Dossier/SuperCTA";
 
 export default function DossierPage() {
     return (
-        <main className="w-full bg-[#111111] min-h-screen text-white font-sans selection:bg-[#c49a56]/30 overflow-x-hidden">
+        <main className="w-full bg-[#111111] min-h-screen text-white font-sans selection:bg-accent-primary/30 overflow-x-hidden">
             <div className="fixed top-0 z-[1000] w-full">
                 <Navigation />
             </div>
@@ -40,16 +40,16 @@ export default function DossierPage() {
                     className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-end w-full mt-12 gap-12"
                 >
                     <div className="flex flex-col">
-                        <span className="text-xl md:text-2xl font-medium mb-4 text-white/90">Halo, saya</span>
-                        <h1 className="text-5xl md:text-[7vw] font-bold leading-[0.9] tracking-tighter text-white">
+                        <span className="text-xl md:text-2xl font-medium mb-4 text-white/90">Hello, I&apos;m</span>
+                        <h1 className="text-statement font-bold leading-[0.9] tracking-tighter text-white">
                             M. Arkan Fauzi.
                         </h1>
                     </div>
 
                     <div className="max-w-xs md:mb-[1vw]">
-                        <h3 className="text-2xl font-bold mb-4">Kode adalah seni.</h3>
-                        <p className="text-sm text-white/60 leading-relaxed font-light">
-                            Dari arsitektur backend yang kokoh hingga antarmuka pengguna yang menawan, saya membangun ekosistem digital yang fungsional dan estetis.
+                        <h3 className="text-2xl font-bold mb-4">Code is a craft.</h3>
+                        <p className="text-body text-white/60 leading-relaxed font-light">
+                            From solid backend architecture to interfaces people actually enjoy using, I build digital systems that work and look the part.
                         </p>
                     </div>
                 </motion.div>
@@ -62,20 +62,20 @@ export default function DossierPage() {
                     className="relative z-10 grid grid-cols-2 md:grid-cols-4 gap-8 w-full border-t border-white/10 pt-8 mt-16"
                 >
                     <div>
-                        <span className="text-[#ff5500] font-mono text-xs block mb-2">/ 01</span>
-                        <h4 className="text-sm font-medium text-white/80">Arsitektur Perangkat Lunak</h4>
+                        <span className="text-accent-secondary font-mono text-xs block mb-2">/ 01</span>
+                        <h4 className="text-sm font-medium text-white/80">Software Architecture</h4>
                     </div>
                     <div>
-                        <span className="text-[#ff5500] font-mono text-xs block mb-2">/ 02</span>
-                        <h4 className="text-sm font-medium text-white/80">Pengembangan Antarmuka</h4>
+                        <span className="text-accent-secondary font-mono text-xs block mb-2">/ 02</span>
+                        <h4 className="text-sm font-medium text-white/80">Interface Engineering</h4>
                     </div>
                     <div>
-                        <span className="text-[#ff5500] font-mono text-xs block mb-2">/ 03</span>
-                        <h4 className="text-sm font-medium text-white/80">Integrasi Sistem Backend</h4>
+                        <span className="text-accent-secondary font-mono text-xs block mb-2">/ 03</span>
+                        <h4 className="text-sm font-medium text-white/80">Backend System Integration</h4>
                     </div>
                     <div>
-                        <span className="text-[#ff5500] font-mono text-xs block mb-2">/ 04</span>
-                        <h4 className="text-sm font-medium text-white/80">Desain UI/UX Eksperimental</h4>
+                        <span className="text-accent-secondary font-mono text-xs block mb-2">/ 04</span>
+                        <h4 className="text-sm font-medium text-white/80">Experimental UI/UX</h4>
                     </div>
                 </motion.div>
             </div>
@@ -90,7 +90,7 @@ export default function DossierPage() {
             >
                 {/* Static Text - Fixed on the left */}
                 <span className="text-sm text-white/40 uppercase tracking-widest whitespace-nowrap z-10 shrink-0">
-                    Teknologi Inti
+                    Core Technology
                 </span>
                 
                 {/* Scrolling Container - 3px gap from the text */}
@@ -124,9 +124,9 @@ export default function DossierPage() {
                         transition={{ duration: 0.8, ease: "easeOut" }}
                         className="max-w-2xl"
                     >
-                        <span className="text-[#ff5500] font-bold text-lg mb-6 block">Filosofi Kode</span>
-                        <h2 className="text-5xl md:text-6xl lg:text-7xl font-bold leading-tight tracking-tight">
-                            Membentuk Pengalaman Digital yang Bermakna
+                        <span className="text-accent-secondary font-bold text-lg mb-6 block">Code Philosophy</span>
+                        <h2 className="text-title font-bold leading-tight tracking-tight">
+                            Shaping Digital Experiences That Mean Something
                         </h2>
                     </motion.div>
                     <motion.div 
@@ -136,13 +136,13 @@ export default function DossierPage() {
                         transition={{ duration: 0.8, delay: 0.2, ease: "easeOut" }}
                         className="max-w-sm mt-4 md:mt-16"
                     >
-                        <p className="text-xl text-white/90 font-medium mb-8">
-                            Fokus utama saya selalu bermuara pada kesempurnaan detail, clean code, dan fungsionalitas murni yang dibalut desain visual yang kuat.
+                        <p className="text-item text-white/90 font-medium mb-8">
+                            My focus stays on the same three things: detail, clean code, and pure functionality wrapped in strong visual design.
                         </p>
                         <div className="flex items-center gap-4">
-                            <span className="text-sm text-white/50">Siap membangun<br />sesuatu bersama?</span>
-                            <a href="mailto:muhammadarkanfauzi9@gmail.com" className="bg-[#ff5500] text-white px-8 py-3 rounded-full text-sm font-bold hover:bg-white hover:text-[#ff5500] transition-colors flex items-center gap-2">
-                                Hubungi Saya <span className="text-xl font-normal leading-none mb-1">→</span>
+                            <span className="text-sm text-white/50">Ready to build<br />something together?</span>
+                            <a href="mailto:muhammadarkanfauzi9@gmail.com" className="bg-accent-secondary text-white px-8 py-3 rounded-full text-sm font-bold hover:bg-white hover:text-accent-secondary transition-colors flex items-center gap-2">
+                                Get in Touch <span className="text-xl font-normal leading-none mb-1">→</span>
                             </a>
                         </div>
                     </motion.div>

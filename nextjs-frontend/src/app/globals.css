@@ -4,6 +4,10 @@
   --bg: #000000;
   --fg: #ffffff;
   --fg-mut: #a0a0a0;
+  --accent: #c49a56;
+  --flame: #ff5500;
+  --ink: #e8e9e4;
+  --surface: #0c1410;
   /* Font variables injected by next/font/google */
 }
 
@@ -11,8 +15,24 @@
   --color-background: var(--bg);
   --color-foreground: var(--fg);
   --color-muted: var(--fg-mut);
+  --color-accent-primary: var(--accent);
+  --color-accent-secondary: var(--flame);
+  --color-ink: var(--ink);
+  --color-surface: var(--surface);
   --font-sans: var(--f-sans);
   --font-serif: var(--f-serif);
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* Skala tipografi semantik: satu tempat untuk besar huruf, jadi
+     hierarki tidak tergantung angka clamp yang tersebar per komponen. */
+  --text-tag: 10px;
+  --text-micro: 11px;
+  --text-label: 12px;
+  --text-body: clamp(13px, 1.05vw, 15px);
+  --text-item: clamp(16px, 1.5vw, 20px);
+  --text-subtitle: clamp(18px, 2.4vw, 30px);
+  --text-title: clamp(34px, 4.4vw, 56px);
+  --text-statement: clamp(32px, 5vw, 68px);
+  --text-display: clamp(80px, 25vw, 350px);
 }
 
 html {
@@ -130,14 +150,14 @@ section {
 /* ── Inline Conversational Form Inputs (Contact) ── */
 .inline-input {
   box-shadow: none !important;
-  caret-color: #c49a56;
+  caret-color: var(--accent);
 }
 
 .inline-input:-webkit-autofill,
 .inline-input:-webkit-autofill:hover,
 .inline-input:-webkit-autofill:focus,
 .inline-input:-webkit-autofill:active {
-  -webkit-box-shadow: 0 0 0 30px #0c1410 inset !important;
+  -webkit-box-shadow: 0 0 0 30px var(--surface) inset !important;
   -webkit-text-fill-color: white !important;
   transition: background-color 5000s ease-in-out 0s;
 }

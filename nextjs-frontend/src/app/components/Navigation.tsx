@@ -13,8 +13,8 @@ const socialLinks = [
 
 const links = [
   { label: "HOME", href: "/" },
-  { label: "REKAM", href: "/#projects" },
-  { label: "KONTAK", href: "/#contact" },
+  { label: "WORK", href: "/#projects" },
+  { label: "CONTACT", href: "/#contact" },
   { label: "DOSSIER", href: "/dossier" },
 ];
 

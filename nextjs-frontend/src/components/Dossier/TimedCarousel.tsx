@@ -129,7 +129,7 @@ export default function TimedCarousel({
                 Back
             </button>
             <span className="text-white/30 uppercase font-mono text-xs tracking-widest">/</span>
-            <span className="text-[#c49a56] uppercase font-mono text-xs tracking-widest">{categoryName}</span>
+            <span className="text-accent-primary uppercase font-mono text-xs tracking-widest">{categoryName}</span>
         </div>
 
         {/* Center/Left Content: Huge Typography */}
@@ -145,9 +145,9 @@ export default function TimedCarousel({
                     <span className="inline-block px-3 py-1 bg-white/10 backdrop-blur-md rounded-sm text-sm font-mono tracking-widest uppercase mb-6 text-white/80 border border-white/20">
                         {currentItem.subtitle}
                     </span>
-                    <h1 className="text-6xl md:text-7xl lg:text-8xl font-black uppercase tracking-tighter leading-[0.9] text-transparent bg-clip-text bg-gradient-to-b from-white to-white/60 drop-shadow-2xl">
+                    <h2 className="text-6xl md:text-7xl lg:text-8xl font-black uppercase tracking-tighter leading-[0.9] text-transparent bg-clip-text bg-gradient-to-b from-white to-white/60 drop-shadow-2xl">
                         {currentItem.title}
-                    </h1>
+                    </h2>
                     
                     {currentItem.metrics && (
                         <div className="mt-8 flex gap-6 text-white/80">
@@ -211,8 +211,8 @@ export default function TimedCarousel({
                             />
                             <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
                             <div className="absolute bottom-3 left-3 right-3 text-left">
-                                <p className="text-[10px] font-mono uppercase text-white/60 mb-1 tracking-wider">{thumb.subtitle}</p>
-                                <h4 className="text-white font-bold leading-tight text-xs line-clamp-2">{thumb.title}</h4>
+                                <p className="text-tag font-mono uppercase text-white/60 mb-1 tracking-wider">{thumb.subtitle}</p>
+                                <h3 className="text-white font-bold leading-tight text-label line-clamp-2">{thumb.title}</h3>
                             </div>
                         </motion.div>
                     );

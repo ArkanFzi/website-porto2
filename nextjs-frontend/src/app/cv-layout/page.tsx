@@ -73,7 +73,7 @@ export default function CVLayout() {
           <h2 className="text-sm font-bold uppercase tracking-widest border-b border-black/10 pb-2 mb-6">Education</h2>
           <div className="flex flex-col gap-6 text-[13px]">
             <div>
-              <h3 className="font-bold uppercase leading-tight text-[#c49a56]">SMKN 6 Malang</h3>
+              <h3 className="font-bold uppercase leading-tight text-accent-primary">SMKN 6 Malang</h3>
               <p className="text-gray-600 font-medium tracking-tight">Software Engineering</p>
               <p className="text-gray-400 text-xs italic">2024 - Present</p>
             </div>
@@ -153,7 +153,7 @@ export default function CVLayout() {
               </p>
             </div>
             <div>
-              <div className="flex justify-between items-baseline mb-2 text-[#ff5500]">
+              <div className="flex justify-between items-baseline mb-2 text-accent-secondary">
                 <h3 className="font-bold uppercase text-[15px]">Semi Finalist — JHIC 2025</h3>
                 <span className="text-xs italic opacity-70">Nov 2025</span>
               </div>

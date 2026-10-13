@@ -197,7 +197,7 @@ const TradingCard: React.FC<TradingCardProps> = ({
                             {title}
                         </h2>
                         <div className="flex items-center gap-2">
-                            <span style={{ color: colorHex }} className="font-mono text-[10px] font-bold uppercase tracking-widest bg-black/50 px-2 py-0.5 rounded backdrop-blur">
+                            <span style={{ color: colorHex }} className="font-mono text-tag font-bold uppercase tracking-widest bg-black/50 px-2 py-0.5 rounded backdrop-blur">
                                 {subtitle}
                             </span>
                         </div>
@@ -283,7 +283,7 @@ export default function DataCards() {
                                 <h4 className="text-white font-bold text-sm tracking-wide truncate pr-2 group-hover/repo:text-[#2a8a6a]">{repo.name}</h4>
                                 <ArrowUpRight className="w-3 h-3 text-[#2a8a6a]/50 group-hover/repo:text-[#2a8a6a]" />
                             </div>
-                            <div className="flex justify-between items-center text-[10px] font-mono font-semibold uppercase">
+                            <div className="flex justify-between items-center text-tag font-mono font-semibold uppercase">
                                 <span className="text-white/60">{repo.language || "TXT"}</span>
                                 <span className="text-[#2a8a6a]">{repo.stargazers_count} ★</span>
                             </div>
@@ -299,7 +299,7 @@ export default function DataCards() {
                 title="Awards"
                 subtitle="Certifications"
                 bgImage="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=800"
-                verticalText="Verified Achvmnts"
+                verticalText="Verified Achievements"
                 icon={<Award className="w-5 h-5" />}
                 href="/dossier/certificates"
                 defaultRotateY={0}
@@ -310,11 +310,11 @@ export default function DataCards() {
                 {loadingCerts ? (
                     <span className="text-white/50 font-mono text-xs animate-pulse">Loading Awards...</span>
                 ) : certs.map((cert) => (
-                    <div key={cert.id} className="flex flex-col bg-gradient-to-r from-black/80 to-transparent p-3 rounded-lg border-l-2 border-[#c49a56]/50 backdrop-blur-sm">
+                    <div key={cert.id} className="flex flex-col bg-gradient-to-r from-black/80 to-transparent p-3 rounded-lg border-l-2 border-accent-primary/50 backdrop-blur-sm">
                         <h4 className="text-white font-bold text-sm leading-tight mb-1">{cert.title}</h4>
-                        <div className="flex justify-between items-center text-[10px] font-mono font-semibold uppercase text-white/60">
+                        <div className="flex justify-between items-center text-tag font-mono font-semibold uppercase text-white/60">
                             <span>{cert.issuer}</span>
-                            <span className="text-[#c49a56]">{cert.date}</span>
+                            <span className="text-accent-primary">{cert.date}</span>
                         </div>
                     </div>
                 ))}
@@ -339,10 +339,10 @@ export default function DataCards() {
                     <span className="text-white/50 font-mono text-xs animate-pulse">Loading Journey...</span>
                 ) : experiences.map((exp) => (
                     <div key={exp.id} className="flex flex-col relative pl-4 pb-2 border-l border-white/20 last:border-0 last:pb-0">
-                        <div className="absolute left-[-5px] top-1.5 w-2 h-2 rounded-full bg-[#ff5500] shadow-[0_0_10px_#ff5500]" />
-                        <h4 className="text-white font-bold text-[15px] mb-0.5">{exp.role}</h4>
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between text-[11px] font-mono text-white/70">
-                            <span className="font-semibold text-[#ff5500]/80">{exp.company}</span>
+                        <div className="absolute left-[-5px] top-1.5 w-2 h-2 rounded-full bg-accent-secondary shadow-[0_0_10px_var(--flame)]" />
+                        <h4 className="text-white font-bold text-body mb-0.5">{exp.role}</h4>
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between text-micro font-mono text-white/70">
+                            <span className="font-semibold text-accent-secondary/80">{exp.company}</span>
                             <span>{exp.period}</span>
                         </div>
                     </div>

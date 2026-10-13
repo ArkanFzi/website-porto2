@@ -53,7 +53,7 @@ const Contact: React.FC = () => {
   };
 
   return (
-    <section id="contact" className="relative w-full min-h-screen bg-[#0c1410] text-white flex flex-col items-center justify-center py-20 lg:py-32 overflow-hidden">
+    <section id="contact" className="relative w-full min-h-screen bg-surface text-white flex flex-col items-center justify-center py-20 lg:py-32 overflow-hidden">
 
       <Toast
         isVisible={toast.isVisible}
@@ -72,14 +72,14 @@ const Contact: React.FC = () => {
       />
 
       {/* Ambient Glows */}
-      <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-[#c49a56]/10 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-[#ff5500]/10 rounded-full blur-[100px] pointer-events-none" />
+      <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-accent-primary/10 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-accent-secondary/10 rounded-full blur-[100px] pointer-events-none" />
 
-      {/* Massive Edge-to-Edge Typography Background */}
+      {/* Decorative wall of type — not a heading, hidden from assistive tech. */}
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden opacity-5">
-        <h2 className="text-[25vw] font-black uppercase tracking-tighter leading-none whitespace-nowrap text-white" style={{ fontFamily: "var(--f-sans)" }}>
+        <div aria-hidden="true" className="text-display font-black uppercase tracking-tighter leading-none whitespace-nowrap text-white" style={{ fontFamily: "var(--f-sans)" }}>
           GET IN TOUCH
-        </h2>
+        </div>
       </div>
 
       <div className="relative z-20 w-full max-w-[1200px] mx-auto px-6 md:px-12 flex flex-col text-center lg:text-left pt-10">
@@ -91,10 +91,10 @@ const Contact: React.FC = () => {
           viewport={{ once: true }}
           className="flex items-center gap-4 mb-16 lg:mb-24 justify-center lg:justify-start"
         >
-          <div className="h-[1px] bg-[#c49a56] w-12" />
-          <span className="text-[10px] md:text-[12px] uppercase tracking-[0.4em] font-bold text-[#c49a56]" style={{ fontFamily: "var(--f-sans)" }}>
+          <div className="h-[1px] bg-accent-primary w-12" />
+          <h2 className="text-micro md:text-label uppercase tracking-[0.4em] font-bold text-accent-primary" style={{ fontFamily: "var(--f-sans)" }}>
             Let&apos;s Collaborate
-          </span>
+          </h2>
         </motion.div>
 
         {/* The Conversational "Mad Libs" Form */}
@@ -104,10 +104,10 @@ const Contact: React.FC = () => {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.8, ease: "easeOut" }}
-            className="text-[clamp(32px,5vw,72px)] leading-[1.4] md:leading-[1.5]"
+            className="text-statement leading-[1.4] md:leading-[1.5]"
             style={{ fontFamily: "var(--f-serif)" }}
           >
-            <span className="text-white/70 italic mr-2 md:mr-4">Hello Arkan! My name is </span>
+            <span className="text-white/70 italic mr-2 md:mr-4">Hello! My name is </span>
 
             <div className="inline-block relative">
               <input
@@ -117,7 +117,7 @@ const Contact: React.FC = () => {
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 placeholder="your name"
-                className="inline-input focus:outline-none bg-transparent text-white border-b-2 border-white/20 focus:border-[#ff5500] transition-colors pb-1 md:pb-2 text-center w-[clamp(150px,25vw,350px)] placeholder-white/20 not-italic"
+                className="inline-input focus:outline-none bg-transparent text-white border-b-2 border-white/20 focus:border-accent-secondary transition-colors pb-1 md:pb-2 text-center w-[clamp(150px,25vw,350px)] placeholder-white/20 not-italic"
                 style={{ fontFamily: "var(--f-sans)" }}
               />
             </div>
@@ -132,7 +132,7 @@ const Contact: React.FC = () => {
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
                 placeholder="your email"
-                className="inline-input focus:outline-none bg-transparent text-white border-b-2 border-white/20 focus:border-[#ff5500] transition-colors pb-1 md:pb-2 text-center w-[clamp(200px,30vw,450px)] placeholder-white/20 not-italic"
+                className="inline-input focus:outline-none bg-transparent text-white border-b-2 border-white/20 focus:border-accent-secondary transition-colors pb-1 md:pb-2 text-center w-[clamp(200px,30vw,450px)] placeholder-white/20 not-italic"
                 style={{ fontFamily: "var(--f-sans)" }}
               />
             </div>
@@ -147,7 +147,7 @@ const Contact: React.FC = () => {
                 value={form.message}
                 onChange={(e) => setForm({ ...form, message: e.target.value })}
                 placeholder="your visionary project idea..."
-                className="inline-input focus:outline-none bg-transparent text-white border-b-2 border-white/20 focus:border-[#ff5500] transition-colors pb-1 md:pb-2 text-left lg:text-center w-full lg:w-[clamp(400px,40vw,800px)] placeholder-white/20 not-italic"
+                className="inline-input focus:outline-none bg-transparent text-white border-b-2 border-white/20 focus:border-accent-secondary transition-colors pb-1 md:pb-2 text-left lg:text-center w-full lg:w-[clamp(400px,40vw,800px)] placeholder-white/20 not-italic"
                 style={{ fontFamily: "var(--f-sans)" }}
               />
             </div>
@@ -172,7 +172,7 @@ const Contact: React.FC = () => {
             >
               {/* Button text */}
               <span
-                className="relative z-10 text-[11px] md:text-[13px] uppercase tracking-[0.3em] font-bold text-white group-hover:text-black transition-colors duration-500"
+                className="relative z-10 text-micro md:text-body uppercase tracking-[0.3em] font-bold text-white group-hover:text-black transition-colors duration-500"
                 style={{ fontFamily: "var(--f-sans)" }}
               >
                 {isLoading ? (
@@ -186,7 +186,7 @@ const Contact: React.FC = () => {
               <div className="absolute inset-0 bg-white scale-0 group-hover:scale-100 rounded-full origin-center transition-transform duration-500 ease-[cubic-bezier(0.19,1,0.22,1)] -z-10" />
 
               {/* Outer gold ring on hover */}
-              <div className="absolute -inset-4 border border-[#c49a56] rounded-full scale-50 opacity-0 group-hover:scale-100 group-hover:opacity-30 transition-all duration-700 ease-out" />
+              <div className="absolute -inset-4 border border-accent-primary rounded-full scale-50 opacity-0 group-hover:scale-100 group-hover:opacity-30 transition-all duration-700 ease-out" />
             </button>
           </motion.div>
 

@@ -50,25 +50,21 @@ const Hero: React.FC = () => {
           transition={{ duration: 2, ease: [0.16, 1, 0.3, 1] }}
           className="flex flex-col items-center"
         >
-          {/* Top Title: ПОЗНАЙ СЕБЯ -> TEMUKAN DIRIMU */}
-          <h1 className="title-font text-[clamp(24px,4vw,42px)] tracking-tight text-white mb-4">
-            SOFTWARE ENGINEER
-          </h1>
-
-          {/* Subtitle */}
-
+          <p className="text-subtitle uppercase tracking-[0.35em] text-white/80 mb-4" style={{ fontFamily: "var(--f-sans)", fontWeight: 600 }}>
+            Software Engineer
+          </p>
         </motion.div>
 
-        {/* Giant Ghost Text: ИСТОКИ -> ARKAN */}
+        {/* Ghost name: the page's only H1, sized by the display token. */}
         <motion.div
           initial={{ opacity: 0, scale: 0.9, y: 50 }}
           animate={isReady ? { opacity: 1, scale: 1, y: 0 } : { opacity: 0, scale: 0.9, y: 50 }}
           transition={{ duration: 4, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
           className="relative w-full flex justify-center mt-[-2%]"
         >
-          <h2 className="hero-ghost-text text-[clamp(80px,25vw,350px)] leading-[0.8] select-none pointer-events-none">
+          <h1 className="hero-ghost-text text-display leading-[0.8] select-none pointer-events-none">
             ARKAN
-          </h2>
+          </h1>
         </motion.div>
 
       </div>

@@ -58,11 +58,11 @@ const About: React.FC = () => {
               initial="hidden"
               whileInView="visible"
               viewport={{ once: true, margin: "-100px" }}
-              className="title-font text-[clamp(40px,5vw,56px)] leading-[1.1] text-white"
+              className="title-font text-title leading-[1.1] text-white"
             >
               {[
-                { text: "KISAH DIMULAI", delay: 0.1 },
-                { text: "DI SINI", delay: 0.2 }
+                { text: "THE STORY", delay: 0.1 },
+                { text: "SO FAR", delay: 0.2 }
               ].map((line, i) => (
                 <span key={i} className="block overflow-hidden">
                   <motion.span
@@ -107,19 +107,17 @@ const About: React.FC = () => {
               viewport={{ once: true, margin: "-100px" }}
               transition={{ duration: 0.8, ease: "easeOut", delay: 0.3 }}
             >
-              <h3 className="font-semibold text-white tracking-[0.1em] text-[13px] uppercase mb-6" style={{ fontFamily: "var(--f-sans)" }}>
-                Rekayasa Perangkat Lunak & Antarmuka
+              <h3 className="font-semibold text-white tracking-[0.1em] text-body uppercase mb-6" style={{ fontFamily: "var(--f-sans)" }}>
+                Software Engineering, End to Interface
               </h3>
 
-              <p className="text-[12px] leading-[1.8] text-white/60 mb-6 text-justify" style={{ fontFamily: "var(--f-sans)", fontWeight: 500 }}>
-                Berawal dari ketertarikan pada bagaimana sebuah sistem digital beroperasi, perjalanan ini berubah menjadi
-                kebiasaan membangun: dari analisis kebutuhan, menyusun backend, sampai membuat antarmuka yang memakai data
-                itu.<br /><br />
-                Mulai sebagai siswa Rekayasa Perangkat Lunak di SMK Negeri 6 Malang pada 2024, lalu magang sebagai Full
-                Stack Engineer di Sekawan Media sejak Mei 2026 — memelihara dan mengembangkan dua aplikasi berskala
-                enterprise yang sudah dipakai pengguna nyata di atas arsitektur microservices. Setiap baris kode adalah
-                fondasi; setiap antarmuka adalah kanvas. Yang dikejar bukan sekadar berfungsi, tapi rapi, cepat, dan
-                enak dipakai.
+              <p className="text-body leading-[1.8] text-white/60 mb-6 text-justify" style={{ fontFamily: "var(--f-sans)", fontWeight: 500 }}>
+                It started with curiosity about how a digital system actually runs, and turned into a habit of building one:
+                reading the requirements, putting the backend together, then shaping an interface that uses that data.<br /><br />
+                Software Engineering student at SMK Negeri 6 Malang since 2024, then apprentice Full Stack Engineer at Sekawan
+                Media since May 2026 — maintaining and extending two enterprise-scale applications built on a microservices
+                architecture that real users already depend on. Every line of code is a foundation; every interface is a
+                canvas. The goal is not just something that works, but something tidy, fast and pleasant to use.
               </p>
 
               {/* Animated Tech Stack Stats (Statistik Garis) */}
@@ -131,7 +129,7 @@ const About: React.FC = () => {
                   { label: "System Architecture", percent: 80 },
                 ].map((stat, i) => (
                   <div key={i} className="flex flex-col gap-3">
-                    <div className="flex justify-between text-[9px] tracking-[0.15em] text-[#c49a56] uppercase font-semibold" style={{ fontFamily: "var(--f-sans)" }}>
+                    <div className="flex justify-between text-tag tracking-[0.15em] text-accent-primary uppercase font-semibold" style={{ fontFamily: "var(--f-sans)" }}>
                       <span>{stat.label}</span>
                       <span>{stat.percent}%</span>
                     </div>
@@ -141,7 +139,7 @@ const About: React.FC = () => {
                         whileInView={{ scaleX: 1 }}
                         viewport={{ once: true, margin: "-50px" }}
                         transition={{ duration: 1.5, delay: 0.4 + (i * 0.15), ease: [0.16, 1, 0.3, 1] }}
-                        className="absolute inset-y-0 left-0 bg-[#ff5500] origin-left"
+                        className="absolute inset-y-0 left-0 bg-accent-secondary origin-left"
                         style={{ width: `${stat.percent}%` }}
                       />
                     </div>
@@ -149,12 +147,12 @@ const About: React.FC = () => {
                 ))}
               </div>
 
-              <a href="#contact" className="inline-flex items-center gap-2 text-[12px] tracking-[0.1em] text-[#c49a56] font-medium hover:text-[#ff5500] transition-colors uppercase">
+              <a href="#contact" className="inline-flex items-center gap-2 text-label tracking-[0.1em] text-accent-primary font-medium hover:text-accent-secondary transition-colors uppercase">
                 <span className="relative overflow-hidden group/link flex items-center gap-2">
                   <span className="transform transition-transform duration-300 group-hover/link:translate-x-1">+</span>
                   <span className="relative">
-                    HUBUNGI SAYA
-                    <span className="absolute -bottom-1 left-0 w-0 h-[1px] bg-[#ff5500] transition-all duration-300 group-hover/link:w-full"></span>
+                    GET IN TOUCH
+                    <span className="absolute -bottom-1 left-0 w-0 h-[1px] bg-accent-secondary transition-all duration-300 group-hover/link:w-full"></span>
                   </span>
                 </span>
               </a>
@@ -185,7 +183,7 @@ const About: React.FC = () => {
             whileInView={{ opacity: 1 }}
             viewport={{ once: true }}
             transition={{ duration: 2, delay: 1 }}
-            className="side-marker text-white/30 text-[8px] tracking-[0.4em]"
+            className="side-marker text-white/30 text-tag tracking-[0.4em]"
           >
             M. ARKAN FAUZI • FULL-STACK DEVELOPER
           </motion.span>
@@ -254,19 +252,19 @@ function MagneticMetricBox({ value, label, sub, index }: { value: string, label:
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
         style={{ x: springX, y: springY }}
-        className="w-full aspect-square bg-[#0c1410] relative group cursor-pointer border border-white/5 transition-all duration-300 hover:scale-105 hover:z-10 hover:border-[#c49a56]/30 flex flex-col items-center justify-center text-center p-1.5 isolate"
+        className="w-full aspect-square bg-surface relative group cursor-pointer border border-white/5 transition-all duration-300 hover:scale-105 hover:z-10 hover:border-accent-primary/30 flex flex-col items-center justify-center text-center p-1.5 isolate"
       >
         {/* Subtle glass reflection overlay */}
-        <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-[#c49a56]/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 -z-10" />
+        <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-accent-primary/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 -z-10" />
 
         <h4 className="text-white text-xl lg:text-2xl font-light mb-1 lg:mb-2" style={{ fontFamily: "var(--f-sans)", letterSpacing: "-0.05em" }}>
           {value}
         </h4>
         <div className="flex flex-col gap-0.5">
-          <span className="text-[6px] lg:text-[7px] text-[#c49a56] tracking-[0.2em] uppercase font-bold leading-tight">
+          <span className="text-tag lg:text-micro text-accent-primary tracking-[0.2em] uppercase font-bold leading-tight">
             {label}
           </span>
-          <span className="text-[5px] lg:text-[6px] text-[#ff5500] tracking-[0.15em] uppercase opacity-70">
+          <span className="text-tag text-accent-secondary tracking-[0.15em] uppercase opacity-70">
             {sub}
           </span>
         </div>
