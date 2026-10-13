@@ -20,7 +20,7 @@ const Hero: React.FC = () => {
   }, []);
 
   return (
-    <section id="hero" className="relative w-full h-[100vh] flex flex-col justify-center items-center overflow-hidden">
+    <section id="hero" className="relative w-full min-h-[100svh] flex flex-col justify-center items-center overflow-hidden">
       {/* ── Background Image Layer ── */}
       <div className="absolute inset-0 z-0 overflow-hidden">
         <img

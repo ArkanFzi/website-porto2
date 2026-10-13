@@ -22,7 +22,7 @@ export default function SuperCTA() {
 
             <div className="flex flex-col sm:flex-row gap-6">
                 <Link 
-                    href="/contact"
+                    href="/#contact"
                     className="group relative inline-flex items-center justify-center px-10 py-5 font-bold uppercase tracking-widest text-black bg-white overflow-hidden rounded-full transition-transform hover:scale-105"
                 >
                     <span className="absolute w-0 h-0 transition-all duration-500 ease-out bg-accent-primary rounded-full group-hover:w-full group-hover:h-56"></span>

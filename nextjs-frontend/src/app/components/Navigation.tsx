@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { usePathname } from "next/navigation";
 import { Github, Grid2X2, X, Instagram, Linkedin, MessageCircle } from "lucide-react";
 
 const socialLinks = [
@@ -18,16 +19,51 @@ const links = [
   { label: "DOSSIER", href: "/dossier" },
 ];
 
+const SECTION_LINKS: Record<string, string> = {
+  projects: "/#projects",
+  contact: "/#contact",
+};
+
+// Halaman ini memakai anchor, jadi tautan aktif mengikuti section yang
+// sudah melewati garis pemicu, bukan mengikuti klik terakhir.
+function resolveActive(pathname: string, sectionInView: string) {
+  if (pathname === "/") return SECTION_LINKS[sectionInView] ?? "/";
+  if (pathname.startsWith("/dossier")) return "/dossier";
+  return pathname;
+}
+
 const Navigation = () => {
+  const pathname = usePathname();
   const [scrolled, setScrolled] = useState(false);
-  const [active, setActive] = useState("hero");
+  const [sectionInView, setSectionInView] = useState("");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const active = resolveActive(pathname, sectionInView);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 40);
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  useEffect(() => {
+    if (pathname !== "/") return;
+    const triggerLine = window.innerHeight / 3;
+    const onScroll = () => {
+      let current = "";
+      for (const id of ["contact", "projects", "about"]) {
+        const el = document.getElementById(id);
+        if (el && el.getBoundingClientRect().top <= triggerLine) {
+          current = id;
+          break;
+        }
+      }
+      setSectionInView(current);
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [pathname]);
 
   // Prevent scrolling when mobile menu is open
   useEffect(() => {
@@ -46,7 +82,7 @@ const Navigation = () => {
       >
         <div className="max-w-[1400px] mx-auto px-6 md:px-8 flex items-center justify-between">
           {/* Brand */}
-          <a href="#hero" className="flex items-center gap-3 group z-50 relative">
+          <a href={pathname === "/" ? "#hero" : "/"} className="flex items-center gap-3 group z-50 relative">
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M12 3L21 20H3L12 3Z" className="group-hover:fill-white/20 transition-all" />
               <circle cx="12" cy="14" r="2" fill="currentColor" />
@@ -57,12 +93,11 @@ const Navigation = () => {
           {/* Center Links (Desktop) */}
           <nav className="hidden md:flex items-center gap-14">
             {links.map((l) => {
-              const isActive = active === l.href.substring(1);
+              const isActive = active === l.href;
               return (
                 <a
                   key={l.href}
                   href={l.href}
-                  onClick={() => setActive(l.href.substring(1))}
                   className={`text-xs tracking-[0.25em] font-medium uppercase transition-colors relative ${isActive ? "text-white" : "text-white/60 hover:text-white"
                     }`}
                 >
@@ -122,10 +157,7 @@ const Navigation = () => {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -20 }}
                   transition={{ delay: i * 0.1, duration: 0.4 }}
-                  onClick={() => {
-                    setActive(l.href.substring(1));
-                    setIsMobileMenuOpen(false);
-                  }}
+                  onClick={() => setIsMobileMenuOpen(false)}
                   className="text-2xl tracking-[0.2em] font-medium uppercase text-white/80 hover:text-white transition-colors"
                 >
                   {l.label}
