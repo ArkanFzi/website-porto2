@@ -2,26 +2,5 @@
   "_catatan": "Temuan yang diketahui. Harus SAMA PERSIS dengan hasil scan hari ini: bertambah membuat scan.yml gagal, berkurang juga gagal sampai daftar ini dikecilkan. Regenerasi sadar: node tools/ci/vuln-check.mjs --govuln=<file> --audit=<file> --emit-baseline",
   "diukur": "2026-10-13",
   "go": [],
-  "npm": [
-    "GHSA-2883-xcg3-v3hh",
-    "GHSA-52cp-r559-cp3m",
-    "GHSA-58qx-3vcg-4xpx",
-    "GHSA-5p4m-2wfm-xmqj",
-    "GHSA-68fv-2mgg-jv7q",
-    "GHSA-6v7q-wjvx-w8wg",
-    "GHSA-7pqw-9j4j-h8q3",
-    "GHSA-96hv-2xvq-fx4p",
-    "GHSA-c475-qrg2-pj4r",
-    "GHSA-chqc-8p9q-pq6q",
-    "GHSA-h3mg-xc3c-68pw",
-    "GHSA-h67p-54hq-rp68",
-    "GHSA-j6r3-76f7-8jcv",
-    "GHSA-jmr9-qjv8-65gv",
-    "GHSA-mwp4-54f8-5fhr",
-    "GHSA-px8p-9vwx-vf98",
-    "GHSA-rp42-5vxx-qpwr",
-    "GHSA-rpmf-866q-6p89",
-    "GHSA-rpw4-54j3-4h4q",
-    "GHSA-v2v4-37r5-5v8g"
-  ]
+  "npm": []
 }
