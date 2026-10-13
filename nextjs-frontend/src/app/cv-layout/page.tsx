@@ -59,7 +59,7 @@ export default function CVLayout() {
             </div>
             <div className="flex items-center gap-3">
               <span className="w-5 h-5 flex items-center justify-center bg-black rounded-full text-white text-[10px]">L</span>
-              <span className="break-all">linkedin.com/in/muhamad-arkan-fauzi</span>
+              <span className="break-words">linkedin.com/in/muhamad-arkan-fauzi-5a6799380</span>
             </div>
             <div className="flex items-center gap-3">
               <span className="w-5 h-5 flex items-center justify-center bg-black rounded-full text-white text-[10px]">A</span>
@@ -111,13 +111,15 @@ export default function CVLayout() {
         {/* Header */}
         <header>
           <h1 className="text-6xl font-serif tracking-tight mb-2">M. Arkan Fauzi</h1>
-          <p className="text-2xl font-serif text-gray-700 italic">Full Stack Developer & Software Architect</p>
+          <p className="text-2xl font-serif text-gray-700 italic">Full-Stack Developer & System Analyst</p>
           <div className="w-20 h-0.5 bg-black/10 mt-8 mb-8" />
+          {/* Nama peran dan periode di bawah diambil apa adanya dari LinkedIn; jangan dinaikkan lagi. */}
           <p className="text-sm leading-relaxed text-gray-700 text-justify">
-            A dedicated and visionary developer with a strong focus on building highly scalable software architectures. 
-            Experienced in modern web technologies including Next.js, Go, and .NET, with a passion for creating immersive 
-            digital experiences. Currently honing my expertise in systems analysis and full-stack integration 
-            to solve complex institutional and technical challenges.
+            Software Engineering student at SMK Negeri 6 Malang who works across the whole path — from analysing
+            system requirements to shipping the code that satisfies them. Since May 2026 I have been an apprentice
+            Full Stack Engineer at Sekawan Media, maintaining and continuously developing two enterprise-scale
+            applications built on a microservices architecture, alongside project work published on GitHub
+            (Next.js, Go, PHP / Laravel, C#).
           </p>
         </header>
 
@@ -127,38 +129,33 @@ export default function CVLayout() {
           <div className="flex flex-col gap-12">
             <div>
               <div className="flex justify-between items-baseline mb-2">
-                <h3 className="font-bold uppercase text-[15px]">Full Stack Developer</h3>
-                <span className="text-xs text-gray-400 italic">2025 - Present</span>
+                <h3 className="font-bold uppercase text-[15px]">Full Stack Engineer — Apprenticeship</h3>
+                <span className="text-xs text-gray-400 italic">May 2026 - Present</span>
               </div>
-              <p className="text-sm font-medium text-gray-600 mb-4 tracking-wide">Professional Software Engineering</p>
+              <p className="text-sm font-medium text-gray-600 mb-4 tracking-wide">Sekawan Media · Malang · Hybrid</p>
               <p className="text-[13px] text-gray-700 text-justify">
-                Versatile engineer proficient in both highly collaborative and independent development environments. Leading the end-to-end delivery of robust, scalable web applications using modern tech stacks (.NET, Go, Next.js). Focused on building high-performance system architectures while maintaining a seamless user experience through efficient teamwork and innovative technical solutions.
+                Entrusted with the maintenance and continuous development of two enterprise-scale applications built on a
+                microservices architecture, including an HRIS and recruitment system. The work runs from requirement
+                analysis through backend services to the frontend that consumes them, on code that already serves real users.
               </p>
             </div>
             <div>
               <div className="flex justify-between items-baseline mb-2">
-                <h3 className="font-bold uppercase text-[15px]">System Analyst</h3>
-                <span className="text-xs text-gray-400 italic">2025</span>
+                <h3 className="font-bold uppercase text-[15px]">Software Engineering Student</h3>
+                <span className="text-xs text-gray-400 italic">Jun 2024 - Present</span>
               </div>
-              <p className="text-sm font-medium text-gray-600 mb-4 tracking-wide">Independent Technical Analysis</p>
+              <p className="text-sm font-medium text-gray-600 mb-4 tracking-wide">SMK Negeri 6 Malang</p>
               <p className="text-[13px] text-gray-700 text-justify">
-                Conducted comprehensive technical feasibility studies and system architectural designs. Focused on optimizing database performance and streamlining cross-platform data synchronization for modern web applications.
-              </p>
-            </div>
-            <div>
-              <div className="flex justify-between items-baseline mb-2">
-                <h3 className="font-bold uppercase text-[15px]">Administrator</h3>
-                <span className="text-xs text-gray-400 italic">2025</span>
-              </div>
-              <p className="text-sm font-medium text-gray-600 mb-4 tracking-wide">Infrastructure & Database Management</p>
-              <p className="text-[13px] text-gray-700 text-justify">
-                Managed critical server environments and database clusters. Ensured high availability and data integrity across distributed systems, implementing rigorous security protocols and monitoring dashboards.
+                Building a software portfolio through independent projects and team collaborations while studying
+                Software Engineering (RPL). The school programme runs alongside an industrial class with Sekawan Media —
+                advanced frontend modules and the Teaching Factory (TEFA) programme — producing Laravel, Next.js and C#
+                work that is published publicly on GitHub.
               </p>
             </div>
             <div>
               <div className="flex justify-between items-baseline mb-2 text-[#ff5500]">
-                <h3 className="font-bold uppercase text-[15px]">JHIC 2025 Participant</h3>
-                <span className="text-xs italic opacity-70">2025</span>
+                <h3 className="font-bold uppercase text-[15px]">Semi Finalist — JHIC 2025</h3>
+                <span className="text-xs italic opacity-70">Nov 2025</span>
               </div>
               <p className="text-sm font-medium text-gray-600 mb-4 tracking-wide">Jagoan Hosting Infra Competition</p>
               <p className="text-[13px] text-gray-700 text-justify">

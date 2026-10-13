@@ -8,6 +8,7 @@ interface GitHubMetrics {
   reposCount: string;
   starsCount: string;
   followersCount: string;
+  langShare: string;
 }
 
 const About: React.FC = () => {
@@ -15,6 +16,7 @@ const About: React.FC = () => {
     reposCount: "—",
     starsCount: "—",
     followersCount: "—",
+    langShare: "—",
   });
 
   useEffect(() => {
@@ -28,6 +30,7 @@ const About: React.FC = () => {
           reposCount: data.reposCount || "—",
           starsCount: data.starsCount || "—",
           followersCount: data.followersCount || "—",
+          langShare: data.langShare || "—",
         });
       } catch (err) {
         console.error("GitHub metrics fetch failed", err);
@@ -38,7 +41,7 @@ const About: React.FC = () => {
     loadMetrics();
   }, []);
 
-  const { reposCount, starsCount, followersCount } = metrics;
+  const { reposCount, starsCount, followersCount, langShare } = metrics;
   return (
     <section id="about" className="relative w-full min-h-screen bg-[var(--bg)] pt-20 pb-20 lg:pb-32 overflow-hidden">
 
@@ -109,8 +112,14 @@ const About: React.FC = () => {
               </h3>
 
               <p className="text-[12px] leading-[1.8] text-white/60 mb-6 text-justify" style={{ fontFamily: "var(--f-sans)", fontWeight: 500 }}>
-                Berawal dari ketertarikan pada bagaimana sebuah sistem digital beroperasi, perjalanan ini berubah menjadi dedikasi untuk membangun arsitektur perangkat lunak yang tidak hanya berfungsi dengan baik, namun juga menyajikan pengalaman visual yang estetis.<br /><br />
-                Setiap baris kode adalah fondasi; setiap antarmuka adalah kanvas. Pengalaman lebih dari 2 tahun dalam merancang solusi Full-stack telah membentuk perspektif unik saya—mengutamakan performa mesin sekaligus mempertahankan empati mendalam terhadap pengguna akhir. Fokus utama selalu bermuara pada kesempurnaan detail, clean code, dan fungsionalitas murni yang dibalut desain sinematik yang kuat.
+                Berawal dari ketertarikan pada bagaimana sebuah sistem digital beroperasi, perjalanan ini berubah menjadi
+                kebiasaan membangun: dari analisis kebutuhan, menyusun backend, sampai membuat antarmuka yang memakai data
+                itu.<br /><br />
+                Mulai sebagai siswa Rekayasa Perangkat Lunak di SMK Negeri 6 Malang pada 2024, lalu magang sebagai Full
+                Stack Engineer di Sekawan Media sejak Mei 2026 — memelihara dan mengembangkan dua aplikasi berskala
+                enterprise yang sudah dipakai pengguna nyata di atas arsitektur microservices. Setiap baris kode adalah
+                fondasi; setiap antarmuka adalah kanvas. Yang dikejar bukan sekadar berfungsi, tapi rapi, cepat, dan
+                enak dipakai.
               </p>
 
               {/* Animated Tech Stack Stats (Statistik Garis) */}
@@ -152,11 +161,10 @@ const About: React.FC = () => {
               {/* Technical Specs Metrics Grid */}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-12 w-full">
                 {[
-                  { value: reposCount, label: "REPOS", sub: "PUBLIC & PRIVATE" },
-                  { value: "90%", label: "TS/JS", sub: "PRIMARY LANG" },
+                  { value: reposCount, label: "REPOS", sub: "PUBLISHED" },
+                  { value: langShare, label: "TS/JS", sub: "OF LABELED REPOS" },
                   { value: followersCount, label: "FOLLOWERS", sub: "DEV NETWORK" },
                   { value: starsCount, label: "STARS", sub: "TOTAL APPROVALS" },
-                  { value: "5+", label: "DEPLOY", sub: "PRODUCTION" },
                   { value: "∞", label: "COFFEE", sub: "CONSUMED" },
                 ].map((metric, i) => (
                   <MagneticMetricBox key={i} {...metric} index={i} />
@@ -179,7 +187,7 @@ const About: React.FC = () => {
             transition={{ duration: 2, delay: 1 }}
             className="side-marker text-white/30 text-[8px] tracking-[0.4em]"
           >
-            M. ARKAN FAUZI • SOFTWARE ARCHITECT
+            M. ARKAN FAUZI • FULL-STACK DEVELOPER
           </motion.span>
         </div>
 

@@ -141,7 +141,7 @@ export default function DossierPage() {
                         </p>
                         <div className="flex items-center gap-4">
                             <span className="text-sm text-white/50">Siap membangun<br />sesuatu bersama?</span>
-                            <a href="mailto:arkanfzi@example.com" className="bg-[#ff5500] text-white px-8 py-3 rounded-full text-sm font-bold hover:bg-white hover:text-[#ff5500] transition-colors flex items-center gap-2">
+                            <a href="mailto:muhammadarkanfauzi9@gmail.com" className="bg-[#ff5500] text-white px-8 py-3 rounded-full text-sm font-bold hover:bg-white hover:text-[#ff5500] transition-colors flex items-center gap-2">
                                 Hubungi Saya <span className="text-xl font-normal leading-none mb-1">→</span>
                             </a>
                         </div>

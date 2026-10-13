@@ -15,11 +15,11 @@ const playfair = Playfair_Display({
 });
 
 export const metadata: Metadata = {
-  title: "M. Arkan Fauzi — Software Engineer Portfolio",
-  description: "Portfolio of M. Arkan Fauzi, a Software Engineer specializing in .NET, Next.js, and cloud-native architectures.",
-  keywords: ["Software Engineer", "Portfolio", ".NET", "Next.js", "Backend", "Arkan Fauzi"],
+  title: "M. Arkan Fauzi — Full-Stack Developer Portfolio",
+  description: "Portfolio of M. Arkan Fauzi, a Software Engineering student and apprentice Full Stack Engineer at Sekawan Media, building with Next.js, Go and Laravel.",
+  keywords: ["Full-Stack Developer", "Portfolio", "Next.js", "Go", "Laravel", "Arkan Fauzi"],
   openGraph: {
-    title: "M. Arkan Fauzi — Software Engineer",
+    title: "M. Arkan Fauzi — Full-Stack Developer",
     description: "Immersive 3D portfolio of a fullstack software engineer.",
     type: "website",
   },
