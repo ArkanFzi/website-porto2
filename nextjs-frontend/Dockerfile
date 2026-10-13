@@ -26,13 +26,33 @@ ENV NODE_ENV production
 ENV NEXT_TELEMETRY_DISABLED 1
 
 # Install Chromium & fonts for Puppeteer PDF generation
-RUN apk add --no-cache \
-    chromium \
-    nss \
-    freetype \
-    harfbuzz \
-    ca-certificates \
-    ttf-freefont
+#
+# Percobaan ulang ada karena satu kegagalan build yang nyata: `apk add` keluar dengan
+# galat `so:libzstd.so.1 (no such package)` padahal paket itu ada di repositori. Yang
+# rusak bukan paketnya tapi indeks cermin Alpine yang kebagian permintaan saat sedang
+# disinkronkan. `--no-cache` membuat tiap percobaan mengambil indeks dari awal, jadi
+# satu percobaan ulang biasanya sudah lewat.
+#
+# Batasnya tiga percobaan, bukan loop tak berhingga: kegagalan yang bertahan berarti
+# indeksnya memang buruk atau paketnya benar-benar hilang, dan build harus tetap merah
+# supaya itu terlihat, bukan disembunyikan.
+RUN set -eu; \
+    gagal=0; \
+    until apk add --no-cache \
+        chromium \
+        nss \
+        freetype \
+        harfbuzz \
+        ca-certificates \
+        ttf-freefont; do \
+      gagal=$((gagal + 1)); \
+      if [ "$gagal" -ge 3 ]; then \
+        echo "apk add gagal pada $gagal percobaan; hentikan, ini bukan kejadian indeks sesaat"; \
+        exit 1; \
+      fi; \
+      echo "apk add percobaan $((gagal + 1)) gagal — ambil indeks baru lalu coba lagi"; \
+      sleep $((gagal * 5)); \
+    done
 
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
