@@ -37,6 +37,11 @@ var (
 // Bentuk uuid yang dihasilkan gen_random_uuid(); id cacat ditolak sebelum dikirim ke DB.
 var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
+// httpsRe membatasi tautan bukti pada satu skema. Nilai kolom ini dirender sebagai
+// <a href> di halaman depan, jadi "javascript:" atau "data:" yang tersimpan lewat admin
+// akan ikut diklik — dan dieksekusi — oleh setiap pengunjung.
+var httpsRe = regexp.MustCompile(`^https://[^\s"<]+$`)
+
 // maxBodyBytes dibatasi sebelum handler sempat membaca: tanpa batas ini, satu POST publik
 // 20 MB sudah habis terserap ke memori (BE cuma 512Mi) sebelum cek panjang di handler jalan.
 const maxBodyBytes = 1 << 20
@@ -134,6 +139,25 @@ func cekIsian(isian ...isianTeks) (string, bool) {
 		if utf8.RuneCountInString(it.Value) > it.Max {
 			return it.Label + " terlalu panjang (maks " + strconv.Itoa(it.Max) + " karakter)", false
 		}
+	}
+	return "", true
+}
+
+// cekTautanBukti menjaga pasangan label+alamat pada satu babak. Keduanya opsional bersama:
+// babak 2024 sengaja tanpa bukti karena GitHub-nya memang nol komit publik tahun itu.
+func cekTautanBukti(label, href string) (string, bool) {
+	l, h := strings.TrimSpace(label), strings.TrimSpace(href)
+	if l == "" && h == "" {
+		return "", true
+	}
+	if l == "" || h == "" {
+		return "Tautan bukti butuh label dan alamat sekaligus", false
+	}
+	if utf8.RuneCountInString(l) > 200 {
+		return "Label tautan bukti terlalu panjang (maks 200 karakter)", false
+	}
+	if !httpsRe.MatchString(h) {
+		return "Alamat tautan bukti harus diawali https://", false
 	}
 	return "", true
 }
@@ -255,6 +279,22 @@ type Experience struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
+// Journey satu baris = satu babak pada timeline "perjalanan" di halaman depan.
+// SortOrder dipakai karena urutan babak ini kronologis dan harus bisa ditentukan
+// ulang oleh admin; created_at tidak bisa jadi pegangan (memasukkan baris 2024
+// setelah baris 2026 menaruhnya di tempat yang salah).
+type Journey struct {
+	ID        string    `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	Year      string    `gorm:"not null" json:"year"`
+	Title     string    `gorm:"not null" json:"title"`
+	Body      string    `gorm:"not null" json:"body"`
+	LinkLabel string    `json:"linkLabel"`
+	LinkHref  string    `json:"linkHref"`
+	SortOrder int       `gorm:"not null;default:0" json:"sortOrder"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
 type ContactMessage struct {
 	ID        string    `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	Name      string    `gorm:"size:200;not null" json:"name"`
@@ -318,10 +358,10 @@ func tungguSelesai(wg *sync.WaitGroup, batas time.Duration) bool {
 }
 
 // managedTables adalah tabel yang harus sudah ada sebelum satu request pun dilayani.
-var managedTables = []string{"certificates", "experiences", "contact_messages"}
+var managedTables = []string{"certificates", "experiences", "contact_messages", "journeys"}
 
 func migrateSchema() {
-	if err := DB.AutoMigrate(&Certificate{}, &Experience{}, &ContactMessage{}); err != nil {
+	if err := DB.AutoMigrate(&Certificate{}, &Experience{}, &ContactMessage{}, &Journey{}); err != nil {
 		log.Fatalf("migrate: gagal menyiapkan skema: %v", err)
 	}
 	log.Println("migrate: skema siap")
@@ -448,6 +488,18 @@ func main() {
 		c.JSON(http.StatusOK, exps)
 	})
 
+	// Slice diinisialisasi supaya jawaban saat kosong adalah [] dan bukan null: halaman depan
+	// memetakan langsung ke nilai ini dan tidak boleh punya dua bentuk "kosong" yang berbeda.
+	api.GET("/journey", func(c *gin.Context) {
+		rows := []Journey{}
+		if err := DB.Order("sort_order asc, created_at asc").Find(&rows).Error; err != nil {
+			log.Printf("GET /api/journey: gagal membaca: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal membaca perjalanan"})
+			return
+		}
+		c.JSON(http.StatusOK, rows)
+	})
+
 	api.GET("/health", func(c *gin.Context) {
 		sqlDB, err := DB.DB()
 		if err != nil {
@@ -563,6 +615,66 @@ func main() {
 		}
 		if res.RowsAffected == 0 {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Pengalaman tidak ditemukan"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"deleted": res.RowsAffected})
+	})
+
+	protected.POST("/journey", func(c *gin.Context) {
+		var in struct {
+			Year      string `json:"year"`
+			Title     string `json:"title"`
+			Body      string `json:"body"`
+			LinkLabel string `json:"linkLabel"`
+			LinkHref  string `json:"linkHref"`
+			SortOrder int    `json:"sortOrder"`
+		}
+		if err := c.ShouldBindJSON(&in); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Format data salah"})
+			return
+		}
+		row := Journey{
+			Year:      strings.TrimSpace(in.Year),
+			Title:     strings.TrimSpace(in.Title),
+			Body:      strings.TrimSpace(in.Body),
+			LinkLabel: strings.TrimSpace(in.LinkLabel),
+			LinkHref:  strings.TrimSpace(in.LinkHref),
+			SortOrder: in.SortOrder,
+		}
+		if pesan, ok := cekIsian(
+			isianTeks{Label: "Tahun", Value: row.Year, Max: 40},
+			isianTeks{Label: "Judul", Value: row.Title, Max: 200},
+			isianTeks{Label: "Isi", Value: row.Body, Max: 600},
+		); !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": pesan})
+			return
+		}
+		if pesan, ok := cekTautanBukti(row.LinkLabel, row.LinkHref); !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": pesan})
+			return
+		}
+		if err := DB.Create(&row).Error; err != nil {
+			log.Printf("POST /api/journey: gagal menyimpan: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menyimpan perjalanan"})
+			return
+		}
+		c.JSON(http.StatusCreated, row)
+	})
+
+	protected.DELETE("/journey/:id", func(c *gin.Context) {
+		id := c.Param("id")
+		if !uuidRe.MatchString(id) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Format id tidak valid"})
+			return
+		}
+		res := DB.Delete(&Journey{}, "id = ?", id)
+		if res.Error != nil {
+			log.Printf("DELETE /api/journey/%s: gagal menghapus: %v", id, res.Error)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menghapus perjalanan"})
+			return
+		}
+		if res.RowsAffected == 0 {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Perjalanan tidak ditemukan"})
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"deleted": res.RowsAffected})

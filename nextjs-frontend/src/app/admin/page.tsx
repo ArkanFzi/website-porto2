@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Award, Briefcase, Plus, Trash2, ShieldCheck, LogOut, Lock } from "lucide-react";
+import { Award, Briefcase, Milestone, Plus, Trash2, ShieldCheck, LogOut, Lock } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { adaSesi, authFetch, keluarSesi, tandaiSesi } from "@/lib/auth";
 import { readApiError } from "@/lib/apiError";
@@ -21,9 +21,35 @@ interface Experience {
     period: string;
 }
 
+interface Journey {
+    id: string;
+    year: string;
+    title: string;
+    body: string;
+    linkLabel: string;
+    linkHref: string;
+    sortOrder: number;
+}
+
+type Tab = "certificates" | "experiences" | "journey";
+
+const JUDUL_TAB: Record<Tab, string> = {
+    certificates: "Manage Certificates",
+    experiences: "Manage Experience",
+    journey: "Manage Journey",
+};
+
+const KOLOM_PERTAMA: Record<Tab, string> = {
+    certificates: "Title / Issuer",
+    experiences: "Role / Company",
+    journey: "Year / Title",
+};
+
+const formJourneyKosong = { year: "", title: "", body: "", linkLabel: "", linkHref: "", sortOrder: "10" };
+
 export default function AdminDashboard() {
     const router = useRouter();
-    const [activeTab, setActiveTab] = useState<"certificates" | "experiences">("certificates");
+    const [activeTab, setActiveTab] = useState<Tab>("certificates");
 
     // Auth States
     const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -34,35 +60,41 @@ export default function AdminDashboard() {
     // Data States
     const [certs, setCerts] = useState<Certificate[]>([]);
     const [exps, setExps] = useState<Experience[]>([]);
+    const [journeys, setJourneys] = useState<Journey[]>([]);
     const [loading, setLoading] = useState(true);
     const [flash, setFlash] = useState("");
 
     // Form States
     const [certForm, setCertForm] = useState({ title: "", issuer: "", date: "" });
     const [expForm, setExpForm] = useState({ role: "", company: "", period: "" });
+    const [journeyForm, setJourneyForm] = useState(formJourneyKosong);
 
     const fetchData = async () => {
         setLoading(true);
         setFlash("");
         try {
-            const [cRes, eRes] = await Promise.all([
+            const [cRes, eRes, jRes] = await Promise.all([
                 fetch(`/api/certificates`),
-                fetch(`/api/experience`)
+                fetch(`/api/experience`),
+                fetch(`/api/journey`)
             ]);
-            const [cPayload, ePayload] = await Promise.all([
+            const [cPayload, ePayload, jPayload] = await Promise.all([
                 cRes.json().catch(() => null),
-                eRes.json().catch(() => null)
+                eRes.json().catch(() => null),
+                jRes.json().catch(() => null)
             ]);
             // Tanpa cek ini, body {"error":"Gagal membaca sertifikat"} dari 500 lolos sebagai
             // "daftar" dan tabel jatuh ke certs.map is not a function.
-            if (!cRes.ok || !eRes.ok || !Array.isArray(cPayload) || !Array.isArray(ePayload)) {
+            if (!cRes.ok || !eRes.ok || !jRes.ok || !Array.isArray(cPayload) || !Array.isArray(ePayload) || !Array.isArray(jPayload)) {
                 const dariC = typeof cPayload?.error === "string" ? cPayload.error : "";
                 const dariE = typeof ePayload?.error === "string" ? ePayload.error : "";
-                setFlash(dariC || dariE || "Daftar tidak berhasil dimuat.");
+                const dariJ = typeof jPayload?.error === "string" ? jPayload.error : "";
+                setFlash(dariC || dariE || dariJ || "Daftar tidak berhasil dimuat.");
                 return;
             }
             setCerts(cPayload);
             setExps(ePayload);
+            setJourneys(jPayload);
         } catch (e) {
             console.error(e);
             setFlash("Server tidak terjangkau, daftar belum dimuat.");
@@ -184,6 +216,44 @@ export default function AdminDashboard() {
         }
     };
 
+    const handleAddJourney = async (e: React.FormEvent) => {
+        e.preventDefault();
+        try {
+            const res = await authFetch(`/api/journey`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                // Input HTML memberi string; kolomnya integer, jadi dikonversi di sini.
+                body: JSON.stringify({ ...journeyForm, sortOrder: Number(journeyForm.sortOrder) || 0 })
+            });
+            if (!res.ok) {
+                setFlash((await readApiError(res)) || "Perjalanan tidak tersimpan.");
+                return;
+            }
+            setJourneyForm(formJourneyKosong);
+            setFlash("");
+            fetchData();
+        } catch (e) {
+            console.error(e);
+            setFlash("Perjalanan tidak tersimpan: server tidak terjangkau.");
+        }
+    };
+
+    const handleDeleteJourney = async (id: string) => {
+        if (!confirm("Are you sure you want to delete this journey entry?")) return;
+        try {
+            const res = await authFetch(`/api/journey/${id}`, { method: "DELETE" });
+            if (!res.ok) {
+                setFlash((await readApiError(res)) || "Perjalanan tidak terhapus.");
+                return;
+            }
+            setFlash("");
+            fetchData();
+        } catch (e) {
+            console.error(e);
+            setFlash("Perjalanan tidak terhapus: server tidak terjangkau.");
+        }
+    };
+
     if (authLoading) {
         return (
             <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
@@ -276,6 +346,12 @@ export default function AdminDashboard() {
                     >
                         <Briefcase className="w-4 h-4" /> Experience
                     </button>
+                    <button
+                        onClick={() => setActiveTab("journey")}
+                        className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium text-sm ${activeTab === "journey" ? "bg-white/10 text-white" : "text-white/50 hover:bg-white/5 hover:text-white"}`}
+                    >
+                        <Milestone className="w-4 h-4" /> Journey
+                    </button>
                 </nav>
 
                 <div className="p-4 border-t border-white/5 gap-2 flex flex-col">
@@ -292,7 +368,7 @@ export default function AdminDashboard() {
             <main className="flex-1 overflow-y-auto p-6 md:p-12">
                 <header className="mb-12">
                     <h2 className="text-3xl font-bold mb-2">
-                        {activeTab === "certificates" ? "Manage Certificates" : "Manage Experience"}
+                        {JUDUL_TAB[activeTab]}
                     </h2>
                     <p className="text-white/50">Add, view, or remove entries from the database.</p>
                 </header>
@@ -347,6 +423,36 @@ export default function AdminDashboard() {
                                     <button type="submit" className="mt-2 bg-accent-secondary text-white font-bold py-3 rounded-lg hover:bg-white hover:text-black transition-colors">Save Experience</button>
                                 </form>
                             )}
+
+                            {activeTab === "journey" && (
+                                <form onSubmit={handleAddJourney} className="flex flex-col gap-4">
+                                    <div>
+                                        <label className="text-xs font-medium text-white/50 mb-1 block">Year / Anchor</label>
+                                        <input required maxLength={40} value={journeyForm.year} onChange={e => setJourneyForm({ ...journeyForm, year: e.target.value })} type="text" className="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-white transition-colors" placeholder="e.g. 2024 or Nov 2025" />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-medium text-white/50 mb-1 block">Title</label>
+                                        <input required maxLength={200} value={journeyForm.title} onChange={e => setJourneyForm({ ...journeyForm, title: e.target.value })} type="text" className="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-white transition-colors" placeholder="Role and institution, one line" />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-medium text-white/50 mb-1 block">Body</label>
+                                        <textarea required maxLength={600} rows={3} value={journeyForm.body} onChange={e => setJourneyForm({ ...journeyForm, body: e.target.value })} className="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-white transition-colors resize-none" placeholder="One sentence about what changed" />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-medium text-white/50 mb-1 block">Evidence label (optional)</label>
+                                        <input maxLength={200} value={journeyForm.linkLabel} onChange={e => setJourneyForm({ ...journeyForm, linkLabel: e.target.value })} type="text" className="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-white transition-colors" placeholder="e.g. website-porto2" />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-medium text-white/50 mb-1 block">Evidence URL (optional, https only)</label>
+                                        <input value={journeyForm.linkHref} onChange={e => setJourneyForm({ ...journeyForm, linkHref: e.target.value })} type="text" className="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-white transition-colors" placeholder="https://github.com/ArkanFzi/..." />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-medium text-white/50 mb-1 block">Order</label>
+                                        <input value={journeyForm.sortOrder} onChange={e => setJourneyForm({ ...journeyForm, sortOrder: e.target.value })} type="number" step="1" className="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-white transition-colors" />
+                                    </div>
+                                    <button type="submit" className="mt-2 bg-white text-black font-bold py-3 rounded-lg hover:bg-accent-primary transition-colors">Save Entry</button>
+                                </form>
+                            )}
                         </div>
                     </div>
 
@@ -361,8 +467,8 @@ export default function AdminDashboard() {
                                 <table className="w-full text-left text-sm">
                                     <thead className="bg-black/50 text-white/40 uppercase font-mono text-xs border-b border-white/5">
                                         <tr>
-                                            <th className="px-6 py-4 font-medium">{activeTab === "certificates" ? "Title / Issuer" : "Role / Company"}</th>
-                                            <th className="px-6 py-4 font-medium hidden md:table-cell">Date / Period</th>
+                                            <th className="px-6 py-4 font-medium">{KOLOM_PERTAMA[activeTab]}</th>
+                                            <th className="px-6 py-4 font-medium hidden md:table-cell">{activeTab === "journey" ? "Order / Evidence" : "Date / Period"}</th>
                                             <th className="px-6 py-4 font-medium text-right">Actions</th>
                                         </tr>
                                     </thead>
@@ -399,10 +505,33 @@ export default function AdminDashboard() {
                                                 </td>
                                             </tr>
                                         ))}
+                                        {activeTab === "journey" && journeys.map((j) => (
+                                            <tr key={j.id} className="hover:bg-white/5 transition-colors">
+                                                <td className="px-6 py-4">
+                                                    <div className="font-bold text-white/90">{j.year}</div>
+                                                    <div className="text-white/40 mt-1">{j.title}</div>
+                                                </td>
+                                                <td className="px-6 py-4 hidden md:table-cell text-white/60">
+                                                    <div className="font-mono text-xs">{j.sortOrder}</div>
+                                                    {j.linkHref ? (
+                                                        <a href={j.linkHref} target="_blank" rel="noopener noreferrer" className="block max-w-[240px] truncate text-accent-primary hover:underline">
+                                                            {j.linkLabel}
+                                                        </a>
+                                                    ) : (
+                                                        <div className="text-white/25">no evidence link</div>
+                                                    )}
+                                                </td>
+                                                <td className="px-6 py-4 text-right">
+                                                    <button onClick={() => handleDeleteJourney(j.id)} className="p-2 text-white/30 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all">
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
                                     </tbody>
                                 </table>
 
-                                {(activeTab === "certificates" && certs.length === 0) || (activeTab === "experiences" && exps.length === 0) ? (
+                                {(activeTab === "certificates" && certs.length === 0) || (activeTab === "experiences" && exps.length === 0) || (activeTab === "journey" && journeys.length === 0) ? (
                                     <div className="p-12 text-center text-white/30 font-medium">No records found.</div>
                                 ) : null}
                             </div>
