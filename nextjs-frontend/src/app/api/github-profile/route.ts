@@ -33,10 +33,23 @@ export async function GET() {
         const repos = await reposRes.json();
         const totalStars = repos.reduce((acc: number, r: { stargazers_count?: number }) => acc + (r.stargazers_count || 0), 0);
 
+        // Porsi bahasa dihitung dari repo yang benar-benar punya label bahasa, bukan dikarang:
+        // kartu "TS/JS" di halaman About dulu menulis 90% padahal hasil hitung nyata berbeda.
+        const berBahasa = repos.filter(
+            (r: { fork?: boolean; language?: string | null }) => !r.fork && !!r.language
+        );
+        const tsJs = berBahasa.filter(
+            (r: { language?: string }) => r.language === "TypeScript" || r.language === "JavaScript"
+        ).length;
+        const langShare = berBahasa.length > 0
+            ? `${Math.round((tsJs / berBahasa.length) * 100)}%`
+            : "—";
+
         return NextResponse.json({
             reposCount: user.public_repos?.toString() || "10+",
             starsCount: totalStars > 0 ? totalStars.toString() : "0",
             followersCount: user.followers?.toString() || "0",
+            langShare,
         });
     } catch (error) {
         console.error("GitHub API Error:", error);
