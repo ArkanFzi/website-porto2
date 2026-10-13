@@ -4,6 +4,22 @@ import React, { useRef } from "react";
 import { motion, useScroll, useTransform } from "framer-motion";
 import { Sparkle } from "lucide-react";
 
+const pageLinks = [
+  { label: "HOME", href: "/" },
+  { label: "WORK", href: "/#projects" },
+  { label: "CONTACT", href: "/#contact" },
+  { label: "DOSSIER", href: "/dossier" },
+  { label: "CV (PDF)", href: "/api/cv" },
+];
+
+const externalLinks = [
+  { label: "EMAIL", href: "mailto:muhammadarkanfauzi9@gmail.com" },
+  { label: "LINKEDIN", href: "https://www.linkedin.com/in/muhamad-arkan-fauzi-5a6799380/" },
+  { label: "GITHUB", href: "https://github.com/ArkanFzi" },
+  { label: "INSTAGRAM", href: "https://instagram.com/arkan_fzi" },
+  { label: "WHATSAPP", href: "https://wa.me/6281332314854" },
+];
+
 const Footer: React.FC = () => {
   const containerRef = useRef<HTMLElement>(null);
 
@@ -42,6 +58,33 @@ const Footer: React.FC = () => {
           <p className="text-tag md:text-micro text-accent-primary tracking-[0.3em] uppercase mt-2 opacity-80" style={{ fontFamily: "var(--f-sans)" }}>
             MALANG, INDONESIA
           </p>
+
+          <nav className="flex flex-wrap justify-center md:justify-start gap-x-7 gap-y-2 mt-10" aria-label="Footer">
+            {pageLinks.map((l) => (
+              <a
+                key={l.href}
+                href={l.href}
+                className="text-tag md:text-micro tracking-[0.25em] uppercase text-white/60 hover:text-accent-primary transition-colors"
+                style={{ fontFamily: "var(--f-sans)" }}
+              >
+                {l.label}
+              </a>
+            ))}
+          </nav>
+
+          <nav className="flex flex-wrap justify-center md:justify-start gap-x-7 gap-y-2 mt-4" aria-label="Elsewhere">
+            {externalLinks.map((l) => (
+              <a
+                key={l.href}
+                href={l.href}
+                {...(l.href.startsWith("http") ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+                className="text-tag md:text-micro tracking-[0.25em] uppercase text-accent-primary/70 hover:text-accent-primary transition-colors"
+                style={{ fontFamily: "var(--f-sans)" }}
+              >
+                {l.label}
+              </a>
+            ))}
+          </nav>
         </div>
 
         {/* Right Side: Rotating Stamp */}

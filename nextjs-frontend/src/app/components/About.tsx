@@ -79,23 +79,31 @@ const About: React.FC = () => {
               ))}
             </motion.h2>
 
-            {/* Parallax Image Reveal */}
+            {/* Observer sits on this unclipped wrapper on purpose: an element
+                clipped to zero area is never reported as intersecting, so
+                whileInView on the clipped node itself can never fire. */}
             <motion.div
-              initial={{ clipPath: "inset(100% 0% 0% 0%)" }}
-              whileInView={{ clipPath: "inset(0% 0% 0% 0%)" }}
+              initial="hidden"
+              whileInView="visible"
               viewport={{ once: true, margin: "-100px" }}
-              transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
-              className="w-full aspect-[3/4] relative overflow-hidden group"
+              className="w-full aspect-[3/4] relative group"
             >
               <motion.div
-                initial={{ scale: 1.1 }}
-                whileInView={{ scale: 1 }}
-                viewport={{ once: true, margin: "-100px" }}
-                transition={{ duration: 1.5, ease: "easeOut" }}
-                className="absolute inset-0 bg-cover bg-[center_5%] transition-transform duration-1000 group-hover:scale-105"
-                style={{ backgroundImage: "url('/FotoDiriFix.webp')" }}
-              />
-              <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors duration-1000" />
+                variants={{
+                  hidden: { clipPath: "inset(100% 0% 0% 0%)" },
+                  visible: { clipPath: "inset(0% 0% 0% 0%)" },
+                }}
+                transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
+                className="absolute inset-0 overflow-hidden"
+              >
+                <motion.div
+                  variants={{ hidden: { scale: 1.1 }, visible: { scale: 1 } }}
+                  transition={{ duration: 1.5, ease: "easeOut" }}
+                  className="w-full h-full bg-cover bg-[center_5%] transition-transform duration-1000 group-hover:scale-105"
+                  style={{ backgroundImage: "url('/FotoDiriFix.webp')" }}
+                />
+                <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors duration-1000" />
+              </motion.div>
             </motion.div>
           </div>
 
