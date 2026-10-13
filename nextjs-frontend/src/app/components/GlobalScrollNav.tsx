@@ -69,7 +69,7 @@ export default function GlobalScrollNav() {
                   className={`relative flex items-center justify-center w-8 h-8 transition-all duration-500`}
                 >
                   <span 
-                    className={`text-[9px] md:text-[10px] font-mono tracking-[0.2em] transform -rotate-90 origin-center transition-all duration-300
+                    className={`text-tag md:text-micro font-mono tracking-[0.2em] transform -rotate-90 origin-center transition-all duration-300
                       ${activeSection === section.id ? "text-white font-bold opacity-100" : "text-white/40 group-hover:text-white pb-1"}
                     `}
                   >

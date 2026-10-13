@@ -31,7 +31,7 @@ export default function CertificatesPage() {
                 // Tanpa guard ini, 500 dengan body {"error":"Gagal membaca sertifikat"} berubah
                 // menjadi halaman yang tampak kosong seolah memang belum ada sertifikat.
                 if (!r.ok || !Array.isArray(data)) {
-                    setLoadError(typeof data?.error === "string" ? data.error : "Sertifikat tidak dapat dimuat.");
+                    setLoadError(typeof data?.error === "string" ? data.error : "Certificates could not be loaded.");
                     return;
                 }
                 setAllCerts(data);
@@ -43,7 +43,7 @@ export default function CertificatesPage() {
                         subtitle: cert.issuer,
                         imageUrl: CERT_BACKGROUNDS[idx % CERT_BACKGROUNDS.length],
                         metrics: (
-                            <div className="flex items-center gap-4 mt-4 text-[#c49a56]">
+                            <div className="flex items-center gap-4 mt-4 text-accent-primary">
                                 <Award className="w-8 h-8" />
                                 <span className="font-mono text-2xl tracking-widest">{cert.date}</span>
                             </div>
@@ -52,11 +52,11 @@ export default function CertificatesPage() {
                 });
                 setItems(mappedItems);
             })
-            .catch(() => setLoadError("Sertifikat tidak dapat dimuat: server tidak terjangkau."));
+            .catch(() => setLoadError("Certificates could not be loaded: the server could not be reached."));
     }, []);
 
     return (
-        <main className="w-full bg-[#111111] min-h-screen font-sans selection:bg-[#c49a56]/30">
+        <main className="w-full bg-[#111111] min-h-screen font-sans selection:bg-accent-primary/30">
             <TimedCarousel
                 items={items}
                 backHref="/dossier"
@@ -67,8 +67,8 @@ export default function CertificatesPage() {
             {/* Deep Dive Skills Grid & List */}
             <section className="max-w-7xl mx-auto px-6 md:px-12 py-32 text-white border-b border-white/5 relative z-10 bg-[#111]">
                 <div className="mb-16">
-                    <span className="text-[#c49a56] font-mono text-sm tracking-widest uppercase mb-4 block">Validation</span>
-                    <h2 className="text-4xl md:text-5xl font-black uppercase tracking-tighter">Full Record</h2>
+                    <span className="text-accent-primary font-mono text-sm tracking-widest uppercase mb-4 block">Validation</span>
+                    <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tighter">Full Record</h1>
                     <div className="flex gap-8 mt-8 border-b border-white/10 pb-4 text-sm font-mono text-white/40 uppercase tracking-widest">
                         <span className="flex-1">Certification Name</span>
                         <span className="w-48 hidden md:block">Issuing Authority</span>
@@ -89,8 +89,8 @@ export default function CertificatesPage() {
                             className="flex flex-wrap md:flex-nowrap items-center gap-4 py-6 border-b border-white/5 hover:bg-white/5 transition-colors group px-4 -mx-4 rounded-xl cursor-default"
                         >
                             <div className="flex-1 min-w-[200px]">
-                                <h3 className="text-xl font-bold text-white group-hover:text-[#c49a56] transition-colors flex items-center gap-3">
-                                    <ShieldCheck className="w-5 h-5 text-[#c49a56]/50" />
+                                <h3 className="text-xl font-bold text-white group-hover:text-accent-primary transition-colors flex items-center gap-3">
+                                    <ShieldCheck className="w-5 h-5 text-accent-primary/50" />
                                     {cert.title}
                                 </h3>
                             </div>

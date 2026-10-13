@@ -86,7 +86,7 @@ export default function ReposPage() {
   }, []);
 
   return (
-    <main className="w-full bg-[#111111] min-h-screen font-sans selection:bg-[#c49a56]/30">
+    <main className="w-full bg-[#111111] min-h-screen font-sans selection:bg-accent-primary/30">
         <TimedCarousel 
             items={items} 
             backHref="/dossier" 
@@ -97,8 +97,8 @@ export default function ReposPage() {
         {/* Deep Dive Archive Section */}
         <section className="max-w-7xl mx-auto px-6 md:px-12 py-32 text-white border-b border-white/5 relative z-10 bg-[#111]">
             <div className="mb-16">
-                <span className="text-[#c49a56] font-mono text-sm tracking-widest uppercase mb-4 block">Archive</span>
-                <h2 className="text-4xl md:text-5xl font-black uppercase tracking-tighter">All Repositories</h2>
+                <span className="text-accent-primary font-mono text-sm tracking-widest uppercase mb-4 block">Archive</span>
+                <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tighter">All Repositories</h1>
                 <div className="flex gap-8 mt-8 border-b border-white/10 pb-4 text-sm font-mono text-white/40 uppercase tracking-widest">
                     <span className="flex-1">Repository</span>
                     <span className="w-32 hidden md:block">Language</span>
@@ -117,7 +117,7 @@ export default function ReposPage() {
                         className="flex flex-wrap md:flex-nowrap items-center gap-4 py-6 border-b border-white/5 hover:bg-white/5 transition-colors group px-4 -mx-4 rounded-xl"
                     >
                         <div className="flex-1 min-w-[200px]">
-                            <h3 className="text-xl font-bold text-white group-hover:text-[#c49a56] transition-colors flex items-center gap-2">
+                            <h3 className="text-xl font-bold text-white group-hover:text-accent-primary transition-colors flex items-center gap-2">
                                 <BookOpen className="w-4 h-4 text-white/30" />
                                 {repo.name}
                             </h3>

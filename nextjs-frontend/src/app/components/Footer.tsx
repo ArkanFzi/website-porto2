@@ -17,29 +17,29 @@ const Footer: React.FC = () => {
   const scrollRotate = useTransform(scrollYProgress, [0, 1], [0, 180]);
 
   return (
-    <footer ref={containerRef} className="relative w-full bg-[#0c1410] text-white py-20 lg:py-32 flex flex-col items-center justify-between overflow-hidden z-20 border-t border-white/5">
+    <footer ref={containerRef} className="relative w-full bg-surface text-white py-20 lg:py-32 flex flex-col items-center justify-between overflow-hidden z-20 border-t border-white/5">
 
       {/* Container split into Left and Right */}
       <div className="w-full max-w-[1400px] mx-auto px-6 md:px-12 grid grid-cols-1 md:grid-cols-2 gap-16 md:gap-8 items-center">
 
         {/* Left Side: Elegant Branding & Copyright */}
         <div className="flex flex-col items-center md:items-start text-center md:text-left order-2 md:order-1">
-          <motion.h3
+          <motion.p
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            className="text-[clamp(32px,5vw,64px)] italic text-[#e8e9e4] leading-[1.1] mb-6"
+            className="text-statement italic text-ink leading-[1.1] mb-6"
             style={{ fontFamily: "var(--f-serif)" }}
           >
             M. Arkan<br />Fauzi.
-          </motion.h3>
+          </motion.p>
 
-          <div className="h-[1px] w-16 bg-[#c49a56] mb-8" />
+          <div className="h-[1px] w-16 bg-accent-primary mb-8" />
 
-          <p className="text-[10px] md:text-[11px] text-white/50 tracking-[0.4em] uppercase font-medium" style={{ fontFamily: "var(--f-sans)" }}>
+          <p className="text-tag md:text-micro text-white/50 tracking-[0.4em] uppercase font-medium" style={{ fontFamily: "var(--f-sans)" }}>
             © {new Date().getFullYear()} ALL RIGHTS RESERVED
           </p>
-          <p className="text-[10px] md:text-[11px] text-[#c49a56] tracking-[0.3em] uppercase mt-2 opacity-80" style={{ fontFamily: "var(--f-sans)" }}>
+          <p className="text-tag md:text-micro text-accent-primary tracking-[0.3em] uppercase mt-2 opacity-80" style={{ fontFamily: "var(--f-sans)" }}>
             MALANG, INDONESIA
           </p>
         </div>
@@ -68,7 +68,7 @@ const Footer: React.FC = () => {
                        a 90,90 0 1,1 180,0
                        a 90,90 0 1,1 -180,0"
                   />
-                  <text className="text-[13px] uppercase" style={{ fontFamily: "var(--f-sans)", fill: "currentColor" }}>
+                  <text className="text-body uppercase" style={{ fontFamily: "var(--f-sans)", fill: "currentColor" }}>
                     {/* 565.48 is the circumference of a circle with r=90 (2 * pi * 90) */}
                     <textPath href="#circlePath" startOffset="0" textLength="565" lengthAdjust="spacing">
                       TERIMA KASIH ATAS PERHATIANNYA • TERIMA KASIH ATAS PERHATIANNYA •
@@ -80,7 +80,7 @@ const Footer: React.FC = () => {
 
             {/* Elegant Center Icon (Sparkle/Star instead of Heart) */}
             <div className="absolute z-10 flex items-center justify-center">
-              <Sparkle size={32} className="text-[#c49a56] opacity-90 fill-[#c49a56]/20" />
+              <Sparkle size={32} className="text-accent-primary opacity-90 fill-accent-primary/20" />
             </div>
 
           </div>
