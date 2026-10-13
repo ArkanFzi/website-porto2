@@ -42,8 +42,14 @@ function ambilToken(): { boleh: boolean; tungguDetik: number } {
     return { boleh: true, tungguDetik: 0 };
 }
 
-// Batas keras satu render. Render sehat terukur 13,1–15,3 s pada 2026-10-07; 45 s adalah ±3×
-// terburuk yang pernah terbukti, jadi ia tidak pernah memotong render yang sebenarnya jalan.
+// Batas keras SATU render, dari awal sampai akhir — termasuk boot Chromium.
+//
+// Sebelumnya angka ini hanya memagari fase sesudah launch: `puppeteer.launch()` tanpa opsi
+// `timeout` mewarisi default puppeteer-core 30_000 ms, dan watchdog di bawah baru dipasang
+// setelah launch kembali. Jadi instance yang dingin kehabisan jatah di detik ke-30 sementara
+// anggaran yang didokumentasikan 45 s. Terukur 2026-10-12 16:03:35 UTC pada deploy #48:
+// "Timed out after 30000 ms while waiting for the WS endpoint URL to appear in stdout", revisi
+// fe-00049 di-rollback padahal kode frontend tidak berubah sama sekali.
 //
 // Yang dilindungi bukan respons pengunjung — itu toh sudah pulang dengan 500 — melainkan
 // instance-nya. page.pdf() tidak punya timeout sendiri, dan promise yang tidak pernah settle
@@ -52,25 +58,33 @@ function ambilToken(): { boleh: boolean; tungguDetik: number } {
 const BATAS_RENDER_MS = 45_000;
 
 async function renderPdf(): Promise<Uint8Array> {
-    const browser = await puppeteer.launch({
-        headless: true,
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-gpu',
-        ],
-    });
+    type Browser = Awaited<ReturnType<typeof puppeteer.launch>>;
+    let browser: Browser | null = null;
+    let lewatBatas = false;
 
-    // Menutup browser adalah satu-satunya jalan membuat page.pdf() yang sedang menggantung
-    // jadi gagal: target yang mati membuat panggilan itu reject, promise singleflight settle,
-    // dan permintaan berikutnya boleh mencoba render baru.
+    // Dipasang SEBELUM launch, cuma itu yang membuatnya jadi batas untuk seluruh render.
+    // Kalau batas lewat sementara launch masih menggantung, `browser` masih null — karena itu
+    // handle yang tiba belakangan harus ditutup di bawah, kalau tidak Chromium yatim tinggal
+    // di instance ini sampai replikanya didaur ulang.
     const penunggu = setTimeout(() => {
-        browser.close().catch(() => undefined);
+        lewatBatas = true;
+        browser?.close().catch(() => undefined);
     }, BATAS_RENDER_MS);
 
     try {
+        browser = await puppeteer.launch({
+            headless: true,
+            timeout: BATAS_RENDER_MS,
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+            ],
+        });
+        if (lewatBatas) throw new Error(`Boot Chromium melewati batas ${BATAS_RENDER_MS} ms`);
+
         const page = await browser.newPage();
         const port = process.env.PORT || '3000';
         await page.goto(`http://127.0.0.1:${port}/cv-layout`, { waitUntil: 'networkidle0', timeout: 30_000 });
@@ -83,7 +97,7 @@ async function renderPdf(): Promise<Uint8Array> {
         clearTimeout(penunggu);
         // close() pada browser yang sudah ditutup oleh penunggu di atas akan melempar;
         // membiarkannya berarti menutupi galat render yang justru ingin kita lihat.
-        await browser.close().catch(() => undefined);
+        await browser?.close().catch(() => undefined);
     }
 }
 

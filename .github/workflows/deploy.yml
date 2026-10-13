@@ -298,7 +298,16 @@ jobs:
           [ "$proxied" = "true" ]
 
           # 5. Jalur PDF (Puppeteer) hidup dan menghasilkan dokumen nyata.
-          curl -fsS --max-time 120 "$FE/api/cv" -o /tmp/cv.pdf
+          # Satu percobaan ulang, dan hanya di langkah ini. Yang diuji di sini adalah "artefak
+          # ini mampu menghasilkan PDF", bukan "boot pertama harus menang": revisi baru mulai
+          # dari nol (min-instances kosong, maxScale 3) dan Chromium harus boot di window itu.
+          # Terukur 2026-10-12 16:03 UTC, fe-00049 pulang 500 karena boot itu dan deploy #48
+          # di-rollback — padahal yang diubah cuma dependensi Go. Yang tetap merah: PDF rusak,
+          # dan kegagalan yang berulang, karena percobaan kedua memakai curl yang sama.
+          if ! curl -fsS --max-time 120 "$FE/api/cv" -o /tmp/cv.pdf; then
+            echo "/api/cv percobaan 1 gagal — kemungkinan Chromium belum sempat boot, coba sekali lagi"
+            curl -fsS --max-time 120 "$FE/api/cv" -o /tmp/cv.pdf
+          fi
           if [ "$(head -c 5 /tmp/cv.pdf)" != "%PDF-" ]; then
             echo "/api/cv tidak mengembalikan PDF"; exit 1
           fi
