@@ -4,13 +4,16 @@ name: CI
 # required status check, dan check yang di-skip akan membuat PR terkunci selamanya.
 # `push: main` ikut dipasang supaya merge commit (SHA yang sama sekali belum dites di PR,
 # karena branch protection berjalan dengan strict=false) tetap diverifikasi setelah masuk.
+# `bugfix/**` ikut di push supaya cabang hasil agent bug-hunter punya gerbang meski belum
+# ada PR-nya — dia tetap hanya dites, tidak bisa menyentuh produksi, karena deploy.yml
+# dipicu oleh push ke main saja.
 # Jalur deploy tetap hanya deploy.yml.
 
 on:
   pull_request:
     branches: [main]
   push:
-    branches: [main]
+    branches: [main, 'bugfix/**']
   workflow_dispatch:
 
 permissions:
