@@ -6,8 +6,9 @@ import { motion } from "framer-motion";
 const SECTIONS = [
   { id: "hero", label: "01" },
   { id: "about", label: "02" },
-  { id: "projects", label: "03" },
-  { id: "contact", label: "04" },
+  { id: "perjalanan", label: "03" },
+  { id: "projects", label: "04" },
+  { id: "contact", label: "05" },
 ];
 
 export default function GlobalScrollNav() {

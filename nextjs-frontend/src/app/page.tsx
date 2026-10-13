@@ -6,6 +6,7 @@ import Preloader from "@/components/UI/Preloader";
 import Navigation from "./components/Navigation";
 import Hero from "./components/Hero";
 import About from "./components/About";
+import Journey from "./components/Journey";
 import Projects from "./components/Projects";
 import Contact from "./components/Contact";
 import Footer from "./components/Footer";
@@ -26,6 +27,7 @@ export default function Home() {
       {/* Rest of the content */}
       <div className="relative z-10">
         <About />
+        <Journey />
         <Projects />
         <Contact />
         <Footer />

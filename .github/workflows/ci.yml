@@ -164,10 +164,10 @@ jobs:
           # DATABASE_URL dipakai biner (pgx menerima TimeZone); psql memakai conninfo sendiri
           # karena libpq menolak opsi itu: "invalid connection option \"TimeZone\"".
           PSQL='host=127.0.0.1 user=postgres dbname=portfolio_db port=5432 sslmode=disable'
-          T() { psql "$PSQL" -tAc "select count(distinct table_name) from information_schema.tables where table_schema = current_schema() and table_name in ('certificates','experiences','contact_messages')"; }
+          T() { psql "$PSQL" -tAc "select count(distinct table_name) from information_schema.tables where table_schema = current_schema() and table_name in ('certificates','experiences','contact_messages','journeys')"; }
 
           [ "$(T)" = "0" ] || { echo "DB uji tidak kosong: $(T) tabel sudah ada"; exit 1; }
-          echo "tabel sebelum apa pun: $(T)/3"
+          echo "tabel sebelum apa pun: $(T)/4"
 
           set +e
           out=$(/tmp/portfolio-be 2>&1); rc=$?
@@ -181,16 +181,18 @@ jobs:
           # -migrate: langkah ini sengaja TIDAK punya JWT_SECRET/ADMIN_PASS di env di atas.
           /tmp/portfolio-be -migrate
           /tmp/portfolio-be -migrate
-          echo "tabel setelah -migrate dua kali: $(T)/3"
-          [ "$(T)" = "3" ] || { echo "-migrate tidak menyiapkan seluruh skema"; exit 1; }
+          echo "tabel setelah -migrate dua kali: $(T)/4"
+          [ "$(T)" = "4" ] || { echo "-migrate tidak menyiapkan seluruh skema"; exit 1; }
 
-          echo "baris setelah -migrate: certificates=$(psql "$PSQL" -tAc 'select count(*) from certificates') experiences=$(psql "$PSQL" -tAc 'select count(*) from experiences')"
+          echo "baris setelah -migrate: certificates=$(psql "$PSQL" -tAc 'select count(*) from certificates') experiences=$(psql "$PSQL" -tAc 'select count(*) from experiences') journeys=$(psql "$PSQL" -tAc 'select count(*) from journeys')"
           [ "$(psql "$PSQL" -tAc 'select count(*) from certificates')" = "0" ] || { echo "-migrate masih menanam seed"; exit 1; }
+          [ "$(psql "$PSQL" -tAc 'select count(*) from journeys')" = "0" ] || { echo "-migrate menanam seed ke journeys"; exit 1; }
 
           # Fixture uji ditanam oleh uji, bukan oleh aplikasi.
           psql "$PSQL" -qc "
             insert into certificates (title, issuer, date, created_at, updated_at) values ('fixture ci', 'issuer ci', '2026', now(), now());
-            insert into experiences (role, company, period, created_at, updated_at) values ('fixture ci', 'company ci', '2026', now(), now());"
+            insert into experiences (role, company, period, created_at, updated_at) values ('fixture ci', 'company ci', '2026', now(), now());
+            insert into journeys (year, title, body, sort_order, created_at, updated_at) values ('2026', 'babak fixture', 'isi fixture', 10, now(), now());"
           echo "fixture ditanam: certificates=$(psql "$PSQL" -tAc 'select count(*) from certificates') experiences=$(psql "$PSQL" -tAc 'select count(*) from experiences')"
 
       # Image produksi adalah yang benar-benar dijalankan Cloud Run, dan `-migrate` satu-satunya jalan
@@ -212,7 +214,7 @@ jobs:
           psql "$PSQL" -qc 'create database portfolio_img'
           PI='host=127.0.0.1 user=postgres dbname=portfolio_img port=5432 sslmode=disable'
           IMG_URL="host=127.0.0.1 user=postgres dbname=portfolio_img port=5432 sslmode=disable TimeZone=UTC"
-          TI() { psql "$PI" -tAc "select count(distinct table_name) from information_schema.tables where table_schema = current_schema() and table_name in ('certificates','experiences','contact_messages')"; }
+          TI() { psql "$PI" -tAc "select count(distinct table_name) from information_schema.tables where table_schema = current_schema() and table_name in ('certificates','experiences','contact_messages','journeys')"; }
           [ "$(TI)" = "0" ] || { echo "portfolio_img tidak kosong: $(TI)"; exit 1; }
 
           set +e
@@ -227,8 +229,8 @@ jobs:
           # Inti N2: flag lewat image, TANPA override --entrypoint. Dua kali jalan = idempoten.
           docker run --rm --network host -e DATABASE_URL="$IMG_URL" portfolio-be:ci -migrate
           docker run --rm --network host -e DATABASE_URL="$IMG_URL" portfolio-be:ci -migrate
-          echo "tabel setelah -migrate lewat image: $(TI)/3"
-          [ "$(TI)" = "3" ] || { echo "-migrate tidak tercapai dari image (ENTRYPOINT belum terpasang?)"; exit 1; }
+          echo "tabel setelah -migrate lewat image: $(TI)/4"
+          [ "$(TI)" = "4" ] || { echo "-migrate tidak tercapai dari image (ENTRYPOINT belum terpasang?)"; exit 1; }
           [ "$(psql "$PI" -tAc 'select count(*) from certificates')" = "0" ] || { echo "-migrate dari image menanam seed"; exit 1; }
 
           # Entrypoint yang berubah tidak boleh mengubah cara kontainer melayani.
@@ -353,6 +355,17 @@ jobs:
           exps=$(curl -fsS http://127.0.0.1:8080/api/experience)
           echo "$exps" | jq -e 'type=="array" and (length>0) and (.[0] | has("id") and has("role") and has("company") and has("period"))' > /dev/null
 
+          # Bentuknya, bukan cuma status code: halaman depan membaca field ini untuk
+          # timeline dan field link kosong harus tetap ada supaya tidak undefined.
+          jwy=$(curl -fsS http://127.0.0.1:8080/api/journey)
+          echo "GET /api/journey => $jwy"
+          echo "$jwy" | jq -e 'type=="array" and (length>0) and (.[0] | has("id") and has("year") and has("title") and has("body") and has("linkLabel") and has("linkHref") and has("sortOrder"))' > /dev/null
+
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
+            -d '{"year":"2026","title":"t","body":"b","sortOrder":10}' http://127.0.0.1:8080/api/journey)
+          echo "POST /api/journey tanpa token => $code"
+          [ "$code" = "401" ]
+
           code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
             -d '{"title":"t","issuer":"i","date":"2026"}' http://127.0.0.1:8080/api/certificates)
           echo "POST /api/certificates tanpa token => $code"
@@ -409,6 +422,67 @@ jobs:
             "http://127.0.0.1:8080/api/certificates/$id" > /dev/null
           gone=$(curl -fsS http://127.0.0.1:8080/api/certificates | jq --arg id "$id" '[.[] | select(.id==$id)] | length')
           [ "$gone" = "0" ] || { echo "hapus tidak berlaku: $gone"; exit 1; }
+
+      # Baris timeline di halaman depan dirender langsung dari kolom ini, dan link_href
+      # dipakai sebagai <a href> yang diklik pengunjung — jadi skema https, pasangan
+      # label+alamat, dan urutan tampil ikut diuji, bukan cuma status code.
+      - name: Kontrak perjalanan (tulis, pasangan bukti, urutan, hapus)
+        env:
+          ADMIN_USER: portfolio-admin
+          ADMIN_PASS: ${{ steps.fixtures.outputs.adminpass }}
+        run: |
+          set -uo pipefail
+          A=http://127.0.0.1:8080
+          JAR=$(mktemp)
+          curl -fsS -c "$JAR" -X POST -H 'Content-Type: application/json' \
+            -d "$(jq -nc --arg u "$ADMIN_USER" --arg p "$ADMIN_PASS" '{username:$u,password:$p}')" \
+            "$A/api/login" -o /dev/null
+          post() { curl -sS -b "$JAR" -o /tmp/jb -w '%{http_code}' -X POST -H 'Content-Type: application/json' --data "$1" "$A/api/journey"; }
+          fail=0
+
+          created=$(curl -fsS -b "$JAR" -X POST -H 'Content-Type: application/json' \
+            -d '{"year":"2025","title":"babak ci","body":"isi babak","linkLabel":"repo","linkHref":"https://github.com/ArkanFzi/website-porto2","sortOrder":20}' \
+            "$A/api/journey")
+          id=$(echo "$created" | jq -r .id)
+          echo "babak dibuat id=$id"
+          [ "$id" != "null" ] || { echo "POST /api/journey tidak mengembalikan id"; fail=1; }
+
+          back=$(curl -fsS "$A/api/journey" | jq --arg id "$id" '[.[] | select(.id==$id)] | .[0]')
+          echo "dibaca kembali: $back"
+          [ "$(echo "$back" | jq -r .linkHref)" = "https://github.com/ArkanFzi/website-porto2" ] || { echo "tautan bukti tidak tersimpan utuh"; fail=1; }
+
+          for cacat in \
+            '{"year":"2025","title":"t","body":"b","linkHref":"javascript:alert(1)"}' \
+            '{"year":"2025","title":"t","body":"b","linkLabel":"repo"}' \
+            '{"year":"2025","title":"t","body":"b","linkHref":"https://ok.test"}' \
+            '{"year":"","title":"t","body":"b"}'; do
+            code=$(post "$cacat")
+            echo "POST $cacat => $code"
+            [ "$code" = "400" ] || { echo "cacat diterima dengan $code"; fail=1; }
+          done
+
+          awal=$(curl -fsS -b "$JAR" -X POST -H 'Content-Type: application/json' \
+            -d '{"year":"2024","title":"paling awal","body":"b","sortOrder":1}' "$A/api/journey" | jq -r .id)
+          urutan=$(curl -fsS "$A/api/journey" | jq --arg a "$id" --arg b "$awal" 'map(.id) | index($b) < index($a)')
+          echo "sort_order 1 mendahului sort_order 20 => $urutan"
+          [ "$urutan" = "true" ] || { echo "timeline tidak mengikuti sort_order"; fail=1; }
+
+          del=$(curl -sS -b "$JAR" -o /dev/null -w '%{http_code}' -X DELETE "$A/api/journey/$id")
+          echo "DELETE babak => $del"
+          [ "$del" = "200" ] || fail=1
+          sisa=$(curl -fsS "$A/api/journey" | jq --arg id "$id" '[.[] | select(.id==$id)] | length')
+          [ "$sisa" = "0" ] || { echo "hapus tidak berlaku: $sisa"; fail=1; }
+
+          bukan=$(curl -sS -b "$JAR" -o /dev/null -w '%{http_code}' -X DELETE "$A/api/journey/bukan-uuid")
+          echo "DELETE id bukan uuid => $bukan"
+          [ "$bukan" = "400" ] || fail=1
+          asing=$(curl -sS -b "$JAR" -o /dev/null -w '%{http_code}' -X DELETE "$A/api/journey/00000000-0000-0000-0000-000000000000")
+          echo "DELETE uuid tak dikenal => $asing"
+          [ "$asing" = "404" ] || fail=1
+
+          curl -fsS -b "$JAR" -X DELETE "$A/api/journey/$awal" > /dev/null
+          [ "$fail" = "0" ] || { echo "kontrak perjalanan gagal"; exit 1; }
+          echo "kontrak perjalanan lolos"
 
       # Empat cacat yang dulu lolos tanpa suara: isian kosong tersimpan, id kiriman klien
       # dipercaya, satu POST publik boleh menyerap body tanpa batas, dan rute admin yang tidak
