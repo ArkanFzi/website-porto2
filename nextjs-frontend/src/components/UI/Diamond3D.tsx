@@ -14,7 +14,9 @@ const LANGUAGE_TEXTURES: Record<string, string> = {
     Dart: "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/dart/dart-original.svg",
     HTML: "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/html5/html5-original.svg",
     CSS: "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/css3/css3-original.svg",
-    Default: "https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/github/github-original.svg"
+    // Devicon hanya punya mark github berwarna #181616 yang tenggelam di kaca gelap,
+    // jadi default diambil dari Simple Icons dengan warna terang.
+    Default: "https://cdn.simpleicons.org/github/e8e6e3"
 };
 
 function getTextureUrl(language?: string | null) {
@@ -30,20 +32,33 @@ function DiamondMesh({ language }: { language?: string | null }) {
     const textureUrl = getTextureUrl(language);
 
     useEffect(() => {
-        const loader = new THREE.TextureLoader();
-        loader.load(
-            textureUrl,
-            (tex) => {
-                tex.colorSpace = THREE.SRGBColorSpace;
-                tex.generateMipmaps = true;
-                setTexture(tex);
-                invalidate(); // Trigger a re-render when texture is loaded
-            },
-            undefined,
-            (err) => {
-                console.error("Error loading texture:", err);
-            }
-        );
+        // Chrome menolak upload <img> SVG yang hanya punya viewBox ke WebGL (glError 1281,
+        // tekstur jadi kosong tanpa error), sementara ikon Devicon bentuknya begitu semua.
+        // Diraster sendiri lewat kanvas 2D supaya ukuran teksturnya pasti.
+        let batal = false;
+        let teksturJadi: THREE.Texture | null = null;
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+            if (batal) return;
+            const kanvas = document.createElement("canvas");
+            kanvas.width = kanvas.height = 256;
+            const ctx = kanvas.getContext("2d");
+            if (!ctx) return;
+            ctx.drawImage(img, 0, 0, 256, 256);
+            teksturJadi = new THREE.CanvasTexture(kanvas);
+            teksturJadi.colorSpace = THREE.SRGBColorSpace;
+            setTexture(teksturJadi);
+            invalidate(); // Trigger a re-render when texture is loaded
+        };
+        img.onerror = () => {
+            console.error("Error loading texture:", textureUrl);
+        };
+        img.src = textureUrl;
+        return () => {
+            batal = true;
+            teksturJadi?.dispose();
+        };
     }, [textureUrl]);
 
     useFrame((state, delta) => {
@@ -82,7 +97,7 @@ function DiamondMesh({ language }: { language?: string | null }) {
                             transparent={true}
                             opacity={0.9}
                             depthWrite={false}
-                            depthTest={false} // Will always render on top
+                            depthTest={false}
                         />
                     </sprite>
                 )}
