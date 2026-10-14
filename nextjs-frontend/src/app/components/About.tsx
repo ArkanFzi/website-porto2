@@ -15,7 +15,7 @@ const About: React.FC<{ metrics: MetrikGitHub | null }> = ({ metrics }) => {
     langShare: "—",
   };
   return (
-    <section id="about" className="relative w-full min-h-screen bg-[var(--bg)] pt-20 pb-20 lg:pb-32 overflow-hidden">
+    <section id="about" className="relative w-full bg-[var(--bg)] pt-20 pb-20 lg:pb-32 overflow-hidden">
 
       {/* Container max-width matching the reference */}
       <div className="max-w-[1400px] mx-auto px-6 md:px-8 relative z-10">
