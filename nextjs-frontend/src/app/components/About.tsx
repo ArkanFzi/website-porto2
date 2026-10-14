@@ -1,47 +1,19 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { motion, motionValue, useSpring } from "framer-motion";
+import type { MetrikGitHub } from "@/lib/server/github";
 
-// --- GitHub Metrics State ---
-interface GitHubMetrics {
-  reposCount: string;
-  starsCount: string;
-  followersCount: string;
-  langShare: string;
-}
-
-const About: React.FC = () => {
-  const [metrics, setMetrics] = useState<GitHubMetrics>({
+// Angka metrik diambil saat render server (lihat app/page.tsx). Null berarti GitHub
+// sedang tidak bisa dihubungi: tetap "—" alih-alih mengarang, sama seperti fallback
+// ketika fetch client dulu gagal.
+const About: React.FC<{ metrics: MetrikGitHub | null }> = ({ metrics }) => {
+  const { reposCount, starsCount, followersCount, langShare } = metrics ?? {
     reposCount: "—",
     starsCount: "—",
     followersCount: "—",
     langShare: "—",
-  });
-
-  useEffect(() => {
-    async function loadMetrics() {
-      try {
-        const res = await fetch('/api/github-profile');
-        if (!res.ok) throw new Error("Failed to fetch GitHub profile metrics");
-        const data = await res.json();
-
-        setMetrics({
-          reposCount: data.reposCount || "—",
-          starsCount: data.starsCount || "—",
-          followersCount: data.followersCount || "—",
-          langShare: data.langShare || "—",
-        });
-      } catch (err) {
-        console.error("GitHub metrics fetch failed", err);
-        // Keep the "—" fallback on error
-      }
-    }
-
-    loadMetrics();
-  }, []);
-
-  const { reposCount, starsCount, followersCount, langShare } = metrics;
+  };
   return (
     <section id="about" className="relative w-full min-h-screen bg-[var(--bg)] pt-20 pb-20 lg:pb-32 overflow-hidden">
 

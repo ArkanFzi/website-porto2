@@ -1,40 +1,19 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import Diamond3D from "@/components/UI/Diamond3D";
+import type { RepoBerlian } from "@/lib/server/github";
 
-interface GitHubRepo {
-  id: number;
-  name: string;
-  description: string | null;
-  html_url: string;
-  homepage: string | null;
-  stargazers_count: number;
-  language: string | null;
-  fork: boolean;
-}
-
-const Projects: React.FC = () => {
-  const [ghRepos, setGhRepos] = useState<GitHubRepo[]>([]);
-  const [loading, setLoading] = useState(true);
+// Repo datang dari render server (lihat app/page.tsx). Fork dan README profil sudah
+// dibuang di sana, jadi tidak ada lagi state "loading" yang menunggu browser.
+const Projects: React.FC<{ repos: RepoBerlian[] }> = ({ repos }) => {
   const [page, setPage] = useState(0);
-
-  useEffect(() => {
-    fetch("/api/github-repos")
-      .then((r) => r.ok ? r.json() : [])
-      .then((repos: GitHubRepo[]) => {
-        // Store all original non-fork repos
-        setGhRepos(repos.filter((r) => !r.fork));
-      })
-      .catch(() => { })
-      .finally(() => setLoading(false));
-  }, []);
 
   // Pagination Logic
   const itemsPerPage = 3;
-  const totalPages = Math.ceil(ghRepos.length / itemsPerPage);
-  const currentRepos = ghRepos.slice(page * itemsPerPage, (page + 1) * itemsPerPage);
+  const totalPages = Math.ceil(repos.length / itemsPerPage);
+  const currentRepos = repos.slice(page * itemsPerPage, (page + 1) * itemsPerPage);
 
   const nextPage = () => setPage((p) => (p + 1) % totalPages);
   const prevPage = () => setPage((p) => (p - 1 + totalPages) % totalPages);
@@ -114,63 +93,57 @@ const Projects: React.FC = () => {
         {/* ── DIAMOND GRID ── */}
         <div className="relative w-full md:aspect-[2/1] max-w-[900px] mx-auto mt-10 md:mt-4 flex flex-col md:block items-center gap-16 md:gap-0">
 
-          {loading ? (
-            <div className="md:absolute inset-0 flex items-center justify-center min-h-[300px]">
-              <span className="text-accent-primary tracking-[0.2em] text-xs uppercase animate-pulse">Connecting to GitHub...</span>
-            </div>
-          ) : (
-            currentRepos.map((repo, idx) => {
-              // Calculate positioning for the triangle arrangement
-              const positions = [
-                { top: "10%", left: "15%", delay: 0 },
-                { top: "50%", left: "50%", delay: 0.2 },
-                { top: "20%", left: "85%", delay: 0.4 }
-              ];
-              // Ensure fallback if less than 3 items on last page
-              const pos = positions[idx] || positions[0];
+          {currentRepos.map((repo, idx) => {
+            // Calculate positioning for the triangle arrangement
+            const positions = [
+              { top: "10%", left: "15%", delay: 0 },
+              { top: "50%", left: "50%", delay: 0.2 },
+              { top: "20%", left: "85%", delay: 0.4 }
+            ];
+            // Ensure fallback if less than 3 items on last page
+            const pos = positions[idx] || positions[0];
 
-              return (
-                <div
-                  key={repo.id}
-                  /* On mobile, 'static' forces the browser to ignore 'top' and 'left' inline styles, stacking normally via flex.
-                     On 'md:' and above, 'absolute' re-enables them for the triangle grid layout. */
-                  className="static md:absolute flex flex-col items-center group w-[220px] sm:w-[280px] md:-translate-x-1/2 md:-translate-y-1/2"
-                  style={{ top: pos.top, left: pos.left }}
+            return (
+              <div
+                key={repo.id}
+                /* On mobile, 'static' forces the browser to ignore 'top' and 'left' inline styles, stacking normally via flex.
+                   On 'md:' and above, 'absolute' re-enables them for the triangle grid layout. */
+                className="static md:absolute flex flex-col items-center group w-[220px] sm:w-[280px] md:-translate-x-1/2 md:-translate-y-1/2"
+                style={{ top: pos.top, left: pos.left }}
+              >
+                {/* Diamond Shape Wrapper */}
+                <a
+                  href={repo.html_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="relative w-48 h-48 md:w-60 md:h-60 z-10 group/diamond md:hover:scale-110 transition-all duration-700 block"
                 >
-                  {/* Diamond Shape Wrapper */}
-                  <a
-                    href={repo.html_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="relative w-48 h-48 md:w-60 md:h-60 z-10 group/diamond md:hover:scale-110 transition-all duration-700 block"
-                  >
-                    <Diamond3D language={repo.language} />
-                    <div className="absolute top-4 right-4 p-2 opacity-0 group-hover/diamond:opacity-100 transition-opacity duration-500 z-20 pointer-events-none">
-                      <span className="flex items-center gap-1 text-tag font-bold text-accent-primary tracking-widest uppercase bg-black/80 px-2 py-1 rounded backdrop-blur-md shadow-[0_0_15px_rgba(196,154,86,0.3)] border border-accent-primary/30">
-                        {repo.stargazers_count} ★
-                      </span>
-                    </div>
-                  </a>
-
-                  {/* Text Info */}
-                  <div className="mt-6 md:mt-14 text-center lg:opacity-70 group-hover:opacity-100 group-hover:-translate-y-1 transition-all duration-500">
-                    <h3 className="text-item font-bold uppercase tracking-[0.14em] text-ink mb-2 leading-tight max-w-[200px] mx-auto">
-                      {repo.name.replace(/[-_]/g, " ")}
-                    </h3>
-                    {repo.language && (
-                      <span className="text-tag uppercase tracking-[0.3em] font-bold text-accent-secondary">
-                        {repo.language}
-                      </span>
-                    )}
+                  <Diamond3D language={repo.language} />
+                  <div className="absolute top-4 right-4 p-2 opacity-0 group-hover/diamond:opacity-100 transition-opacity duration-500 z-20 pointer-events-none">
+                    <span className="flex items-center gap-1 text-tag font-bold text-accent-primary tracking-widest uppercase bg-black/80 px-2 py-1 rounded backdrop-blur-md shadow-[0_0_15px_rgba(196,154,86,0.3)] border border-accent-primary/30">
+                      {repo.stargazers_count} ★
+                    </span>
                   </div>
+                </a>
+
+                {/* Text Info */}
+                <div className="mt-6 md:mt-14 text-center lg:opacity-70 group-hover:opacity-100 group-hover:-translate-y-1 transition-all duration-500">
+                  <h3 className="text-item font-bold uppercase tracking-[0.14em] text-ink mb-2 leading-tight max-w-[200px] mx-auto">
+                    {repo.name.replace(/[-_]/g, " ")}
+                  </h3>
+                  {repo.language && (
+                    <span className="text-tag uppercase tracking-[0.3em] font-bold text-accent-secondary">
+                      {repo.language}
+                    </span>
+                  )}
                 </div>
-              );
-            })
-          )}
+              </div>
+            );
+          })}
         </div>
 
         {/* ── PAGINATION CONTROLS ── */}
-        {!loading && ghRepos.length > itemsPerPage && (
+        {repos.length > itemsPerPage && (
           <div className="mt-20 lg:mt-32 flex items-center gap-8">
             <button
               onClick={prevPage}

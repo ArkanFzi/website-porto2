@@ -32,6 +32,10 @@ function walk(dir, filter) {
 function normalize(pathname) {
   let p = pathname.split("?")[0].split("#")[0];
   p = p.replace(/\/{2,}/g, "/");
+  // ${BACKEND_URL} adalah basis origin, bukan segmen path. Sisi rewrite sudah membuangnya
+  // (lihat rewrites()), jadi pemanggil server-side harus dinormalkan sama — kalau tidak,
+  // `${BACKEND_URL}/api/journey` jadi "/:p/api/journey" dan tripwire salah menuduh path mati.
+  p = p.replace(/\$\{BACKEND_URL\}/g, "");
   p = p.replace(/\$\{[^}]*\}/g, ":p");
   if (p.length > 1) p = p.replace(/\/+$/, "");
   return p.startsWith("/") ? p : `/${p}`;
