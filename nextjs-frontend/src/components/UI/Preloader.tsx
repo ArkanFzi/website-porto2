@@ -40,9 +40,11 @@ export default function Preloader() {
     };
   }, []);
 
-  // Complete loading when fully loaded or no longer active
+  // Complete loading when fully loaded or no longer active. "Nothing was ever
+  // registered" counts as done: without WebGL the 3D assets never load, and the
+  // old `loaded > 0` assumption would keep the boot screen up until the failsafe.
   useEffect(() => {
-    if (progress === 100 || (!active && loaded > 0 && loaded === total)) {
+    if (progress === 100 || (!active && loaded === total)) {
       const timeout = setTimeout(() => {
         setComplete(true);
         document.body.style.overflow = "unset";
