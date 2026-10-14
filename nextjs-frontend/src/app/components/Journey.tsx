@@ -1,32 +1,16 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { motion } from "framer-motion";
 import { ArrowUpRight } from "lucide-react";
+import type { Perjalanan } from "@/lib/server/journey";
 
-interface JourneyEntry {
-  id: string;
-  year: string;
-  title: string;
-  body: string;
-  linkLabel: string;
-  linkHref: string;
-  sortOrder: number;
-}
-
-const Journey: React.FC = () => {
-  const [entries, setEntries] = useState<JourneyEntry[] | null>(null);
-
-  useEffect(() => {
-    fetch("/api/journey")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => setEntries(Array.isArray(data) ? data : []))
-      .catch(() => setEntries([]));
-  }, []);
-
+// Entri datang dari render server (lihat app/page.tsx), bukan dari fetch di browser,
+// supaya timeline ini ikut ter-serialisasi ke HTML pertama.
+const Journey: React.FC<{ entries: Perjalanan[] }> = ({ entries }) => {
   // Nothing is invented here: if the API is unreachable or the table is still
   // empty, the section is absent rather than showing a timeline from memory.
-  if (!entries || entries.length === 0) return null;
+  if (entries.length === 0) return null;
 
   return (
     <section id="perjalanan" className="relative w-full bg-[var(--bg)] pt-24 pb-24 lg:pt-32 lg:pb-40 overflow-hidden">

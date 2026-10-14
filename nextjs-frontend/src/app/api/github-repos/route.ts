@@ -1,45 +1,21 @@
 import { NextResponse } from "next/server";
+import { daftarReposGitHub, GitHubGagal } from "@/lib/server/github";
 
 /**
  * GET /api/github-repos
- * Server-side proxy to fetch public repos from GitHub API.
- * This avoids CORS and rate-limit issues from direct browser calls.
+ * Daftar repo publik lewat API GitHub, objek utuh (dossier membaca forks_count).
  */
 export async function GET() {
     try {
-        const res = await fetch(
-            "https://api.github.com/users/ArkanFzi/repos?sort=updated&per_page=20&type=public",
-            {
-                headers: {
-                    "User-Agent": "ArkanFzi-Portfolio-App",
-                    Accept: "application/vnd.github.v3+json",
-                },
-                // Cache for 10 minutes on the server so rapid page loads don't hit rate limits
-                next: { revalidate: 600 },
-            }
-        );
-
-        if (!res.ok) {
-            return NextResponse.json(
-                { error: `GitHub API error: ${res.status}` },
-                { status: res.status }
-            );
-        }
-
-        const repos = await res.json();
-
-        // Filter out forks and meta repos, keep only real repos
-        const filtered = repos.filter(
-            (r: { fork: boolean; name: string }) =>
-                !r.fork && r.name !== "ArkanFzi" // skip profile README repo
-        );
-
-        return NextResponse.json(filtered, {
+        return NextResponse.json(await daftarReposGitHub(), {
             headers: {
                 "Cache-Control": "public, s-maxage=600, stale-while-revalidate=60",
             },
         });
     } catch (err) {
+        if (err instanceof GitHubGagal) {
+            return NextResponse.json({ error: err.pesan }, { status: err.status });
+        }
         console.error("GitHub proxy error:", err);
         return NextResponse.json({ error: "Failed to fetch GitHub repos" }, { status: 500 });
     }
