@@ -3,11 +3,11 @@
 import React, { useRef } from "react";
 import { motion, useScroll, useTransform } from "framer-motion";
 import { Sparkle } from "lucide-react";
+import { MENU_SECTIONS, hrefSection } from "@/lib/sections";
 
 const pageLinks = [
   { label: "HOME", href: "/" },
-  { label: "WORK", href: "/#projects" },
-  { label: "CONTACT", href: "/#contact" },
+  ...MENU_SECTIONS.map((s) => ({ label: s.menuLabel, href: hrefSection(s.id) })),
   { label: "DOSSIER", href: "/dossier" },
   { label: "CV (PDF)", href: "/api/cv" },
 ];

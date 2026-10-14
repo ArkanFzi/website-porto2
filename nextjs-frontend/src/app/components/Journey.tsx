@@ -13,7 +13,7 @@ const Journey: React.FC<{ entries: Perjalanan[] }> = ({ entries }) => {
   if (entries.length === 0) return null;
 
   return (
-    <section id="perjalanan" className="relative w-full bg-[var(--bg)] pt-24 pb-24 lg:pt-32 lg:pb-40 overflow-hidden">
+    <section id="journey" className="relative w-full bg-[var(--bg)] pt-24 pb-24 lg:pt-32 lg:pb-40 overflow-hidden">
       <div className="max-w-[1400px] mx-auto px-6 md:px-8 relative z-10">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 lg:ml-20 mb-16 lg:mb-24">
           <div className="flex flex-col gap-6">
