@@ -2,14 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-
-const SECTIONS = [
-  { id: "hero", label: "01" },
-  { id: "about", label: "02" },
-  { id: "perjalanan", label: "03" },
-  { id: "projects", label: "04" },
-  { id: "contact", label: "05" },
-];
+import { SECTIONS } from "@/lib/sections";
 
 export default function GlobalScrollNav() {
   const [activeSection, setActiveSection] = useState("hero");

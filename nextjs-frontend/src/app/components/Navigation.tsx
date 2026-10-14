@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { usePathname } from "next/navigation";
 import { Github, Grid2X2, X, Instagram, Linkedin, MessageCircle } from "lucide-react";
+import { ID_SECTION, MENU_SECTIONS, SECTION_LINKS, hrefSection } from "@/lib/sections";
 
 const socialLinks = [
   { icon: <Linkedin size={16} />, href: "https://www.linkedin.com/in/muhamad-arkan-fauzi-5a6799380/", label: "LinkedIn", hoverClass: "hover:text-[#0A66C2]" },
@@ -14,15 +15,9 @@ const socialLinks = [
 
 const links = [
   { label: "HOME", href: "/" },
-  { label: "WORK", href: "/#projects" },
-  { label: "CONTACT", href: "/#contact" },
+  ...MENU_SECTIONS.map((s) => ({ label: s.menuLabel, href: hrefSection(s.id) })),
   { label: "DOSSIER", href: "/dossier" },
 ];
-
-const SECTION_LINKS: Record<string, string> = {
-  projects: "/#projects",
-  contact: "/#contact",
-};
 
 // Halaman ini memakai anchor, jadi tautan aktif mengikuti section yang
 // sudah melewati garis pemicu, bukan mengikuti klik terakhir.
@@ -51,7 +46,7 @@ const Navigation = () => {
     const triggerLine = window.innerHeight / 3;
     const onScroll = () => {
       let current = "";
-      for (const id of ["contact", "projects", "about"]) {
+      for (const id of ID_SECTION) {
         const el = document.getElementById(id);
         if (el && el.getBoundingClientRect().top <= triggerLine) {
           current = id;

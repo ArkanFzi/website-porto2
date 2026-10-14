@@ -53,7 +53,7 @@ const Contact: React.FC = () => {
   };
 
   return (
-    <section id="contact" className="relative w-full min-h-screen bg-surface text-white flex flex-col items-center justify-center py-20 lg:py-32 overflow-hidden">
+    <section id="contact" className="relative w-full bg-surface text-white flex flex-col items-center justify-center py-20 lg:py-32 overflow-hidden">
 
       <Toast
         isVisible={toast.isVisible}

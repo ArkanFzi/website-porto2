@@ -19,7 +19,7 @@ const Projects: React.FC<{ repos: RepoBerlian[] }> = ({ repos }) => {
   const prevPage = () => setPage((p) => (p - 1 + totalPages) % totalPages);
 
   return (
-    <section id="projects" className="relative w-full min-h-[120vh] bg-surface pt-32 pb-40 overflow-hidden text-white flex flex-col items-center">
+    <section id="projects" className="relative w-full bg-surface pt-32 pb-40 overflow-hidden text-white flex flex-col items-center">
 
       {/* Animated Gradient Mesh Background */}
       <div className="absolute inset-0 z-0 overflow-hidden hidden md:block">
