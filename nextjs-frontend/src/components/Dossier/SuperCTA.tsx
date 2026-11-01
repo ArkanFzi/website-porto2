@@ -13,7 +13,7 @@ export default function SuperCTA() {
         
         <div className="relative z-10 max-w-6xl mx-auto flex flex-col items-center">
             <h2 className="text-statement font-black uppercase tracking-tighter leading-[0.95] mb-12 text-transparent bg-clip-text bg-gradient-to-b from-white to-white/40 drop-shadow-lg">
-                Let&apos;s Build Something <br/><span className="text-accent-primary">Worth Shipping</span>
+                Let&apos;s Build Something <br/><span className="text-rosso-rim">Worth Shipping</span>
             </h2>
             
             <p className="text-body md:text-lg max-w-2xl mb-16 font-medium text-white/60">
@@ -22,10 +22,10 @@ export default function SuperCTA() {
 
             <div className="flex flex-col sm:flex-row gap-6">
                 <Link 
-                    href="/#contact"
+                    href="/#chapter-04"
                     className="group relative inline-flex items-center justify-center px-10 py-5 font-bold uppercase tracking-widest text-black bg-white overflow-hidden rounded-full transition-transform hover:scale-105"
                 >
-                    <span className="absolute w-0 h-0 transition-all duration-500 ease-out bg-accent-primary rounded-full group-hover:w-full group-hover:h-56"></span>
+                    <span className="absolute w-0 h-0 transition-all duration-500 ease-out bg-rosso rounded-full group-hover:w-full group-hover:h-56"></span>
                     <span className="relative flex items-center gap-3">
                         Start a Conversation <ArrowUpRight className="w-5 h-5 group-hover:rotate-45 transition-transform" />
                     </span>

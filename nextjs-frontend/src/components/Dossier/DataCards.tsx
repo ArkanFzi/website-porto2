@@ -310,11 +310,11 @@ export default function DataCards() {
                 {loadingCerts ? (
                     <span className="text-white/50 font-mono text-xs animate-pulse">Loading Awards...</span>
                 ) : certs.map((cert) => (
-                    <div key={cert.id} className="flex flex-col bg-gradient-to-r from-black/80 to-transparent p-3 rounded-lg border-l-2 border-accent-primary/50 backdrop-blur-sm">
+                    <div key={cert.id} className="flex flex-col bg-gradient-to-r from-black/80 to-transparent p-3 rounded-lg border-l-2 border-rosso/50 backdrop-blur-sm">
                         <h4 className="text-white font-bold text-sm leading-tight mb-1">{cert.title}</h4>
                         <div className="flex justify-between items-center text-tag font-mono font-semibold uppercase text-white/60">
                             <span>{cert.issuer}</span>
-                            <span className="text-accent-primary">{cert.date}</span>
+                            <span className="text-rosso">{cert.date}</span>
                         </div>
                     </div>
                 ))}
@@ -339,10 +339,10 @@ export default function DataCards() {
                     <span className="text-white/50 font-mono text-xs animate-pulse">Loading Journey...</span>
                 ) : experiences.map((exp) => (
                     <div key={exp.id} className="flex flex-col relative pl-4 pb-2 border-l border-white/20 last:border-0 last:pb-0">
-                        <div className="absolute left-[-5px] top-1.5 w-2 h-2 rounded-full bg-accent-secondary shadow-[0_0_10px_var(--flame)]" />
+                        <div className="absolute left-[-5px] top-1.5 w-2 h-2 rounded-full bg-rosso shadow-[0_0_10px_var(--rosso-rim)]" />
                         <h4 className="text-white font-bold text-body mb-0.5">{exp.role}</h4>
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between text-micro font-mono text-white/70">
-                            <span className="font-semibold text-accent-secondary/80">{exp.company}</span>
+                            <span className="font-semibold text-rosso/80">{exp.company}</span>
                             <span>{exp.period}</span>
                         </div>
                     </div>

@@ -129,7 +129,7 @@ export default function TimedCarousel({
                 Back
             </button>
             <span className="text-white/30 uppercase font-mono text-xs tracking-widest">/</span>
-            <span className="text-accent-primary uppercase font-mono text-xs tracking-widest">{categoryName}</span>
+            <span className="text-rosso uppercase font-mono text-xs tracking-widest">{categoryName}</span>
         </div>
 
         {/* Center/Left Content: Huge Typography */}
