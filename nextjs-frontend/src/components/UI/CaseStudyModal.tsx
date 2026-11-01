@@ -101,9 +101,9 @@ export const CaseStudyModal: React.FC<ModalProps> = ({ caseStudy, onClose }) => 
                 <span className="text-sm font-bold text-[#D41E12]">{caseStudy.concurrencyRps}</span>
               </div>
             </div>
-            <p className="font-mono text-[10px] uppercase tracking-widest text-white/40 -mt-4">
-              Both figures are measured on the project itself with the sample size written
-              inline; anything without a measurement stays n/a rather than estimated.
+            <p className="font-mono text-[10px] leading-relaxed text-white/40 -mt-4">
+              Both figures are measured on the project itself, sample size written inline.
+              Where there is no measurement there is no number.
             </p>
 
             {/* Architecture Decomposition */}
