@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useSyncExternalStore } from "react";
 import { usePortfolioMode } from "@/context/PortfolioModeContext";
 import { useBabAktif } from "@/components/SmoothScrollProvider";
+import { bacaCuplik, dengarCuplik, type CuplikanFrame } from "@/lib/perfStats";
 import { ArrowUpRight, Cpu, Sparkles, FileText, Activity, Volume2, VolumeX, Terminal, Layers } from "lucide-react";
 
 interface FrameProps {
@@ -26,6 +27,23 @@ const CHAPTER_LABELS = [
   "SELECTED ARCHIVES",
   "THE PADDOCK & DISPATCH",
 ];
+
+// Komponen kecil yang berdiri sendiri supaya pembaruan 1 Hz dari pengukur frame hanya
+// menyentuh teks ini, bukan seluruh frame HUD.
+const KinerjaKanvas: React.FC = () => {
+  const cuplik = useSyncExternalStore<CuplikanFrame | null>(
+    dengarCuplik,
+    bacaCuplik,
+    () => null
+  );
+  if (!cuplik) return null;
+  return (
+    <>
+      {" "}
+      • {cuplik.fps} FPS • p95 {cuplik.p95Ms}ms • DPR {cuplik.dpr} • {cuplik.frames}f
+    </>
+  );
+};
 
 export const MinimalFixedFrame: React.FC<FrameProps> = ({ onChapterClick }) => {
   const currentChapter = useBabAktif();
@@ -299,7 +317,8 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ onChapterClick }) => {
                       ? "HEALTH FIELD ABSEN"
                       : "BACKEND UNREACHABLE"
                   }`
-                : DASH}{" "}
+                : DASH}
+              <KinerjaKanvas />{" "}
               <span className="text-[#D41E12] font-mono text-[8px] ml-1">[HUD ⇡]</span>
             </span>
           ) : (

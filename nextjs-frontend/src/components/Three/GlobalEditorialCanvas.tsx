@@ -4,6 +4,7 @@ import React, { Suspense, useEffect, useRef, useState, useSyncExternalStore } fr
 import { Canvas } from "@react-three/fiber";
 import { PerformanceMonitor } from "@react-three/drei";
 import { ChiaroscuroMonolith } from "./ChiaroscuroMonolith";
+import { mulai, mulaiLapor, setDprKanvas } from "@/lib/perfStats";
 
 type Frameloop = "always" | "demand" | "never";
 
@@ -74,6 +75,17 @@ export const GlobalEditorialCanvas: React.FC<CanvasProps> = ({
       document.removeEventListener("visibilitychange", lihatLagi);
     };
   }, [reduceMotion]);
+
+  // Pengukur ritme frame halaman + pelapor ke /api/telemetry, sekali per mount.
+  // Loop-nya berhenti sendiri saat tab tersembunyi (lihat lib/perfStats.ts).
+  useEffect(() => {
+    mulai();
+    mulaiLapor();
+  }, []);
+
+  useEffect(() => {
+    setDprKanvas(dpr);
+  }, [dpr]);
 
   return (
     <>

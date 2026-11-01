@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useSyncExternalStore } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { usePortfolioMode } from "@/context/PortfolioModeContext";
 import { X, Activity, Globe, Music, Server } from "lucide-react";
 import audioEngine from "@/lib/audioEngine";
+import { bacaCuplik, dengarCuplik, type CuplikanFrame } from "@/lib/perfStats";
 
 // Kontrak /api/telemetry (lihat src/app/api/telemetry/route.ts). Field yang bisa null berarti
 // tidak ada pengukuran, dan yang tampil di panel adalah "—" — bukan angka pengganti.
@@ -15,6 +16,16 @@ interface TelemetryPayload {
   heapMb: number | null;
   backend: { reachable: boolean; db: "ok" | "error" | null; rttMs: number | null };
   runtime: { node: string | null; next: string | null };
+  clientFrames: {
+    laporan: number;
+    frame: number;
+    medianMs: number;
+    p95Ms: number;
+    fpsTerendah: number;
+    shareLambatPct: number;
+    resolusiTeratas: { resolusi: string; laporan: number }[];
+    sejak: string;
+  } | null;
   gitCommit: string | null;
   timestamp: string;
 }
@@ -241,6 +252,7 @@ export const TelemetryDrawer: React.FC = () => {
     return () => cancelAnimationFrame(animId);
   }, [telemetryOpen]);
 
+  const cuplikLokal = useSyncExternalStore<CuplikanFrame | null>(dengarCuplik, bacaCuplik, () => null);
   const samples = telemetry?.latencySamples ?? [];
   const statistik = ringkasLatency(samples);
   const titik = koordinatSparkline(samples);
@@ -409,6 +421,44 @@ export const TelemetryDrawer: React.FC = () => {
                   <div className="flex justify-between">
                     <span className="text-white/40">HEAP NODE:</span>
                     <span>{nilai(telemetry?.heapMb, " MB")}</span>
+                  </div>
+                  {/* Ritme frame hasil ukur browser — yang lokal untuk mesin ini, yang
+                      dikumpulkan server sebagai bukti angka FPS bisa dikutip dari pengunjung. */}
+                  <div className="flex justify-between">
+                    <span className="text-white/40">MESIN INI (fps / p95 / dpr):</span>
+                    <span>
+                      {cuplikLokal
+                        ? `${cuplikLokal.fps} / ${cuplikLokal.p95Ms}ms / ${cuplikLokal.dpr}`
+                        : DASH}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/40">PENGUNJUNG (p95 / lambat):</span>
+                    <span>
+                      {telemetry?.clientFrames
+                        ? `${telemetry.clientFrames.p95Ms}ms / ${telemetry.clientFrames.shareLambatPct}%`
+                        : DASH}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/40">LAPORAN / FRAME:</span>
+                    <span>
+                      {telemetry?.clientFrames
+                        ? `${telemetry.clientFrames.laporan} / ${telemetry.clientFrames.frame}`
+                        : DASH}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/40">RESOLUSI TERATAS:</span>
+                    <span className="truncate pl-3">
+                      {telemetry?.clientFrames?.resolusiTeratas?.length
+                        ? telemetry.clientFrames.resolusiTeratas[0].resolusi
+                        : DASH}
+                    </span>
+                  </div>
+                  <div className="text-white/30 pt-1">
+                    Diukur hanya selama tab terlihat; jendela agregat = sejak instance ini
+                    hidup{telemetry?.clientFrames ? ` (${telemetry.clientFrames.sejak.slice(0, 16).replace("T", " ")})` : ""}.
                   </div>
                 </div>
               </div>
