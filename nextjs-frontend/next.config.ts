@@ -53,6 +53,9 @@ const nextConfig: NextConfig = {
   },
   compress: true,
   productionBrowserSourceMaps: false,
+  experimental: {
+    agentUpgrade: "security",
+  },
 };
 
 export default nextConfig;
