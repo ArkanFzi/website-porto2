@@ -39,7 +39,7 @@ const vertexShader = /* glsl */ `
 
     // Hover ripple on project inspect
     if (uHover > 0.01) {
-      pos.z += sin(pos.y * 10.0 + uTime * 4.0) * 0.08 * uHover;
+      pos.z += sin(pos.y * 10.0 + uTime * 4.0) * 0.12 * uHover;
     }
 
     vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
@@ -110,17 +110,17 @@ const fragmentShader = /* glsl */ `
     // ── CHAPTER 3 HOVER: PROJECT AURA ──
     if (uHover > 0.01) {
       float pulse = sin(uTime * 3.0) * 0.5 + 0.5;
-      vec3 projectAura = vec3(0.83, 0.117, 0.07) * pulse * 0.7;
-      finalColor = mix(finalColor, finalColor * vec3(1.2, 0.4, 0.3) + projectAura, uHover * 0.7);
+      vec3 projectAura = vec3(0.83, 0.117, 0.07) * pulse * 0.8;
+      finalColor = mix(finalColor, finalColor * vec3(1.2, 0.35, 0.25) + projectAura, uHover * 0.8);
     }
 
     // ── CHAPTER 4 FINALE: HIGH-CONTRAST SCUDERIA RED DUOTONE ──
-    float ch4Factor = smoothstep(2.3, 3.0, uChapter);
+    float ch4Factor = smoothstep(2.2, 2.9, uChapter);
     if (ch4Factor > 0.001) {
       vec3 deepCrimson = vec3(0.478, 0.043, 0.02);
       vec3 brightRosso = vec3(0.831, 0.117, 0.07);
       vec3 duotone = mix(deepCrimson, brightRosso, lum);
-      finalColor = mix(finalColor, duotone * 1.4, ch4Factor * 0.92);
+      finalColor = mix(finalColor, duotone * 1.4, ch4Factor * 0.95);
     }
 
     // Vignette falloff around edges of monolith
@@ -195,7 +195,7 @@ export const ChiaroscuroMonolith: React.FC<MonolithProps> = ({
     }
 
     // ── CHAPTER-CHOREOGRAPHED TRANSFORMS ──
-    const baseW = Math.min(viewport.width * 0.4, 4.2);
+    const baseW = Math.min(viewport.width * 0.38, 3.8);
     const baseH = baseW / 0.746;
     meshRef.current.scale.set(baseW, baseH, 1);
 
@@ -204,29 +204,33 @@ export const ChiaroscuroMonolith: React.FC<MonolithProps> = ({
     let targetZ = 0;
     let targetRotY = 0;
 
-    if (chapter < 1.0) {
+    if (chapter < 0.8) {
+      // Section 01 (Hero): Center [0, 0, 0]
       targetX = mouse.current.x * 0.2;
       targetY = mouse.current.y * 0.2;
       targetZ = 0;
       targetRotY = mouse.current.x * 0.12;
-    } else if (chapter < 2.0) {
-      const t = chapter - 1.0;
-      targetX = THREE.MathUtils.lerp(0, -viewport.width * 0.24, t) + mouse.current.x * 0.15;
+    } else if (chapter < 1.8) {
+      // Section 02 (About): Left Column [-2.2, 0, 0], rotY 0.25 rad
+      const t = (chapter - 0.8) / 1.0;
+      targetX = THREE.MathUtils.lerp(0, -2.2, t) + mouse.current.x * 0.15;
       targetY = mouse.current.y * 0.15;
-      targetZ = THREE.MathUtils.lerp(0, -0.2, t);
-      targetRotY = THREE.MathUtils.lerp(0, 0.26, t) + mouse.current.x * 0.08;
-    } else if (chapter < 2.8) {
-      const t = (chapter - 2.0) / 0.8;
-      targetX = THREE.MathUtils.lerp(-viewport.width * 0.24, 0, t) + mouse.current.x * 0.2;
-      targetY = mouse.current.y * 0.2;
-      targetZ = THREE.MathUtils.lerp(-0.2, -0.7, t);
-      targetRotY = THREE.MathUtils.lerp(0.26, 0, t);
+      targetZ = 0;
+      targetRotY = THREE.MathUtils.lerp(0, 0.25, t) + mouse.current.x * 0.08;
+    } else if (chapter < 2.6) {
+      // Section 03 (Works): Right Column [2.0, 0, -0.5], rotY -0.2 rad
+      const t = (chapter - 1.8) / 0.8;
+      targetX = THREE.MathUtils.lerp(-2.2, 2.0, t) + mouse.current.x * 0.18;
+      targetY = mouse.current.y * 0.18;
+      targetZ = THREE.MathUtils.lerp(0, -0.5, t);
+      targetRotY = THREE.MathUtils.lerp(0.25, -0.2, t);
     } else {
-      const t = (chapter - 2.8) / 0.2;
-      targetX = 0;
-      targetY = -0.3;
-      targetZ = THREE.MathUtils.lerp(-0.7, -1.8, t);
-      targetRotY = -0.12;
+      // Section 04 (Finale): Silhouette Far Back [0, -0.4, -2.0]
+      const t = (chapter - 2.6) / 0.4;
+      targetX = THREE.MathUtils.lerp(2.0, 0, t);
+      targetY = -0.4;
+      targetZ = THREE.MathUtils.lerp(-0.5, -2.0, t);
+      targetRotY = THREE.MathUtils.lerp(-0.2, -0.1, t);
     }
 
     meshRef.current.position.x = THREE.MathUtils.lerp(meshRef.current.position.x, targetX, 0.08);

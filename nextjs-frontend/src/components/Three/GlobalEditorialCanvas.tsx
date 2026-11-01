@@ -18,7 +18,7 @@ export const GlobalEditorialCanvas: React.FC<CanvasProps> = ({
   return (
     <div
       aria-hidden="true"
-      className="fixed inset-0 w-screen h-screen pointer-events-none z-[5] overflow-hidden"
+      className="fixed inset-0 w-screen h-screen pointer-events-none z-10 overflow-hidden"
     >
       <Canvas
         camera={{ position: [0, 0, 5], fov: 42 }}
