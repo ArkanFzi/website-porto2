@@ -121,6 +121,38 @@ function rewrites() {
 
 // -- sumber kebenaran 3: route handler lokal Next --
 
+// Field metrik yang nilainya HARUS hasil pengukuran. Kalau sebuah route handler menulis
+// nilainya sebagai konstanta, angka itu tidak mungkin benar setelah commit/deploy berikutnya
+// — dan dia tetap tampil sebagai fakta di HUD halaman depan. Ini yang membuat
+// `sla: "99.98% SLA"`, `gitCommit: "8f7dc64"`, dan `visitorCount: 142` bisa lolos CI bertahun-tahun.
+const METRIK_TERUKUR = [
+  "latencyMs",
+  "gitCommit",
+  "edgeNode",
+  "sla",
+  "visitorCount",
+  "heapMb",
+  "p99Ms",
+  "uptimePercent",
+];
+
+function metrikPabrik(src, file) {
+  const temuan = [];
+  for (const nama of METRIK_TERUKUR) {
+    // Hanya menangkap nilai literal (string/angka). Bentuk shorthand `latencyMs,` dan
+    // `field: variabel` / `field: a ? b : c` berarti nilainya datang dari pengukuran.
+    const re = new RegExp(
+      `\\b${nama}\\s*:\\s*(?:"([^"]*)"|'([^']*)'|(\\d+(?:\\.\\d+)?(?:\\s*%)?))(?=[,\\s])`,
+      "g"
+    );
+    let m;
+    while ((m = re.exec(src))) {
+      temuan.push(`${file}:${nama} = ${m[1] ?? m[2] ?? m[3]}`);
+    }
+  }
+  return temuan;
+}
+
 function localHandlers() {
   const dir = join(FE, "src/app/api");
   return walk(dir, (f) => f.endsWith("route.ts")).map((f) => {
@@ -238,7 +270,10 @@ function main() {
     [/in a real application/i, "belum diimplementasi"],
     [/not\s+implemented/i, "belum diimplementasi"],
   ];
-  const stubsNow = ctx.handlers.filter((h) => stubPatterns.some(([re]) => re.test(h.src))).map((h) => h.file);
+  const stubsNow = [
+    ...ctx.handlers.filter((h) => stubPatterns.some(([re]) => re.test(h.src))).map((h) => h.file),
+    ...ctx.handlers.flatMap((h) => metrikPabrik(h.src, h.file)),
+  ];
   const baselineStubs = new Set(baseline.stub_handlers);
   const stubAdded = stubsNow.filter((s) => !baselineStubs.has(s));
   const stubFixed = [...baselineStubs].filter((s) => !stubsNow.includes(s));
@@ -258,7 +293,12 @@ function main() {
   console.log("");
   for (const h of ctx.handlers) {
     const why = stubPatterns.find(([re]) => re.test(h.src));
-    console.log(`  handler ${h.file} export=${h.exported.join(",") || "-"}${why ? `  <-- STUB (${why[1]})` : ""}`);
+    const pabrik = metrikPabrik(h.src, h.file);
+    console.log(
+      `  handler ${h.file} export=${h.exported.join(",") || "-"}${why ? `  <-- STUB (${why[1]})` : ""}${
+        pabrik.length ? `  <-- METRIK HARDCODED (${pabrik.length})` : ""
+      }`
+    );
   }
 
   let gagal = false;
