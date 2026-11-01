@@ -4,6 +4,7 @@ import React, { Suspense, useEffect, useRef, useState, useSyncExternalStore } fr
 import { Canvas } from "@react-three/fiber";
 import { PerformanceMonitor } from "@react-three/drei";
 import { AktorPotret } from "./stage/AktorPotret";
+import { PengukurRender } from "./stage/PengukurRender";
 import { mulai, mulaiLapor, setDprKanvas } from "@/lib/perfStats";
 
 type Frameloop = "always" | "demand" | "never";
@@ -127,6 +128,8 @@ export const GlobalEditorialCanvas: React.FC<CanvasProps> = ({
               scrollVelocityRef={scrollVelocityRef}
             />
           </Suspense>
+          {/* Alat ukur, bukan bagian isi panggung: write-only, tidak memengaruhi render. */}
+          {process.env.NODE_ENV !== "production" && <PengukurRender />}
         </Canvas>
       </div>
     </>
