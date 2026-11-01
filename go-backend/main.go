@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -26,6 +28,7 @@ import (
 	"github.com/joho/godotenv"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var (
@@ -122,6 +125,18 @@ const (
 )
 
 var pembatasLogin = &pembatasLaju{token: loginBurst, burst: loginBurst, refill: loginRefillEach}
+
+// Bucket ketiga, satu-satunya yang dipanggil setiap muatan halaman. Angka burst dipilih di atas
+// apa pun yang bisa dihasilkan pengunjung sungguhan (satu POST per halaman yang dibuka), jadi
+// yang kena rem hanya script — dan remnya tetap berupa 429, bukan hit yang hilang diam-diam.
+// Global, bukan per-IP, dengan alasan yang sama seperti login dan contact: seluruh frontend
+// masuk lewat satu pool egress Cloud Run dan X-Forwarded-For boleh diisi pengirimnya.
+const (
+	kunjunganBurst      = 20
+	kunjunganRefillEach = time.Second
+)
+
+var pembatasKunjungan = &pembatasLaju{token: kunjunganBurst, burst: kunjunganBurst, refill: kunjunganRefillEach}
 
 type isianTeks struct {
 	Label string
@@ -305,6 +320,30 @@ type ContactMessage struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
+// tabelKunjungan dipakai langsung di SQL ON CONFLICT (kunci baris lama harus disebut dengan
+// nama tabelnya), jadi namanya dikunci di satu tempat dan bukan diserahkan ke inflection.
+const tabelKunjungan = "kunjungans"
+
+// Kunjungan adalah satu baris per (hari, kunci-pengunjung) — bukan per request. Baris kedua dari
+// orang yang sama pada hari yang sama hanya menaikkan hits, itulah yang membuat orang yang sama
+// boleh dihitung sekali pada uniqueLast24h tapi tetap menaikkan total.
+//
+// Yang disimpan kunci SHA-256, bukan alamat IP: kolom ini tidak bisa dipetakan balik ke
+// seseorang setelah salt-nya tidak diketahui, dan IP mentah tidak pernah menyentuh DB sama sekali.
+// Hari disimpan sebagai date (bukan timestamp) supaya pergantian hari tidak ikut zona waktu
+// sesi database.
+type Kunjungan struct {
+	ID        string    `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
+	Hari      string    `gorm:"type:date;not null;uniqueIndex:uq_kunjungan_hari_kunci" json:"hari"`
+	Kunci     string    `gorm:"size:64;not null;uniqueIndex:uq_kunjungan_hari_kunci" json:"kunci"`
+	Hits      int       `gorm:"not null;default:1" json:"hits"`
+	Terakhir  time.Time `gorm:"not null" json:"terakhir"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+func (Kunjungan) TableName() string { return tabelKunjungan }
+
 var DB *gorm.DB
 
 // simpanPesan dan pengirimEmail adalah titik sisip test. Di produksi keduanya implementasi
@@ -358,10 +397,10 @@ func tungguSelesai(wg *sync.WaitGroup, batas time.Duration) bool {
 }
 
 // managedTables adalah tabel yang harus sudah ada sebelum satu request pun dilayani.
-var managedTables = []string{"certificates", "experiences", "contact_messages", "journeys"}
+var managedTables = []string{"certificates", "experiences", "contact_messages", "journeys", tabelKunjungan}
 
 func migrateSchema() {
-	if err := DB.AutoMigrate(&Certificate{}, &Experience{}, &ContactMessage{}, &Journey{}); err != nil {
+	if err := DB.AutoMigrate(&Certificate{}, &Experience{}, &ContactMessage{}, &Journey{}, &Kunjungan{}); err != nil {
 		log.Fatalf("migrate: gagal menyiapkan skema: %v", err)
 	}
 	log.Println("migrate: skema siap")
@@ -499,6 +538,10 @@ func main() {
 		}
 		c.JSON(http.StatusOK, rows)
 	})
+
+	// Kunjungan: POST dicatat tiap muatan halaman, GET dibaca halaman depan.
+	api.POST("/visit", handleKunjungan)
+	api.GET("/visits", handleRingkasanKunjungan)
 
 	api.GET("/health", func(c *gin.Context) {
 		sqlDB, err := DB.DB()
@@ -787,6 +830,119 @@ func main() {
 	}
 	log.Println("server: berhenti")
 
+}
+
+// -- Penghitung pengunjung --
+
+// zonaKunjungan adalah ambang "hari ini". FixedZone, bukan LoadLocation: image produksi tidak
+// selalu punya tzdata saat jam proses berjalan, dan kegagalan LoadLocation baru terdengar di
+// deploy. Offset +7 mengikuti zona yang sudah dipakai DSN database (TimeZone=Asia/Jakarta).
+var zonaKunjungan = time.FixedZone("WIB", 7*3600)
+
+// hariKunjungan satu-satunya sumber "hari" untuk tulis maupun baca, jadi ambang tengah malam
+// tidak bisa berbeda antara INSERT dan GET /api/visits.
+func hariKunjungan(kini time.Time) string {
+	return kini.In(zonaKunjungan).Format("2006-01-02")
+}
+
+// kunciPengunjung = SHA-256(IP + hari + salt). Salt memakai JWT_SECRET yang memang sudah wajib
+// ada: tanpa salt, kunci bisa ditebak dan kecocokan dengan sebuah alamat IP bisa dikonfirmasi
+// pihak ketiga lewat tabel hash publik. Dengan salt, baris ini cuma bermakna bagi proses yang
+// memegang secret yang sama, dan IP mentah tidak pernah disimpan di mana pun.
+func kunciPengunjung(ip, hari string, salt []byte) string {
+	h := sha256.New()
+	// Input persis IP + "|" + tanggal + "|" + salt. Pemisah dipakai supaya pasangan yang bisa
+	// digabung tanpa batas tidak menghasilkan kunci yang sama untuk orang atau hari berbeda
+	// (mis. ip="1.2", hari="3.4|5" vs ip="1.2|3", hari="4|5").
+	h.Write([]byte(ip))
+	h.Write([]byte("|"))
+	h.Write([]byte(hari))
+	h.Write([]byte("|"))
+	h.Write(salt)
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// catatKunjungan menaikkan hit hari ini untuk satu pengunjung. Satu statement ON CONFLICT karena
+// dua langkah "UPDATE lalu INSERT kalau nol" kalah oleh concurrency: dua request paralel dari
+// orang yang sama sama-sama melihat nol baris, dan yang kedua ditolak indeks unik — hitnya hilang
+// tanpa error.
+func catatKunjungan(ip string, kini time.Time) error {
+	hari := hariKunjungan(kini)
+	baris := Kunjungan{
+		Hari:     hari,
+		Kunci:    kunciPengunjung(ip, hari, jwtSecret),
+		Hits:     1,
+		Terakhir: kini,
+	}
+	return DB.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "hari"}, {Name: "kunci"}},
+		DoUpdates: clause.Assignments(map[string]interface{}{
+			// Baris lama harus disebut dengan nama tabelnya: "hits" tanpa qualifier di dalam
+			// DO UPDATE ditolak Postgres dengan "column reference is ambiguous".
+			"hits":       gorm.Expr(tabelKunjungan + ".hits + 1"),
+			"terakhir":   kini,
+			"updated_at": kini,
+		}),
+	}).Create(&baris).Error
+}
+
+// ringkasanKunjungan adalah kontrak JSON GET /api/visits. Urutan field mengikuti deklarasi ini,
+// jadi keluarannya persis {"total":..,"today":..,"uniqueLast24h":..} — angka, bukan string.
+type ringkasanKunjungan struct {
+	Total     int64 `json:"total"`
+	HariIni   int64 `json:"today"`
+	Unik24Jam int64 `json:"uniqueLast24h"`
+}
+
+func ringkasKunjungan(kini time.Time) (ringkasanKunjungan, error) {
+	var out ringkasanKunjungan
+	// Hits dijumlahkan, bukan dihitung barisnya: total adalah jumlah kunjungan, sedangkan
+	// satu baris bisa memuat beberapa hit dari orang yang sama pada hari yang sama.
+	if err := DB.Model(&Kunjungan{}).Select("COALESCE(SUM(hits), 0)").Scan(&out.Total).Error; err != nil {
+		return out, err
+	}
+	if err := DB.Model(&Kunjungan{}).Where("hari = ?", hariKunjungan(kini)).
+		Select("COALESCE(SUM(hits), 0)").Scan(&out.HariIni).Error; err != nil {
+		return out, err
+	}
+	// Jendela bergerak 24 jam, bukan "hari kemarin": baris dihitung sekali berapa pun hit di
+	// dalamnya, jadi orang yang sama tidak menaikkan angka ini dua kali.
+	if err := DB.Model(&Kunjungan{}).Where("terakhir >= ?", kini.Add(-24*time.Hour)).
+		Distinct("kunci").Count(&out.Unik24Jam).Error; err != nil {
+		return out, err
+	}
+	return out, nil
+}
+
+// handleKunjungan mencatat satu kunjungan: tanpa body, tanpa auth, balas 204. Yang disimpan
+// hanyalah bahwa satu alamat melihat satu halaman, dan rem laju adalah satu-satunya penjaga agar
+// total tidak bisa digelembungkan script.
+func handleKunjungan(c *gin.Context) {
+	// Dijaga sebelum DB disentuh, sama seperti login: yang mau dibatasi justru biaya penulisannya.
+	if !pembatasKunjungan.boleh(time.Now()) {
+		log.Printf("kunjungan: laju ditolak (client %s)", c.ClientIP())
+		c.Header("Retry-After", strconv.Itoa(int(kunjunganRefillEach.Seconds())))
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": "Terlalu banyak kunjungan dalam waktu singkat, coba lagi sebentar"})
+		return
+	}
+	if err := catatKunjungan(c.ClientIP(), time.Now()); err != nil {
+		log.Printf("kunjungan: gagal mencatat (client %s): %v", c.ClientIP(), err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mencatat kunjungan"})
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+// handleRingkasanKunjungan publik: tiga angka ini memang akan ditampilkan di halaman depan, dan
+// tidak ada satu pun identitas yang bisa dibaca darinya.
+func handleRingkasanKunjungan(c *gin.Context) {
+	out, err := ringkasKunjungan(time.Now())
+	if err != nil {
+		log.Printf("visits: gagal menghitung: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal membaca kunjungan"})
+		return
+	}
+	c.JSON(http.StatusOK, out)
 }
 
 // handleContact adalah satu-satunya jalur publik yang menulis ke DB dan memicu SMTP,
