@@ -114,27 +114,45 @@ interface DualityProps {
 export const ChapterDuality: React.FC<DualityProps> = ({
   perjalanan,
   certificates,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   experiences,
 }) => {
   const { mode } = usePortfolioMode();
-  const [activePhase, setActivePhase] = useState<string>("03");
+  const [activePhase, setActivePhase] = useState<string>("01");
   const certList = certificates && certificates.length > 0 ? certificates : FALLBACK_CERTIFICATES;
 
-  // Blend backend dynamic journey records if populated in database
-  const hasDynamicDb = perjalanan && perjalanan.length >= 3;
-  const currentPhases = hasDynamicDb
-    ? perjalanan.map((p, idx) => ({
-        id: String(idx + 1).padStart(2, "0"),
-        phase: `PHASE ${String(idx + 1).padStart(2, "0")} // SECTOR ${idx + 1}`,
-        title: p.title,
-        org: p.linkLabel || "SEKAWAN MEDIA",
-        year: p.year,
-        summary: p.body,
-        specs: ["POSTGRESQL SYNCED", "VERIFIED TELEMETRY"],
-        link: p.linkHref,
-      }))
-    : (mode === "engineer" ? ENGINEER_PHASES : CREATOR_PHASES);
+  // Prioritas sumber timeline: tabel experiences (Postgres) → tabel journeys → fallback hardcoded.
+  const phasesDariPengalaman: CareerPhase[] = (experiences ?? []).map((e, idx) => ({
+    id: String(idx + 1).padStart(2, "0"),
+    phase: `PHASE ${String(idx + 1).padStart(2, "0")} // EMPLOYMENT RECORD`,
+    title: e.role,
+    org: e.company.toUpperCase(),
+    year: e.period,
+    summary: "",
+    specs: ["POSTGRESQL SYNCED", "VERIFIED EMPLOYMENT"],
+  }));
+
+  const phasesDariJourney: CareerPhase[] = (perjalanan ?? []).map((p, idx) => ({
+    id: String(idx + 1).padStart(2, "0"),
+    phase: `PHASE ${String(idx + 1).padStart(2, "0")} // SECTOR ${idx + 1}`,
+    title: p.title,
+    org: p.linkLabel || "SEKAWAN MEDIA",
+    year: p.year,
+    summary: p.body,
+    specs: ["POSTGRESQL SYNCED", "VERIFIED TELEMETRY"],
+    link: p.linkHref,
+  }));
+
+  const phasesDariDb =
+    phasesDariPengalaman.length > 0 || phasesDariJourney.length >= 3;
+
+  const currentPhases =
+    phasesDariPengalaman.length > 0
+      ? phasesDariPengalaman
+      : phasesDariJourney.length >= 3
+        ? phasesDariJourney
+        : mode === "engineer"
+          ? ENGINEER_PHASES
+          : CREATOR_PHASES;
 
   return (
     <section
@@ -153,7 +171,7 @@ export const ChapterDuality: React.FC<DualityProps> = ({
           </div>
 
           <div className="flex items-center gap-3">
-            {hasDynamicDb && (
+            {phasesDariDb && (
               <span className="font-mono text-[9px] tracking-[0.2em] uppercase text-[#D41E12]">
                 ● DB LIVE
               </span>
@@ -222,31 +240,37 @@ export const ChapterDuality: React.FC<DualityProps> = ({
                   return (
                     <div
                       key={item.id}
-                      className="group border-b border-[rgba(10,10,10,0.12)] hover:border-[#D41E12] transition-colors duration-300 py-6 sm:py-8 cursor-pointer"
-                      onClick={() => setActivePhase(isOpen ? "" : item.id)}
+                      className="group border-b border-[rgba(10,10,10,0.12)] hover:border-[#D41E12] transition-colors duration-300 py-6 sm:py-8"
                     >
-                      <div className="flex items-start sm:items-center justify-between gap-4">
+                      <h3 className="font-serif text-xl sm:text-2xl font-bold">
+                      <button
+                        type="button"
+                        aria-expanded={isOpen}
+                        aria-controls={`phase-panel-${item.id}`}
+                        onClick={() => setActivePhase(isOpen ? "" : item.id)}
+                        className="w-full flex items-start sm:items-center justify-between gap-4 text-left cursor-pointer"
+                      >
                         
-                        <div className="flex items-start sm:items-center gap-4 sm:gap-6">
+                        <span className="flex items-start sm:items-center gap-4 sm:gap-6">
                           <span className="font-mono text-xs sm:text-sm font-bold text-[#D41E12] pt-0.5 sm:pt-0">
                             /{item.id}
                           </span>
                           
-                          <div>
+                          <span className="flex flex-col items-start">
                             <span className="font-mono text-[9px] tracking-[0.22em] uppercase text-[#6E6A64] block mb-1">
                               {item.phase} • {item.org}
                             </span>
-                            <h3
-                              className={`font-serif text-xl sm:text-2xl font-bold transition-colors duration-300 ${
+                            <span
+                              className={`transition-colors duration-300 ${
                                 isOpen ? "text-[#D41E12]" : "text-[#0A0A0A] group-hover:text-[#D41E12]"
                               }`}
                             >
                               {item.title}
-                            </h3>
-                          </div>
-                        </div>
+                            </span>
+                          </span>
+                        </span>
 
-                        <div className="flex items-center gap-4 shrink-0 pt-1 sm:pt-0">
+                        <span className="flex items-center gap-4 shrink-0 pt-1 sm:pt-0">
                           <span className="font-mono text-xs font-bold text-[#0A0A0A]/70">
                             {item.year}
                           </span>
@@ -255,20 +279,24 @@ export const ChapterDuality: React.FC<DualityProps> = ({
                               isOpen ? "rotate-180" : ""
                             }`}
                           />
-                        </div>
-                      </div>
+                        </span>
+                      </button>
+                      </h3>
 
                       {/* Accordion Content */}
                       {isOpen && (
                         <motion.div
+                          id={`phase-panel-${item.id}`}
                           initial={{ opacity: 0, height: 0 }}
                           animate={{ opacity: 1, height: "auto" }}
                           transition={{ duration: 0.3 }}
                           className="pt-4 mt-4 pl-8 sm:pl-12"
                         >
-                          <p className="font-sans text-xs sm:text-sm text-[#6E6A64] leading-relaxed mb-4 max-w-2xl">
-                            {item.summary}
-                          </p>
+                          {item.summary && (
+                            <p className="font-sans text-xs sm:text-sm text-[#6E6A64] leading-relaxed mb-4 max-w-2xl">
+                              {item.summary}
+                            </p>
+                          )}
 
                           <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
                             <div className="flex flex-wrap gap-2">
@@ -288,7 +316,6 @@ export const ChapterDuality: React.FC<DualityProps> = ({
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-1.5 font-mono text-[10px] font-bold text-[#D41E12] hover:underline uppercase tracking-wider"
-                                onClick={(e) => e.stopPropagation()}
                               >
                                 <span>INSPECT RECORD</span>
                                 <ExternalLink className="w-3 h-3" />
