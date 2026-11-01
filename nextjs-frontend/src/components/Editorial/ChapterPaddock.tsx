@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { ArrowUpRight, Send, CheckCircle2 } from "lucide-react";
+import MeshPortal from "./MeshPortal";
 
 const SOCIAL_CHANNELS = [
   { name: "GITHUB", url: "https://github.com/ArkanFzi" },
@@ -71,6 +72,7 @@ export const ChapterPaddock: React.FC = () => {
       id="chapter-04"
       className="relative w-full min-h-screen bg-[#D41E12] text-[#F7F5F0] pt-32 sm:pt-36 pb-48 md:pb-56 px-6 md:px-12 select-none overflow-hidden transition-colors duration-700 flex flex-col justify-between"
     >
+      <MeshPortal bab={4} className="left-1/2 top-[28vh] h-[60vh] w-[23vw] -translate-x-1/2" />
       <div className="w-full max-w-[1600px] mx-auto z-20">
         
         {/* ── Top Header Tags ── */}

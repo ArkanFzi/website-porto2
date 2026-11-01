@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useMemo, useEffect } from "react";
+import React, { useRef, useMemo, useEffect, useLayoutEffect } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useTexture } from "@react-three/drei";
 import * as THREE from "three";
@@ -13,6 +13,15 @@ interface MonolithProps {
   scrollVelocityRef: React.RefObject<number>;
 }
 
+/** Rect portal dalam pixel CSS; elemen penandanya ber-jangkar layar (fixed), jadi
+ *  nilainya tidak berubah saat halaman digulir dan cukup dibaca ulang saat resize. */
+interface PortalRect {
+  kiri: number;
+  atas: number;
+  lebar: number;
+  tinggi: number;
+}
+
 const vertexShader = /* glsl */ `
   uniform float uTime;
   uniform vec2 uMouse;
@@ -23,6 +32,7 @@ const vertexShader = /* glsl */ `
   varying vec2 vUv;
   varying vec3 vNormal;
   varying vec3 vViewPosition;
+  varying vec2 vClip;
 
   void main() {
     vUv = uv;
@@ -47,6 +57,7 @@ const vertexShader = /* glsl */ `
     vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
     vViewPosition = -mvPosition.xyz;
     gl_Position = projectionMatrix * mvPosition;
+    vClip = gl_Position.xy / gl_Position.w;
   }
 `;
 
@@ -61,10 +72,13 @@ const fragmentShader = /* glsl */ `
   uniform float uWireframe;
   uniform float uReveal;
   uniform vec2 uCursorUV;
+  uniform vec4 uMask;      // batas portal dalam NDC: kiri, kanan, bawah, atas
+  uniform vec2 uNdcPerPx;  // lebar/satu tinggi layar dalam NDC, untuk tepi potong
 
   varying vec2 vUv;
   varying vec3 vNormal;
   varying vec3 vViewPosition;
+  varying vec2 vClip;
 
   void main() {
     vec2 uv = vUv;
@@ -164,6 +178,14 @@ const fragmentShader = /* glsl */ `
     // Fade out in Chapter 4
     float alpha = cardAlpha * (1.0 - ch4Factor * 0.85);
 
+    // ── POTONG PORTAL ──
+    // Kartu boleh lebih lebar dari kotaknya (parallax pointer, gelombang, miring);
+    // sisanya dipotong pada batas kotak DOM bab, supaya kartu tidak pernah menutupi
+    // teks. Tepi dibuat lunak ~3px agar tidak terlihat sebagai garis bergerigi.
+    float luarX = max(max(uMask.x - vClip.x, vClip.x - uMask.y) / uNdcPerPx.x, 0.0);
+    float luarY = max(max(uMask.z - vClip.y, vClip.y - uMask.w) / uNdcPerPx.y, 0.0);
+    alpha *= 1.0 - smoothstep(0.0, 3.0, max(luarX, luarY));
+
     gl_FragColor = vec4(finalColor, alpha);
   }
 `;
@@ -211,23 +233,31 @@ export const ChiaroscuroMonolith: React.FC<MonolithProps> = ({
     }
   }, [mode]);
 
-  // Papan daftar bab 03 = sumber kebenaran posisi gutter. Diukur dari DOM, bukan
-  // angka yang disalin, supaya lebar daftar berubah pun kartu tetap tidak menutupi teks.
-  const papan = useRef({ kananPx: 0, ada: false });
-  useEffect(() => {
-    const el = document.getElementById("ch03-papan");
-    if (!el) return;
+  // Portal = kotak DOM yang dideklarasikan tiap bab (MeshPortal). Posisi, ukuran, dan
+  // batas potong kartu semuanya diturunkan dari rect portal, jadi menata ulang layout
+  // bab otomatis menggeser kartu tanpa menyentuh angka koreografi di sini.
+  const portal = useRef(new Map<number, PortalRect>());
+  useLayoutEffect(() => {
+    const simpul = Array.from(document.querySelectorAll<HTMLElement>("[data-portal]"));
+    if (!simpul.length) return;
     const baca = () => {
-      const r = el.getBoundingClientRect();
-      papan.current.ada = r.width > 0;
-      papan.current.kananPx = r.right;
+      for (const el of simpul) {
+        const r = el.getBoundingClientRect();
+        const bab = Number(el.dataset.portal);
+        if (r.width < 2 || r.height < 2) portal.current.delete(bab);
+        else portal.current.set(bab, { kiri: r.left, atas: r.top, lebar: r.width, tinggi: r.height });
+      }
       // Loop demand (TIER 1) tidak menggambar sendiri saat DOM berubah.
       invalidate();
     };
     baca();
     const pengamat = new ResizeObserver(baca);
-    pengamat.observe(el);
-    return () => pengamat.disconnect();
+    simpul.forEach((el) => pengamat.observe(el));
+    window.addEventListener("resize", baca);
+    return () => {
+      pengamat.disconnect();
+      window.removeEventListener("resize", baca);
+    };
   }, [invalidate]);
 
   const uniforms = useMemo(
@@ -243,6 +273,10 @@ export const ChiaroscuroMonolith: React.FC<MonolithProps> = ({
       uWireframe: { value: 0.0 },
       uReveal: { value: 0.0 },
       uCursorUV: { value: new THREE.Vector2(0.5, 0.5) },
+      // Terbuka penuh sampai portal pertama terukur, supaya frame sebelum effect
+      // berjalan tidak memotong kartu seluruhnya.
+      uMask: { value: new THREE.Vector4(-1, 1, -1, 1) },
+      uNdcPerPx: { value: new THREE.Vector2(2 / 1440, 2 / 900) },
     }),
     [texture]
   );
@@ -289,79 +323,88 @@ export const ChiaroscuroMonolith: React.FC<MonolithProps> = ({
       mat.uniforms.uHoverIndex.value = hoveredProject;
     }
 
-    // ── CALIBRATED SIZING (893x1464 Aspect Ratio = 1.64) ──
-    const baseW = Math.min(viewport.width * 0.23, 2.15);
-
-    // ── PRECISION CHOREOGRAPHED SCROLL POSITIONS ──
+    // ── KOREOGRAFI PORTAL ──
+    // Ambang gulir, kemiringan, dan parallax tetap seperti koreografi lama. Yang
+    // berubah: kotak kartu tidak lagi dihitung dari fraksi viewport yang disalin,
+    // melainkan dari rect portal bab (MeshPortal), dan tepi kotak itu sekaligus
+    // menjadi batas potong lewat uMask.
     const p = Math.max(0, Math.min(1, scrollProgressRef.current));
-    const isNarrow = viewport.width < 8.5;
-    const colLeftX = isNarrow ? -viewport.width * 0.22 : -Math.min(viewport.width * 0.30, 2.95);
-    let colRightX = isNarrow ? viewport.width * 0.18 : Math.min(viewport.width * 0.25, 2.2);
-    let faktorGutter = 1;
-    if (papan.current.ada) {
-      // Gutter kanan bab 03: kartu duduk di antara tepi papan daftar dan tepi kanan jendela,
-      // dipusatkan dari rect DOM yang sama sehingga tidak pernah menutupi teks.
-      const dpp = viewport.width / size.width;
-      const gutterPx = Math.max(0, size.width - papan.current.kananPx);
-      colRightX = (papan.current.kananPx / 2) * dpp;
-      faktorGutter = Math.min(1, (gutterPx * 0.88 * dpp) / baseW);
-    }
-
-    let targetX = 0;
-    let targetY = 0;
-    let targetZ = 0;
-    let targetRotY = 0;
-    let bobotKanan = 0;
+    let babDari = 1;
+    let babKe = 1;
+    let t = 0;
+    let rotDari = 0;
+    let rotKe = 0;
+    let zDari = 0;
+    let zKe = 0;
+    let geyang = 0.15;
+    let rotGeyang = 0.1;
 
     if (p < 0.12) {
-      // ── CHAPTER 01 (HERO): Center [0, 0.05, 0] ──
-      targetX = mouse.current.x * 0.15;
-      targetY = 0.05 + mouse.current.y * 0.15;
-      targetZ = 0;
-      targetRotY = mouse.current.x * 0.1;
+      // ── CHAPTER 01 (HERO): portal tengah ──
+      babDari = 1; babKe = 1; t = 0;
     } else if (p < 0.22) {
-      // ── TRANSITION: HERO -> CHAPTER 02 (Glides to left before text appears) ──
-      const t = (p - 0.12) / 0.10;
-      targetX = THREE.MathUtils.lerp(0, colLeftX, t) + mouse.current.x * 0.12;
-      targetY = THREE.MathUtils.lerp(0.05, 0.0, t) + mouse.current.y * 0.12;
-      targetZ = 0;
-      targetRotY = THREE.MathUtils.lerp(0, 0.22, t) + mouse.current.x * 0.06;
+      // ── TRANSITION: HERO -> CHAPTER 02 (glides ke kiri sebelum teks muncul) ──
+      babDari = 1; babKe = 2; t = (p - 0.12) / 0.10; rotKe = 0.22;
+      geyang = 0.12; rotGeyang = 0.06;
     } else if (p < 0.52) {
-      // ── CHAPTER 02 (DUALITY): Locked in Left Column ──
-      targetX = colLeftX + mouse.current.x * 0.12;
-      targetY = mouse.current.y * 0.12;
-      targetZ = 0;
-      targetRotY = 0.22 + mouse.current.x * 0.06;
+      // ── CHAPTER 02 (DUALITY): portal kolom kiri ──
+      babDari = 2; babKe = 2; t = 1; rotDari = 0.22;
+      geyang = 0.12; rotGeyang = 0.06;
     } else if (p < 0.62) {
-      // ── TRANSITION: CHAPTER 02 -> CHAPTER 03 (Glides to right column) ──
-      const t = (p - 0.52) / 0.10;
-      targetX = THREE.MathUtils.lerp(colLeftX, colRightX, t) + mouse.current.x * 0.14;
-      targetY = mouse.current.y * 0.14;
-      targetZ = THREE.MathUtils.lerp(0, -0.4, t);
-      targetRotY = THREE.MathUtils.lerp(0.22, -0.18, t);
-      bobotKanan = t;
+      // ── TRANSITION: CHAPTER 02 -> CHAPTER 03 (glides ke gutter kanan) ──
+      babDari = 2; babKe = 3; t = (p - 0.52) / 0.10; rotDari = 0.22; rotKe = -0.18; zKe = -0.4;
+      geyang = 0.14; rotGeyang = 0.06;
     } else if (p < 0.84) {
-      // ── CHAPTER 03 (WORKS): Locked in Right Gutter ──
-      targetX = colRightX + mouse.current.x * 0.14;
-      targetY = mouse.current.y * 0.14;
-      targetZ = -0.4;
-      targetRotY = -0.18 + mouse.current.x * 0.06;
-      bobotKanan = 1;
+      // ── CHAPTER 03 (WORKS): portal gutter kanan ──
+      babDari = 3; babKe = 3; t = 1; rotDari = -0.18; zDari = -0.4;
+      geyang = 0.14; rotGeyang = 0.06;
     } else {
-      // ── CHAPTER 04 (FINALE): Recedes into distance ──
-      const t = (p - 0.84) / 0.16;
-      targetX = THREE.MathUtils.lerp(colRightX, 0, t);
-      targetY = -0.3;
-      targetZ = THREE.MathUtils.lerp(-0.4, -2.5, t);
-      targetRotY = THREE.MathUtils.lerp(-0.18, 0, t);
-      bobotKanan = 1 - t;
+      // ── CHAPTER 04 (FINALE): portal tengah, kartu mundur ke jauh ──
+      babDari = 3; babKe = 4; t = (p - 0.84) / 0.16; rotDari = -0.18; zDari = -0.4; zKe = -2.5;
+      geyang = 0.1; rotGeyang = 0.06;
     }
+
+    const awal = portal.current.get(babDari);
+    if (!awal) return;
+    const akhir = portal.current.get(babKe) ?? awal;
+
+    const layarX = size.width;
+    const layarY = size.height;
+    const dpp = viewport.width / layarX; // world per pixel pada bidang z = 0
+    const pxPerWorld = (z: number) => (1 / dpp) * (camera.position.z / (camera.position.z - z));
+    const campur = (a: number, b: number) => a + (b - a) * t;
+
+    const kotak = {
+      kiri: campur(awal.kiri, akhir.kiri),
+      atas: campur(awal.atas, akhir.atas),
+      lebar: campur(awal.lebar, akhir.lebar),
+      tinggi: campur(awal.tinggi, akhir.tinggi),
+    };
+
+    const targetZ = campur(zDari, zKe);
+    // Ukuran dihitung agar kartu pas di portal pada kedalaman zIsi. Untuk bab 04,
+    // zKe jauh lebih dalam dari zIsi sehingga kartu tetap mengecil saat mundur.
+    const zIsi = campur(zDari, Math.max(zKe, zDari));
+    const pas = Math.min(kotak.lebar, kotak.tinggi / 1.64); // rasio plane 1 : 1.64
+
+    const targetX = (kotak.kiri + kotak.lebar / 2 - layarX / 2) / pxPerWorld(targetZ) + mouse.current.x * geyang;
+    const targetY = -(kotak.atas + kotak.tinggi / 2 - layarY / 2) / pxPerWorld(targetZ) + mouse.current.y * geyang;
+    const targetRotY = campur(rotDari, rotKe) + mouse.current.x * rotGeyang;
+
+    const m = mat.uniforms.uMask.value;
+    m.set(
+      (kotak.kiri / layarX) * 2 - 1,
+      ((kotak.kiri + kotak.lebar) / layarX) * 2 - 1,
+      1 - ((kotak.atas + kotak.tinggi) / layarY) * 2,
+      1 - (kotak.atas / layarY) * 2
+    );
+    mat.uniforms.uNdcPerPx.value.set(2 / layarX, 2 / layarY);
 
     // Apply quick tilt impulse when persona changes
     const impulseRotZ = Math.sin(mat.uniforms.uTime.value * 12.0) * tiltImpulse.current;
     const impulseRotY = tiltImpulse.current * (mode === "engineer" ? -0.12 : 0.12);
 
-    const skala = baseW * THREE.MathUtils.lerp(1, faktorGutter, bobotKanan);
+    const skala = pas / pxPerWorld(zIsi);
     meshRef.current.scale.set(skala, skala, 1);
 
     meshRef.current.position.x = THREE.MathUtils.lerp(meshRef.current.position.x, targetX, 0.08);

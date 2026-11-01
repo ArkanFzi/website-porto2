@@ -7,6 +7,7 @@ import type { Perjalanan } from "@/lib/server/journey";
 import { Certificate, FALLBACK_CERTIFICATES } from "@/lib/server/certificates";
 import type { Experience } from "@/lib/server/experience";
 import { usePortfolioMode } from "@/context/PortfolioModeContext";
+import MeshPortal from "./MeshPortal";
 
 interface CareerPhase {
   id: string;
@@ -159,6 +160,7 @@ export const ChapterDuality: React.FC<DualityProps> = ({
       id="chapter-02"
       className="relative w-full min-h-screen pt-36 sm:pt-44 pb-48 px-6 md:px-12 select-none"
     >
+      <MeshPortal bab={2} className="left-[16.5vw] top-[20vh] h-[60vh] w-[23vw]" />
       <div className="w-full max-w-[1600px] mx-auto">
         
         {/* ── Top Header Tags ── */}
