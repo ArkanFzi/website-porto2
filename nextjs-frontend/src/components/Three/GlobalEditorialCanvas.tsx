@@ -9,6 +9,7 @@ import { BilahTelemetri } from "./stage/ekstra/BilahTelemetri";
 import { Debu } from "./stage/ekstra/Debu";
 import { JejakArsitektur } from "./stage/ekstra/JejakArsitektur";
 import { KompasGulir } from "./stage/ekstra/KompasGulir";
+import { RodaPaddock } from "./stage/ekstra/RodaPaddock";
 import { RollCage } from "./stage/ekstra/RollCage";
 import { PengukurRender } from "./stage/PengukurRender";
 import { mulai, mulaiLapor, setDprKanvas } from "@/lib/perfStats";
@@ -157,6 +158,9 @@ export const GlobalEditorialCanvas: React.FC<CanvasProps> = ({
             <BilahTelemetri {...aktor} />
             {/* Garis waktu arsitektur: panjang segmen = milidetik yang diukur rute /api/telemetry. */}
             <JejakArsitektur {...aktor} />
+            {/* Roda paddock: satu-satunya objek yang sudutnya dijumlahkan dari velositas,
+                dan hanya ada di bab penutup. */}
+            <RodaPaddock {...aktor} />
           </Suspense>
           {/* Alat ukur, bukan bagian isi panggung: write-only, tidak memengaruhi render. */}
           {process.env.NODE_ENV !== "production" && <PengukurRender />}

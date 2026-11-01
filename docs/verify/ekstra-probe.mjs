@@ -19,7 +19,7 @@ const TITIK_BENANG = 24; // harus sama dengan TITIK di BenangRosso.tsx
 const SISI_SANGKAR = 12; // EdgesGeometry balok = 12 segmen
 const SEG_KOMPAS = 2; // jarum + ekor
 const PARTIKEL_DEBU = 140;
-const EKSTRA = ['bilah', 'benang', 'debu', 'jejak', 'kompas', 'sangkar'];
+const EKSTRA = ['bilah', 'benang', 'debu', 'jejak', 'kompas', 'roda', 'sangkar'];
 
 const browser = await puppeteer.launch({
   executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome',
@@ -133,7 +133,7 @@ cek('bilah ada saat diam', ada(diam.nama, 'bilah'), true);
 // Jejak butuh satu angka durasi yang terukur, dan /api/telemetry selalu mengukurnya, jadi
 // objeknya boleh bangun saat diam — yang tidak boleh adalah bentuk tanpa angka di dalamnya.
 cek('jejak ada saat diam', ada(diam.nama, 'jejak'), true);
-for (const n of ['benang', 'debu', 'kompas', 'sangkar'])
+for (const n of ['benang', 'debu', 'kompas', 'roda', 'sangkar'])
   cek(`${n} tidak ada saat diam`, ada(diam.nama, n), false);
 
 // ── 2. Benang rosso: di tengah perpindahan bab 1 ke bab 2 ──
@@ -178,6 +178,9 @@ cek('debu = 140 titik', geser.titik, PARTIKEL_DEBU);
 cekMin('kompas = 2 segmen', geser.garis, SEG_KOMPAS);
 cek('debu tidak ada saat diam', ada(diam2.nama, 'debu'), false);
 cek('sangkar tidak ikut muncul saat bergulir', ada(terlebar, 'sangkar'), false);
+// Roda punya velositas yang sama tapi hanya boleh ada di bab penutup: kalau dia ikut muncul
+// di bab 2, gerbang bab-nya dibaca sebagai hiasan, bukan sebagai keadaan panggung.
+cek('roda tidak ikut muncul saat bergulir di bab 2', ada(terlebar, 'roda'), false);
 
 // ── 4. RollCage: baris arsip tanpa hover vs dengan hover ──
 // Baris arsip = div[data-magnetic] di #chapter-03 (ChapterArchives.tsx:263). Kelas pl-6
@@ -372,10 +375,17 @@ const lukisan = await page.evaluate(() => {
     panggung: b ? { menit: b.menit, rasio: b.rasio, tinggiPx: b.tinggiPx, markaPx: b.markaPx } : null,
   };
 });
-const api = await fetch(`${FE}/api/telemetry`)
-  .then((r) => r.json())
-  .catch(() => null);
-const perMenit = new Map((api?.clientFrames?.buket ?? []).map((m) => [m.menit, m]));
+// Angka dibandingkan dengan bacaan yang benar-benar dikonsumsi browser, bukan fetch baru —
+// alasan yang sama seperti catatan di atas `bacaan`, dan di sini terbukti mengukur: buket
+// menit terakhir masih berisi sampel yang belum selesai, jadi p95-nya berubah antara dua
+// permintaan dan satu bilah terbaca "asing" padahal yang dilukis persis angka yang dibaca
+// browser (terukur pada gerbang ini: angkaAsing = 1, tinggi DOM dan panggung keduanya cocok).
+const bacaBilah =
+  bacaan[bacaan.length - 1] ??
+  (await fetch(`${FE}/api/telemetry`)
+    .then((r) => r.json())
+    .catch(() => null));
+const perMenit = new Map((bacaBilah?.clientFrames?.buket ?? []).map((m) => [m.menit, m]));
 
 const domPerSlot = new Map(lukisan.dom.map((d) => [d.slot, d.tinggi]));
 const terisi = lukisan.panggung
@@ -501,6 +511,171 @@ cek('jumlah hop sama dengan total yang dijumlah penggaris', j ? Math.abs(j.px[0]
 
 await foto('09-jejak-arsitektur');
 await page.click('button[aria-label="Pit-Wall Telemetry HUD"]');
+
+// ── 9. Roda paddock (ide 3): sudut dijumlahkan dari velositas, hanya di bab penutup ──
+// Yang membuat benda ini roda dan bukan jarum adalah hukum sudutnya: jarum mengambil nilainya
+// dari velositas saat itu juga, roda menjumlahkan jarak yang sudah ditempuh. Kalau komponen
+// diganti menjadi `sudut = f(velositas)`, gerbang di bawah menolak — dua lompatan ke arah sama
+// tidak lagi menjumlah (nilai absolutnya mengulang, bukan melanjutkan), dan sudutnya bergerak
+// naik-turun mengikuti besar velositas alih-alih satu arah.
+const JARI_KASAR = 26; // harus sama dengan JARI_PX di RodaPaddock.tsx
+const JARI_RASIO = 0.24; // harus sama dengan JARI_MAKS_RASIO
+const LINGKAR = Math.PI * 2;
+
+// Jarak diukur lewat satu lompatan scrollTo, bukan antrean event roda mouse. Dua percobaan
+// pertama membuktikan antrean notch tidak bisa dipakai mengukur: Lenis menyimpan targetnya
+// sendiri lalu melanjutkan animasi di belakang pembacaan (terukur: velositas -676 px/frame dan
+// halaman bergerak 4485 px selama satu "letakkan" yang hanya meminta 360 px), sehingga jarak
+// yang sampai ke roda bukan jarak yang saya kira. Satu lompatan memberi satu animasi dengan
+// jarak awal→akhir yang diketahui, dan velositasnya nyata.
+const yKini = () => page.evaluate(() => Math.round(window.scrollY));
+
+// Window bab penutup tempat roda boleh ada: `batas`section 04 dikurangi pita perpindahan
+// (data-pita 0,16 di ChapterPaddock.tsx) sampai dasar dokumen. Semua lompatan di bawah
+// tetap di dalam jendela ini supaya yang diuji hanya velositasnya.
+const rentang = await page.evaluate(() => {
+  const s = document.querySelector('#chapter-04');
+  const maks = document.documentElement.scrollHeight - window.innerHeight;
+  if (!s || maks <= 0) return null;
+  const PITA = 0.16;
+  const batas = Math.round(((s.getBoundingClientRect().top + window.scrollY) / maks - PITA) * maks);
+  return { bawah: batas + 40, tengah: Math.round((batas + maks * 0.995) / 2), atas: Math.round(maks * 0.995) };
+});
+
+/** Sensus keadaan diam: satu lompatan scrollTo 1 px memaksa frame baru tergambar (sensus
+ *  objek hanya ditulis pada frame yang digambar), lalu animasi sisa ditunggu sampai habis. */
+const sensusDiam = async () => {
+  await diamDiTempat();
+  const fr = await page.evaluate(
+    () => (window.scrollY + 1) / (document.documentElement.scrollHeight - window.innerHeight)
+  );
+  await parkir(fr);
+  await new Promise((r) => setTimeout(r, 1500));
+  return serap(400);
+};
+
+const bacaRoda = () =>
+  page.evaluate(() => {
+    const r = window.__roda;
+    const objek = window.__render?.objek ?? [];
+    return {
+      ada: objek.filter((n) => n === 'roda').length,
+      nama: objek,
+      calls: window.__render?.calls ?? null,
+      jumlahObjek: objek.length,
+      sudut: r?.sudut ?? null,
+      vel: r?.velositas ?? null,
+      jari: r?.jariPx ?? null,
+      putaran: r?.putaran ?? null,
+      portalLebar: window.__panggung?.portal?.[2] ?? null,
+    };
+  });
+
+/** Diam di satu posisi: lompatan instan lalu tunggu sampai animasinya benar-benar selesai. */
+const diamDi = async (y) => {
+  await page.evaluate((v) => window.scrollTo(0, v), y);
+  await new Promise((r) => setTimeout(r, 1800));
+};
+
+/** Satu lompatan scrollTo → satu animasi Lenis, dicatat roda tiap 100 ms. Baseline putaran
+ *  dibaca sebelum lompatan: ref sudut hidup di komponen yang tidak pernah ikut di-unmount,
+ *  jadi selisihnya adalah putaran selama lompatan ini saja dan nilai absolutnya menunjukkan
+ *  apakah roda melanjutkan perjalanannya atau mulai dari nol. */
+const lompatDanCatat = async (y) => {
+  const awal = await bacaRoda();
+  const yMulai = await yKini();
+  await page.evaluate((v) => window.scrollTo(0, v), y);
+  const catatan = [];
+  for (let i = 0; i < 12; i++) {
+    await new Promise((r) => setTimeout(r, 100));
+    catatan.push(await bacaRoda());
+  }
+  const akhir = await bacaRoda();
+  const yAkhir = await yKini();
+  const nilai = catatan.map((b) => b.putaran).filter((v) => v !== null);
+  const lang = nilai.slice(1).map((v, i) => v - nilai[i]);
+  // Yang dilarang adalah langkah yang MELAWAN arah lompatan: itu sudut yang berbalik sendiri,
+  // tanda jarum. Lenis di konfigurasi ini tidak punya bounce, jadi tidak ada overshoot yang
+  // sah di ekor animasi — dan gerbang ini harus membaca tanda langkah terhadap arah, karena
+  // lompatan ke atas memang menurunkan putaran.
+  const maju = y > yMulai;
+  return {
+    awal,
+    akhir,
+    catatan,
+    ada: Math.max(...catatan.map((b) => b.ada)),
+    putaran: akhir.putaran === null || awal.putaran === null ? null : akhir.putaran - awal.putaran,
+    jarak: yAkhir - yMulai,
+    balik: (maju ? lang.filter((d) => d < -0.002) : lang.filter((d) => d > 0.002)).length,
+    sudutLiar: catatan.filter((b) => b.sudut !== null && Math.abs(b.sudut) > LINGKAR + 1e-9).length,
+    contoh: akhir.ada > 0 ? akhir : catatan.find((b) => b.ada > 0) ?? null,
+  };
+};
+
+const ringkas = (l) =>
+  `putaran=${l.putaran?.toFixed(4)} jarak=${l.jarak}px balik=${l.balik} sudutAkhir=${l.akhir.sudut?.toFixed(3)} vel=${JSON.stringify(
+    l.catatan.map((b) => Math.round((b.vel ?? 0) * 100) / 100)
+  )}`;
+
+await diamDi(rentang?.bawah ?? 0);
+const babRoda = await page.evaluate(() => window.__panggung?.babKe ?? null);
+const diamRoda1 = await sensusDiam();
+console.log(
+  'roda diam',
+  JSON.stringify(diamRoda1.nama),
+  'babKe=' + babRoda,
+  'y=' + (await yKini()),
+  'rentang=' + JSON.stringify(rentang)
+);
+cek('panggung berada di bab penutup saat roda diuji', babRoda, 4);
+cek('roda tidak ada saat gulir diam di bab 4', ada(diamRoda1.nama, 'roda'), false);
+cek('keadaan diam yang dibaca memang diam (tanpa debu dan kompas)', ada(diamRoda1.nama, 'debu') || ada(diamRoda1.nama, 'kompas'), false);
+
+const keBawah = await lompatDanCatat(rentang.tengah);
+await new Promise((r) => setTimeout(r, 1200));
+const diamSela = await sensusDiam();
+const keBawahLagi = await lompatDanCatat(rentang.atas);
+console.log('roda bawah', ringkas(keBawah), '| diam di sela', JSON.stringify(diamSela.nama), '| lagi', ringkas(keBawahLagi));
+
+const keAtas = await lompatDanCatat(rentang.bawah);
+const diamRoda2 = await sensusDiam();
+console.log('roda atas', ringkas(keAtas), '| diam lagi', JSON.stringify(diamRoda2.nama));
+await foto('10-bab4-roda');
+
+cek('roda ada saat bergulir di bab 4', keBawah.ada, 1);
+cek('roda tidak pernah lebih dari satu objek', Math.max(keBawah.ada, keAtas.ada), 1);
+cek('roda menambah tepat satu draw call', keBawah.contoh ? keBawah.contoh.calls === keBawah.contoh.jumlahObjek : null, true);
+cekMin('gulir ke bawah memutar roda', Math.abs(keBawah.putaran ?? 0), 0.05);
+cek('gulir ke atas memutar roda arah berlawanan', Math.sign(keBawah.putaran ?? 0) === -Math.sign(keAtas.putaran ?? 0), true);
+cek('sudut roda dijumlahkan, bukan dipasang dari velositas', keBawahLagi.akhir.putaran > keBawah.akhir.putaran + 0.05, true);
+cek('sudut roda tidak pernah berbalik melawan arah gulir', keBawah.balik + keBawahLagi.balik + keAtas.balik, 0);
+cek('sudut roda tetap dalam satu lingkar', keBawah.sudutLiar + keBawahLagi.sudutLiar + keAtas.sudutLiar, 0);
+cek('roda hilang lagi saat gulir berhenti', ada(diamSela.nama, 'roda') || ada(diamRoda2.nama, 'roda'), false);
+const jariHarus = Math.min(JARI_KASAR, (keBawah.akhir.portalLebar ?? 0) * JARI_RASIO);
+cek('jari roda dibatasi lebar portal', keBawah.akhir.jari !== null && Math.abs(keBawah.akhir.jari - jariHarus) < 0.01, true);
+// Tidak ada gerbang "pulang-pergi sejauh X memutar sejauh Y": roda menjumlah
+// `velositas × clamp(delta, 0,05)` per frame, dan di bawah SwiftShader satu animasi bisa
+// terpotong 1 frame atau 4 (terukur dalam satu percobaan: lompatan 425 px melukis 1,88
+// putaran, lompatan 465 px melukis 4,51). Pada 60fps delta tidak pernah tersentuh clamp
+// sehingga integralnya sebanding jarak, tapi membuktikan itu lewat verifier kepala-tulang
+// berarti menulis gerbang yang gagal tanpa alasan isi — jadi yang diuji di sini hanya tanda
+// dan arah, bukan besaran.
+
+await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
+await new Promise((r) => setTimeout(r, 700));
+await diamDi(rentang.bawah);
+const tanpaGerak = await lompatDanCatat(rentang.atas);
+console.log(
+  'roda reduce',
+  `ada=${tanpaGerak.ada} jarak=${tanpaGerak.jarak}px`,
+  JSON.stringify(tanpaGerak.catatan.map((b) => b.nama))
+);
+// Tanpa gerbang ini, "roda tidak ada" juga akan dihasilkan oleh lompatan yang tidak
+// memindahkan apa pun — jadi jaraknya dibaca dari posisi gulir, bukan dari asumsinya.
+cekMin('gulir saat reduce-motion tetap berpindah', Math.abs(tanpaGerak.jarak), 60);
+cek('reduce-motion menghapus roda', tanpaGerak.ada, 0);
+await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }]);
+await new Promise((r) => setTimeout(r, 700));
 
 await browser.close();
 if (galat.length) console.log('pageerror:', galat.slice(0, 5));
