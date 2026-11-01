@@ -96,7 +96,7 @@ export const TerminalModal: React.FC = () => {
             <p><span className="text-[#D41E12] font-bold">LANGUAGES:</span> Go (Golang), TypeScript, SQL, GLSL, Bash</p>
             <p><span className="text-[#D41E12] font-bold">PLATFORMS:</span> Linux, Docker, Kubernetes, Next.js 16, Three.js / R3F</p>
             <p><span className="text-[#D41E12] font-bold">DATA STORES:</span> PostgreSQL (Neon), Redis (Upstash), Kafka, ChromaDB</p>
-            <p><span className="text-[#D41E12] font-bold">METRICS:</span> p99 Latency &lt; 25ms • 99.98% High-Throughput SLA</p>
+            <p><span className="text-[#D41E12] font-bold">METRICS:</span> measured live in the pit-wall HUD (bottom bar) — no static SLA claim</p>
           </div>
         );
         break;

@@ -278,7 +278,19 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ currentChapter, onChap
           {mode === "engineer" ? (
             <span className={`font-mono text-[9px] tracking-[0.18em] uppercase ${subColor}`}>
               <span className={`${accentColor} font-bold`}>● LIVE TELEMETRY:</span>{" "}
-              {telemetry ? `${telemetry.edgeNode} • ${telemetry.latencyMs}ms • ${telemetry.heapMb}MB HEAP • ${telemetry.sla}` : "MONACO-01 • <15ms • 99.98% SLA"}{" "}
+              {telemetry
+                ? `${telemetry.latencyMs}ms • ${
+                    telemetry.heapMb === null ? DASH : `${telemetry.heapMb}MB HEAP`
+                  } • ${
+                    telemetry.backend.db === "ok"
+                      ? "POSTGRESQL HEALTHY"
+                      : telemetry.backend.db === "error"
+                      ? "POSTGRESQL DOWN"
+                      : telemetry.backend.reachable
+                      ? "HEALTH FIELD ABSEN"
+                      : "BACKEND UNREACHABLE"
+                  }`
+                : DASH}{" "}
               <span className="text-[#D41E12] font-mono text-[8px] ml-1">[HUD ⇡]</span>
             </span>
           ) : (
