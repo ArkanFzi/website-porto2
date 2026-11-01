@@ -95,7 +95,7 @@ export const TerminalModal: React.FC = () => {
           <div className="space-y-1 text-white/80">
             <p><span className="text-[#D41E12] font-bold">LANGUAGES:</span> Go (Golang), TypeScript, SQL, GLSL, Bash</p>
             <p><span className="text-[#D41E12] font-bold">PLATFORMS:</span> Linux, Docker, Kubernetes, Next.js 16, Three.js / R3F</p>
-            <p><span className="text-[#D41E12] font-bold">DATA STORES:</span> PostgreSQL (Neon), Redis (Upstash), Kafka, ChromaDB</p>
+            <p><span className="text-[#D41E12] font-bold">DATA STORES:</span> PostgreSQL, Redis, MongoDB, RabbitMQ, ChromaDB, PocketBase</p>
             <p><span className="text-[#D41E12] font-bold">METRICS:</span> measured live in the pit-wall HUD (bottom bar) — no static SLA claim</p>
           </div>
         );

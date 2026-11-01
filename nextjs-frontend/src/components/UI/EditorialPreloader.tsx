@@ -65,7 +65,7 @@ export const EditorialPreloader: React.FC<{ onComplete?: () => void }> = ({ onCo
             <div className="mt-4 flex items-center gap-3">
               <span className="w-1.5 h-1.5 rounded-full bg-[#D41E12] animate-ping" />
               <p className="font-mono text-[10px] tracking-[0.28em] uppercase text-[#6E6A64]">
-                CALIBRATING CHIAROSCURO MONOLITH // SOTY
+                CALIBRATING CHIAROSCURO MONOLITH
               </p>
             </div>
           </div>
