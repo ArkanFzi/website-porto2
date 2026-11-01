@@ -3,7 +3,7 @@
 import React, { Suspense, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Canvas } from "@react-three/fiber";
 import { PerformanceMonitor } from "@react-three/drei";
-import { ChiaroscuroMonolith } from "./ChiaroscuroMonolith";
+import { AktorPotret } from "./stage/AktorPotret";
 import { mulai, mulaiLapor, setDprKanvas } from "@/lib/perfStats";
 
 type Frameloop = "always" | "demand" | "never";
@@ -121,7 +121,7 @@ export const GlobalEditorialCanvas: React.FC<CanvasProps> = ({
             onFallback={() => setDpr(DPR_MIN)}
           />
           <Suspense fallback={null}>
-            <ChiaroscuroMonolith
+            <AktorPotret
               scrollProgressRef={scrollProgressRef}
               hoveredProject={hoveredProject}
               scrollVelocityRef={scrollVelocityRef}

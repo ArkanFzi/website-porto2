@@ -1,0 +1,212 @@
+/** Sumber shader untuk kartu potret chiaroscuro + pabrik uniform-nya.
+ *  Dipisah dari komponen supaya objek panggung lain (Aktor*) bisa memakai material
+ *  dan konvensi uniform yang sama tanpa mengimpor komponen. */
+import * as THREE from "three";
+
+export const RASIO_POTRET = 1.64;
+
+export const vertexShader = /* glsl */ `
+  uniform float uTime;
+  uniform vec2 uMouse;
+  uniform float uVelocity;
+  uniform float uPersona;
+  uniform float uHover;
+
+  varying vec2 vUv;
+  varying vec3 vNormal;
+  varying vec3 vViewPosition;
+  varying vec2 vClip;
+
+  void main() {
+    vUv = uv;
+    vNormal = normalize(normalMatrix * normal);
+
+    vec3 pos = position;
+
+    // Organic kinetic displacement
+    float fluidWave = sin(pos.y * 3.5 + uTime * 2.2) * cos(pos.x * 3.0 + uTime * 1.8) * 0.035;
+    float mechVibe = sin(pos.y * 24.0 + uTime * 4.0) * 0.008;
+    float wave = mix(mechVibe, fluidWave, uPersona);
+    pos.z += wave * clamp(uVelocity * 0.1, -0.2, 0.2);
+
+    // Subtle 3D parallax responsive to cursor
+    pos.z += (uMouse.x * pos.x + uMouse.y * pos.y) * 0.12;
+
+    // Hover ripple on project inspect
+    if (uHover > 0.01) {
+      pos.z += sin(pos.y * 10.0 + uTime * 4.0) * 0.08 * uHover;
+    }
+
+    vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+    vViewPosition = -mvPosition.xyz;
+    gl_Position = projectionMatrix * mvPosition;
+    vClip = gl_Position.xy / gl_Position.w;
+  }
+`;
+
+export const fragmentShader = /* glsl */ `
+  uniform sampler2D uTexture;
+  uniform float uTime;
+  uniform float uVelocity;
+  uniform float uPersona; // 0.0 = Engineer, 1.0 = Creator
+  uniform float uScroll;  // 0.0 to 1.0
+  uniform float uHover;
+  uniform float uHoverIndex;
+  uniform float uWireframe;
+  uniform float uReveal;
+  uniform vec2 uCursorUV;
+  uniform vec4 uMask;      // batas portal dalam NDC: kiri, kanan, bawah, atas
+  uniform vec2 uNdcPerPx;  // lebar/satu tinggi layar dalam NDC, untuk tepi potong
+
+  varying vec2 vUv;
+  varying vec3 vNormal;
+  varying vec3 vViewPosition;
+  varying vec2 vClip;
+
+  void main() {
+    vec2 uv = vUv;
+
+    // Velocity-based chromatic aberration at edges
+    float aberrationBase = clamp(abs(uVelocity) * 0.015, 0.0, 0.025);
+    float aberration = mix(aberrationBase * 0.6, aberrationBase * 1.4, uPersona);
+    vec2 dir = normalize(uv - 0.5 + vec2(0.0001));
+
+    float r = texture2D(uTexture, uv + dir * aberration).r;
+    float g = texture2D(uTexture, uv).g;
+    float b = texture2D(uTexture, uv - dir * aberration).b;
+    vec3 baseColor = vec3(r, g, b);
+
+    // Precision Leica Monochrom luminance calculation (Clean, natural black-and-white base)
+    float lum = dot(baseColor, vec3(0.299, 0.587, 0.114));
+    float contrastLum = smoothstep(0.04, 0.94, lum);
+    vec3 monoBase = vec3(contrastLum);
+
+    // ── NATURAL SCUDERIA RED ACCENTS (HALUS, ELEGAN, TIDAK MENOR) ──
+    // 1. Subtle studio rim backlight on the outer silhouette/shoulders only
+    float distCenter = length(uv - vec2(0.5));
+    float rimLight = pow(distCenter * 1.4, 2.8);
+    // Soft red rim accent only on outer edge (intensity 0.26)
+    vec3 rossoRim = vec3(0.831, 0.117, 0.07) * rimLight * 0.26;
+
+    // 2. Faint interactive cursor specular (warm reflection on suit, never flooding face)
+    // uCursorUV adalah posisi pointer yang sudah diproyeksikan ke UV plane di JS;
+    // memakai uMouse langsung (ndc*0.5+0.5) membuat "cahaya" tertinggal ~4x dari
+    // kursor karena uv plane hanya membentang selebar kartu.
+    vec2 cursorLightPos = uCursorUV;
+    vec2 cursorSelisih = (uv - cursorLightPos) * vec2(1.0, 1.64); // koreksi rasio plane 1 : 1.64
+    float cursorDist = length(cursorSelisih);
+    float cursorGlow = smoothstep(0.45, 0.0, cursorDist);
+    vec3 cursorSpecular = vec3(0.831, 0.117, 0.07) * cursorGlow * 0.14 * (1.0 - contrastLum);
+
+    // ── PERSONA 1: THE ENGINEER (uPersona = 0.0) ──
+    // Pristine high-contrast Leica monochrome with refined silhouette rim light
+    vec3 engineerColor = monoBase + rossoRim + cursorSpecular;
+
+    // ── PERSONA 2: THE CREATOR (uPersona = 1.0) ──
+    // Natural warmth with subtle silk halation
+    vec3 halation = vec3(0.831, 0.117, 0.07) * pow(contrastLum, 3.0) * 0.18;
+    vec3 creatorColor = monoBase + rossoRim * 1.2 + halation + cursorSpecular * 1.3;
+
+    // Smooth blend between personas
+    vec3 finalColor = mix(engineerColor, creatorColor, uPersona);
+
+    // ── MOUSE REVEAL MASK ──
+    // Tekstur aslinya /FotoDiriFix.webp monokrom (saturasi rata terukur 0.003), jadi
+    // "menyingkap warna asli" tidak menampilkan apa pun; yang dibuka adalah lapisan
+    // rosso yang tetap mengikuti nada potret, bukan cakram warna datar.
+    // uReveal sengaja 0 sampai pointer benar-benar bergerak, jadi perangkat sentuh dan
+    // mode reduce-motion tidak melihat blob di tengah kartu.
+    float reveal = smoothstep(0.30, 0.0, cursorDist) * uReveal;
+    vec3 duotoneReveal = mix(vec3(0.16, 0.02, 0.015), vec3(0.72, 0.10, 0.06), contrastLum)
+      * (0.35 + 0.65 * contrastLum);
+    finalColor = mix(finalColor, duotoneReveal, reveal * 0.75);
+
+    // ── CHAPTER 3 HOVER: PROJECT AURA ──
+    if (uHover > 0.01) {
+      float pulse = sin(uTime * 2.5) * 0.5 + 0.5;
+      vec3 projectAura = vec3(0.831, 0.117, 0.07) * pulse * 0.35;
+      finalColor = mix(finalColor, finalColor * vec3(1.08, 0.7, 0.6) + projectAura, uHover * 0.5);
+    }
+
+    // ── CHAPTER 4 FINALE: SCUDERIA DUOTONE SHIFT ──
+    float ch4Factor = smoothstep(0.82, 0.96, uScroll);
+    if (ch4Factor > 0.001) {
+      vec3 deepCrimson = vec3(0.48, 0.04, 0.02);
+      vec3 brightRosso = vec3(0.90, 0.15, 0.08);
+      vec3 duotone = mix(deepCrimson, brightRosso, contrastLum);
+      finalColor = mix(finalColor, duotone * 1.1, ch4Factor * 0.85);
+    }
+
+    // ── GPU WIREFRAME INSPECTOR OVERLAY ──
+    if (uWireframe > 0.001) {
+      vec2 grid = abs(fract(uv * 42.0 - 0.5) - 0.5) / (fwidth(uv * 42.0) + 0.0001);
+      float line = min(grid.x, grid.y);
+      float wire = 1.0 - min(line, 1.0);
+      vec3 wireColor = vec3(0.831, 0.117, 0.07);
+      vec3 chassisBacking = vec3(0.04, 0.04, 0.05);
+      vec3 wireRender = mix(chassisBacking, wireColor * 1.6, wire);
+      finalColor = mix(finalColor, wireRender, uWireframe * 0.92);
+    }
+
+    // ── CLEAN RECTANGULAR MONOLITH FRAMING (RESTRAINED & NATURAL) ──
+    vec2 cardUv = abs(uv - 0.5) * 2.0; // from 0.0 (center) to 1.0 (border)
+    vec2 cornerDist = max(cardUv - vec2(0.91, 0.95), 0.0);
+    float cornerRadius = length(cornerDist);
+    float cardAlpha = 1.0 - smoothstep(0.03, 0.08, cornerRadius);
+
+    // Delicate restrained hairline edge (subtle dark titanium with faint red gleam)
+    float hairline = smoothstep(0.08, 0.05, cornerRadius) - smoothstep(0.05, 0.02, cornerRadius);
+    finalColor += vec3(0.831, 0.117, 0.07) * hairline * 0.35;
+
+    // Fade out in Chapter 4
+    float alpha = cardAlpha * (1.0 - ch4Factor * 0.85);
+
+    // ── POTONG PORTAL ──
+    // Kartu boleh lebih lebar dari kotaknya (parallax pointer, gelombang, miring);
+    // sisanya dipotong pada batas kotak DOM bab, supaya kartu tidak pernah menutupi
+    // teks. Tepi dibuat lunak ~3px agar tidak terlihat sebagai garis bergerigi.
+    float luarX = max(max(uMask.x - vClip.x, vClip.x - uMask.y) / uNdcPerPx.x, 0.0);
+    float luarY = max(max(uMask.z - vClip.y, vClip.y - uMask.w) / uNdcPerPx.y, 0.0);
+    alpha *= 1.0 - smoothstep(0.0, 3.0, max(luarX, luarY));
+
+    gl_FragColor = vec4(finalColor, alpha);
+  }
+`;
+
+export interface UniformsPanggung {
+  uTexture: { value: THREE.Texture };
+  uTime: { value: number };
+  uMouse: { value: THREE.Vector2 };
+  uVelocity: { value: number };
+  uPersona: { value: number };
+  uScroll: { value: number };
+  uHover: { value: number };
+  uHoverIndex: { value: number };
+  uWireframe: { value: number };
+  uReveal: { value: number };
+  uCursorUV: { value: THREE.Vector2 };
+  uMask: { value: THREE.Vector4 };
+  uNdcPerPx: { value: THREE.Vector2 };
+}
+
+/** Ditambah index signature supaya bisa disuapkan ke prop `uniforms` milik
+ *  <shaderMaterial>, yang tipenya record string -> IUniform. */
+export const buatUniformPanggung = (
+  texture: THREE.Texture
+): UniformsPanggung & Record<string, THREE.IUniform> => ({
+  uTexture: { value: texture },
+  uTime: { value: 0 },
+  uMouse: { value: new THREE.Vector2(0, 0) },
+  uVelocity: { value: 0 },
+  uPersona: { value: 0.0 },
+  uScroll: { value: 0.0 },
+  uHover: { value: 0 },
+  uHoverIndex: { value: 0 },
+  uWireframe: { value: 0.0 },
+  uReveal: { value: 0.0 },
+  uCursorUV: { value: new THREE.Vector2(0.5, 0.5) },
+  // Terbuka penuh sampai portal pertama terukur, supaya frame sebelum effect
+  // berjalan tidak memotong kartu seluruhnya.
+  uMask: { value: new THREE.Vector4(-1, 1, -1, 1) },
+  uNdcPerPx: { value: new THREE.Vector2(2 / 1440, 2 / 900) },
+});
