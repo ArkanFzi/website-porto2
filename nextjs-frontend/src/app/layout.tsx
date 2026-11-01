@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
-import { Inter, Playfair_Display } from "next/font/google";
+import { Inter, Playfair_Display, Space_Mono } from "next/font/google";
 import "./globals.css";
+import { PortfolioModeProvider } from "@/context/PortfolioModeContext";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -14,15 +15,17 @@ const playfair = Playfair_Display({
   display: "swap",
 });
 
+const spaceMono = Space_Mono({
+  weight: ["400", "700"],
+  subsets: ["latin"],
+  variable: "--f-mono",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
-  title: "M. Arkan Fauzi — Full-Stack Developer Portfolio",
-  description: "Portfolio of M. Arkan Fauzi, a Software Engineering student and apprentice Full Stack Engineer at Sekawan Media, building with Next.js, Go and Laravel.",
-  keywords: ["Full-Stack Developer", "Portfolio", "Next.js", "Go", "Laravel", "Arkan Fauzi"],
-  openGraph: {
-    title: "M. Arkan Fauzi — Full-Stack Developer",
-    description: "Immersive 3D portfolio of a fullstack software engineer.",
-    type: "website",
-  },
+  title: "M. Arkan Fauzi — Systems Architect & Creative Technologist // #16",
+  description: "Awwwards-grade interactive editorial portfolio of M. Arkan Fauzi (@ArkanFzi). Haute-couture minimalism meets real-time WebGL Chiaroscuro shader sculpture.",
+  keywords: ["Arkan Fauzi", "Full Stack Engineer", "WebGL", "Three.js", "Scuderia Ferrari", "Creative Technologist"],
 };
 
 export default function RootLayout({
@@ -31,11 +34,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${inter.variable} ${playfair.variable}`}>
-      <head>
-      </head>
-      <body className="antialiased font-sans">
-        {children}
+    <html lang="en" suppressHydrationWarning className={`${inter.variable} ${playfair.variable} ${spaceMono.variable}`}>
+      <body className="antialiased font-sans selection:bg-[#D41E12] selection:text-white">
+        <PortfolioModeProvider>
+          {/* Film Grain Texture Overlay */}
+          <div className="film-grain" aria-hidden="true" />
+          {children}
+        </PortfolioModeProvider>
       </body>
     </html>
   );
