@@ -57,7 +57,11 @@ export const ChapterPrologue: React.FC = () => {
         className="relative z-20 w-full max-w-[1750px] mx-auto my-auto flex flex-col items-center justify-center text-center pointer-events-none"
       >
         {/* Massive Typography with mix-blend-difference & sharp white stroke */}
-        <h1 className="mix-blend-difference select-none w-full">
+        <h1
+          className="mix-blend-difference select-none w-full"
+          data-paralaks="-0.5"
+          style={{ translate: "var(--tipografi-x, 0px) var(--tipografi-y, 0px)" }}
+        >
           <span
             className="font-serif text-[11vw] font-black tracking-tighter uppercase leading-[0.85] text-[#F7F5F0] block whitespace-nowrap opacity-90"
             style={{

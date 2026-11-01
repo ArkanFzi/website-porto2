@@ -18,6 +18,10 @@ import { bacaTarget, bacaFokusKartu, laporKotakKartu } from "@/lib/putaran";
 import type { PortfolioMode } from "@/context/PortfolioModeContext";
 import { buatUniformPanggung, RASIO_POTRET } from "./chiaroscuroMaterial";
 import { sikap, type Sikap } from "./koreografi";
+import {
+  tulisParalaksTipografi,
+  useParalaksTipografi,
+} from "./useParalaksTipografi";
 import { usePortalRegistry, type PortalKotak } from "./usePortalRegistry";
 
 /** Lebar kartu agar mengisi portal: dibatasi lebar portal, kecuali portalnya lebih
@@ -160,6 +164,8 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
     bacaKurangiGerakSaatSSR
   );
   const uniforms = useMemo(() => buatUniformPanggung(texture), [texture]);
+  /** Simpul tipografi yang boleh bergeser bersama kartu (lihat useParalaksTipografi). */
+  const tipografi = useParalaksTipografi();
 
   const mouse = useRef({ x: 0, y: 0, targetX: 0, targetY: 0, aktif: false });
   const proyeksi = useRef({
@@ -226,6 +232,13 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
   useEffect(() => {
     invalidate();
   }, [mode, hoveredProject, wireframe, invalidate]);
+
+  // Pengunjung yang berhenti di tengah gerakan lalu meminta gerakan dikurangi tidak
+  // akan pernah mendapat frame lagi untuk menghapus sisa geserannya, jadi nol-nya
+  // ditulis dari effect, bukan dari loop render.
+  useEffect(() => {
+    if (kurangiGerak) tulisParalaksTipografi(tipografi, 0, 0, () => 0, true);
+  }, [kurangiGerak, tipografi]);
 
   useFrame((_, delta) => {
     const mat = materialRef.current;
@@ -423,6 +436,20 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
     )
       invalidate();
 
+    // ── PARALAKS TIPOGRAFI ──
+    // Huruf besar di DOM digeser oleh proyeksi offset dunia yang SAMA dengan yang
+    // dipakai kartu (geyang pointer milik bab ini), pada kedalamannya sendiri. Bukan
+    // selisih posisi kartu terhadap kotaknya: selisih itu adalah sisa lerp, dan selama
+    // penerbangan ia bernilai ratusan pixel — huruf ikut terbang dan mendorong halaman
+    // keluar dari lebarnya (terukur 205px dan 141px overflow pada percobaan pertama).
+    // Yang dibagikan di sini adalah rumus dan sumber angkanya, bukan sisa perjalanan.
+    tulisParalaksTipografi(
+      tipografi,
+      mouse.current.x * k.geyang,
+      mouse.current.y * k.geyang,
+      (kedalaman) => pxPerWorld(k.z + kedalaman),
+      kurangiGerak
+    );
 
     // Mesin kartu yang tahu di mana kartu duduk, jadi modul seret tidak perlu menebak
     // tata letak: seret hanya diterima di atas kartu dan tepi 40px-nya.

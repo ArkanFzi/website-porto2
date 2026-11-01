@@ -234,7 +234,11 @@ export const ChapterArchives: React.FC<ArchivesProps> = ({
               <span className="font-mono text-[10px] tracking-[0.25em] uppercase text-[#D41E12] block mb-3">
                 {mode === "engineer" ? "POWER UNIT & CODEBASES" : "ATELIER & VISUAL EXPERIMENTS"}
               </span>
-              <h2 className="font-serif text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-white mb-4">
+              <h2
+                className="font-serif text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-white mb-4"
+                data-paralaks="-0.5"
+                style={{ translate: "var(--tipografi-x, 0px) var(--tipografi-y, 0px)" }}
+              >
                 {mode === "engineer" ? "SYSTEMS & ARCHITECTURE" : "SELECTED CREATIVE WORKS"}
               </h2>
               <p className="font-sans text-sm text-[#6E6A64] leading-relaxed">

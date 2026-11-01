@@ -114,7 +114,11 @@ export const ChapterPaddock: React.FC = () => {
             className="group block"
             data-magnetic
           >
-            <h2 className="font-serif text-[clamp(44px,8vw,130px)] font-bold tracking-tighter uppercase leading-[0.88] text-white group-hover:text-[#0A0A0A] transition-colors duration-500">
+            <h2
+              className="font-serif text-[clamp(44px,8vw,130px)] font-bold tracking-tighter uppercase leading-[0.88] text-white group-hover:text-[#0A0A0A] transition-colors duration-500"
+              data-paralaks="-0.7"
+              style={{ translate: "var(--tipografi-x, 0px) var(--tipografi-y, 0px)" }}
+            >
               LET&apos;S BUILD THE
               <br />
               <span className="inline-flex items-center gap-4 sm:gap-8">

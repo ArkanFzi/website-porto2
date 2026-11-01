@@ -40,6 +40,8 @@ const baca = () =>
       .find(
         (o) => o.isMesh && o.geometry?.type === 'PlaneGeometry' && o.geometry?.parameters?.height > 1.6
       );
+    const kanvas = document.querySelector('canvas');
+    const kotakKanvas = kanvas?.getBoundingClientRect();
     return {
       dolly: p.dolly,
       skala: kartu?.scale.x ?? p.skala,
@@ -55,6 +57,18 @@ const baca = () =>
       mask: p.mask,
       kamera: p.kamera,
       portal: p.portal,
+      layarX: kotakKanvas?.width ?? 0,
+      layarY: kotakKanvas?.height ?? 0,
+      /** Judul besar di DOM: kedalaman yang ia deklarasikan dan angka yang benar-benar
+       *  terpasang pada elemennya. Hanya ini yang membuktikan huruf dan kartu satu ruang —
+       *  yang dibandingkan adalah pixel di layar, bukan angka kontrak debug. */
+      tipografi: [...document.querySelectorAll('[data-paralaks]')].map((el) => ({
+        d: Number(el.getAttribute('data-paralaks')),
+        x: getComputedStyle(el).getPropertyValue('--tipografi-x').trim(),
+        y: getComputedStyle(el).getPropertyValue('--tipografi-y').trim(),
+        teks: (el.textContent ?? '').trim().slice(0, 14),
+      })),
+      overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
     };
   });
 
@@ -218,6 +232,16 @@ const relPusat = (b, aspek) => {
   ];
 };
 
+/** Kalibrasi world→pixel yang dihitung verifier sendiri dari fov DASAR, jarak kamera, dan
+ *  tinggi kanvas — rumus proyeksi perspektif yang sama yang dipakai panggung, tapi tidak
+ *  menelan angkanya. fov dasar direkonstruksi dari fov hidup dikurangi dolly, jadi gerbang
+ *  ini tetap benar walau pembacaan dilakukan saat kamera masih dalam perjalanan. */
+const kalibrasi = (b) => {
+  const camZ = b.kamera[1];
+  const dpp = (2 * Math.tan(((b.kamera[0] - b.dolly) * Math.PI) / 360) * camZ) / b.layarY;
+  return { kePx: (z) => (1 / dpp) * (camZ / (camZ - z)), camZ, dpp };
+};
+
 /** Tunggu kartu benar-benar berhenti: enam pembacaan berturut-turut tanpa perubahan
  *  posisi pada presisi float, plus dolly sudah mendarat di nol. Ambangnya 1e-6, bukan
  *  1e-3, karena pegasnya asimtotes — pada 1e-3 kartu masih bisa berjarak belasan pixel
@@ -268,6 +292,34 @@ const sikapDiBab = async (n) => {
   await page.mouse.move(16, 500);
   return tungguSikap();
 };
+
+/** Parkir pointer di satu titik dan tunggu SAMBIL huruf ikut berhenti. `tungguSikap`
+ *  hanya menunggu kartu; suku geyang pointer sampai ke tipografi satu langkah lebih dulu
+ *  (kartu masih tertinggal pegasnya sendiri), jadi membaca huruf setelah kartu tenang
+ *  saja tidak cukup — yang ditunggu adalah keduanya tidak berubah. */
+const parkirTipografi = async (px, py) => {
+  await page.mouse.move(px, py);
+  let dulu = null;
+  let sama = 0;
+  for (let i = 0; i < 60; i++) {
+    await diamkan(150);
+    const b = await baca();
+    if (!b) continue;
+    const tenang =
+      dulu !== null &&
+      Math.abs(b.x - dulu.x) < 1e-6 &&
+      Math.abs(b.y - dulu.y) < 1e-6 &&
+      Math.abs(b.dolly) < 0.005 &&
+      b.tipografi.length === dulu.tipografi.length &&
+      b.tipografi.every((t, j) => t.x === dulu.tipografi[j].x && t.y === dulu.tipografi[j].y);
+    sama = tenang ? sama + 1 : 0;
+    dulu = b;
+    if (sama >= 3) return b;
+  }
+  return dulu;
+};
+
+const px = (v) => Number.parseFloat(v);
 
 // ── 1 · dolly dari kecepatan gulir: ada, terbatas, dan pulang sendiri ──
 const diam1 = await sikapDiBab(2);
@@ -399,10 +451,124 @@ cek(
   sapu5.length > 3 && sapu5.every((r) => r.wipe === 0),
   true
 );
+// Tipografi DOM ikut dikunci. Yang diuji di sini adalah keadaan TERAKHIR yang bisa
+// terjadi: effect tulis-nol sudah menulis 0px saat preferensi berubah, lalu satu render
+// dipaksa dengan pointer tertahan di tepi kanan — kalau loop masih menggeser huruf pada
+// frame berikutnya, gerbang ini melihatnya.
+await page.mouse.move(1424, 300);
+await page.evaluate(() => window.dispatchEvent(new Event('resize')));
+await diamkan(500);
+await page.evaluate(() => window.dispatchEvent(new Event('resize')));
+await diamkan(400);
+const terkunci = await baca();
+console.log(
+  'reduce-motion tipografi   simpul:', terkunci?.tipografi.length,
+  '|', (terkunci?.tipografi ?? []).map((t) => `${t.teks}=${t.x},${t.y}`).join(' ')
+);
+cek(
+  'reduce-motion: sapuan pointer tidak menggeser satu pixel huruf pun',
+  !!terkunci &&
+    terkunci.tipografi.length > 0 &&
+    terkunci.tipografi.every((t) => t.x === '0px' && t.y === '0px'),
+  true
+);
+
 await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }]);
 await diamkan(900);
 
-// ── 6 · halaman masih bisa dinavigasi setelah semua ini ──
+// ── 6 · huruf DOM dan kartu potret duduk di ruang yang sama ──
+// Ide 12 tidak bisa dibuktikan dengan "angkanya sama di kode". Yang diukur di sini geseran
+// huruf dalam pixel di layar lalu dibandingkan ke geseran kartunya pada bab yang sama:
+// selisih keduanya harus tepat sebesar faktor proyeksi (camZ − z) / (camZ − z − d), dihitung
+// verifier dari kamera dan ukuran kanvas sendiri. Kalau suatu saat tipografi diberi konstanta
+// gesernya sendiri lagi, rasioninya menyimpang dan gerbang ini jatuh.
+// Toleransi 5% bukan kelonggaran: huruf ditulis dari angka frame ini, kartu adalah hasil
+// pegas yang masih tertinggal di belakang targetnya sendiri, jadi yang dibandingkan dua
+// pembacaan yang memang tidak pernah identik. Nisbah antarkedalaman (0.02) bebas dari
+// efek itu karena kedua huruf dibaca pada frame yang sama.
+for (const n of [1, 2, 4]) {
+  await klikBab(n);
+  const kiri = await parkirTipografi(16, 450);
+  const kanan = await parkirTipografi(1424, 450);
+  const tengah = await parkirTipografi(720, 450);
+  const { kePx, camZ, dpp } = kalibrasi(kanan);
+  const kartuPx = (kanan.x - kiri.x) * kePx(kanan.z);
+  const bergerak = kiri.tipografi
+    .map((t, j) => ({
+      d: t.d,
+      teks: t.teks,
+      geser: px(kanan.tipografi[j]?.x ?? 'NaN') - px(t.x),
+    }))
+    .filter((t) => Number.isFinite(t.geser) && Math.abs(t.geser) > 4);
+  console.log(
+    `── tipografi bab 0${n} ── z=${kanan.z.toFixed(3)} camZ=${camZ} dpp=${dpp.toFixed(6)}`,
+    `| kartu ${kartuPx.toFixed(2)}px | overflow ${kiri.overflow}/${kanan.overflow}`,
+    '|', bergerak.map((t) => `${t.teks}(d=${t.d}) ${t.geser.toFixed(2)}px`).join(' ')
+  );
+  cek(
+    `bab 0${n}: semua judul mendeklarasikan kedalamannya dan tertulis di DOM`,
+    kiri.tipografi.length >= 3 &&
+      kiri.tipografi.every((t) => Number.isFinite(t.d) && t.x !== '' && t.y !== ''),
+    true
+  );
+  cek(
+    `bab 0${n}: pointer di tengah, tidak ada sisa geser huruf`,
+    tengah.tipografi.length > 0 && tengah.tipografi.every((t) => t.x === '0px' && t.y === '0px'),
+    true
+  );
+  cek(
+    `bab 0${n}: geser huruf tidak pernah melebarkan halaman`,
+    kiri.overflow === 0 && kanan.overflow === 0,
+    true
+  );
+  for (const t of bergerak) {
+    kisar(
+      `bab 0${n}: geser "${t.teks}" mengikuti proyeksi kartunya (d=${t.d})`,
+      t.geser / kartuPx,
+      (camZ - kanan.z) / (camZ - kanan.z - t.d),
+      0.05
+    );
+  }
+  const dua = bergerak.length >= 2;
+  const dekat = dua ? bergerak.reduce((a, b) => (a.d > b.d ? a : b)) : null;
+  const jauh = dua ? bergerak.reduce((a, b) => (a.d < b.d ? a : b)) : null;
+  cek(
+    `bab 0${n}: ada dua kedalaman berbeda untuk dibandingkan`,
+    dua && jauh.d !== dekat.d,
+    true
+  );
+  if (dua && jauh.d !== dekat.d)
+    kisar(
+      `bab 0${n}: yang lebih jauh bergeser lebih kecil, tepat sebanding proyeksinya`,
+      jauh.geser / dekat.geser,
+      (camZ - kanan.z - dekat.d) / (camZ - kanan.z - jauh.d),
+      0.02
+    );
+}
+
+// Sumbu y punya tanda sendiri di dunia (ke atas) dan di layar (ke bawah). Kalau salah
+// satu dibalik, huruf justru melawan kartu saat pointer naik-turun.
+const atas = await parkirTipografi(720, 60);
+const bawah = await parkirTipografi(720, 840);
+const kalTu = kalibrasi(bawah);
+const kartuPy = -(bawah.y - atas.y) * kalTu.kePx(bawah.z);
+const judul = atas.tipografi[0];
+const geserY = px(bawah.tipografi[0]?.y ?? 'NaN') - px(judul?.y ?? 'NaN');
+console.log(`── tipografi vertikal ── kartu ${kartuPy.toFixed(2)}px | huruf ${geserY.toFixed(2)}px`);
+cek(
+  'pointer naik-turun: huruf bergerak searah kartu',
+  Number.isFinite(geserY) && Math.sign(geserY) === Math.sign(kartuPy) && Math.abs(geserY) > 4,
+  true
+);
+if (Number.isFinite(geserY) && Math.abs(kartuPy) > 4)
+  kisar(
+    'pointer naik-turun: geser vertikal huruf mengikuti proyeksinya',
+    geserY / kartuPy,
+    (kalTu.camZ - bawah.z) / (kalTu.camZ - bawah.z - judul.d),
+    0.05
+  );
+
+// ── 7 · halaman masih bisa dinavigasi setelah semua ini ──
 const bab = await page.evaluate(() => {
   const el = document.querySelector('[data-bab="4"]') || document.querySelector('#chapter-04');
   return !!el;

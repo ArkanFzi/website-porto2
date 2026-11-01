@@ -213,7 +213,11 @@ export const ChapterDuality: React.FC<DualityProps> = ({
                 <span className="font-mono text-[10px] tracking-[0.25em] uppercase text-[#D41E12] block mb-3">
                   {mode === "engineer" ? "THE DISCIPLINE // ENGINEERING" : "THE PHILOSOPHY // CREATIVE CRAFT"}
                 </span>
-                <h2 className="font-serif text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-[#0A0A0A] leading-[1.08] mb-6">
+                <h2
+                  className="font-serif text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-[#0A0A0A] leading-[1.08] mb-6"
+                  data-paralaks="-0.5"
+                  style={{ translate: "var(--tipografi-x, 0px) var(--tipografi-y, 0px)" }}
+                >
                   {mode === "engineer" ? (
                     <>
                       ARCHITECTING SYSTEMS,<br />
