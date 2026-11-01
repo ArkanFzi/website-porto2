@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { MotionConfig } from "framer-motion";
 import { SmoothScrollProvider, useScrollData } from "@/components/SmoothScrollProvider";
@@ -23,6 +23,36 @@ const GlobalEditorialCanvas = dynamic(
   { ssr: false }
 );
 
+/** Latar rosso bab penutup, dilukis DI BAWAH kanvas.
+ *
+ * Selama warna ini menempel pada <section id="chapter-04"> ia tidak pernah bisa
+ * dibiarkan tembus: `main` memegang z-10 dan datang belakangan di DOM dibanding
+ * kanvas yang juga z-10, jadi seluruh subtree-nya — termasuk latar section — melukis
+ * di atas kartu potret. Hasil terukurnya: 84-92% isi kotak portal bab 04 adalah rosso
+ * rata, kartu tidak ada di layar. Dipindah ke lapisan z-0, kartu boleh muncul dan teks
+ * tetap di depannya. */
+const LatarPaddock: React.FC = () => {
+  const [masuk, setMasuk] = useState(false);
+  useEffect(() => {
+    const section = document.getElementById("chapter-04");
+    if (!section) return;
+    const pemantau = new IntersectionObserver(
+      ([entri]) => setMasuk(entri.isIntersecting),
+      { threshold: 0 }
+    );
+    pemantau.observe(section);
+    return () => pemantau.disconnect();
+  }, []);
+  return (
+    <div
+      aria-hidden="true"
+      className={`fixed inset-0 z-0 pointer-events-none bg-[#D41E12] transition-opacity duration-700 ${
+        masuk ? "opacity-100" : "opacity-0"
+      }`}
+    />
+  );
+};
+
 interface PageClientProps {
   repos: RepoBerlian[];
   perjalanan: Perjalanan[];
@@ -41,6 +71,9 @@ const EditorialInner: React.FC<PageClientProps> = ({
 
   return (
     <div className="relative min-h-screen w-full transition-colors duration-700">
+      {/* ── Latar bab penutup (paling bawah) ── */}
+      <LatarPaddock />
+
       {/* ── Single Continuous Global 3D Canvas (Midground) ── */}
       <GlobalEditorialCanvas
         scrollProgressRef={scrollProgressRef}

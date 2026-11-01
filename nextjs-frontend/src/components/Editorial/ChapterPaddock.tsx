@@ -70,7 +70,10 @@ export const ChapterPaddock: React.FC = () => {
   return (
     <section
       id="chapter-04"
-      className="relative w-full min-h-screen bg-[#D41E12] text-[#F7F5F0] pt-32 sm:pt-36 pb-48 md:pb-56 px-6 md:px-12 select-none overflow-hidden transition-colors duration-700 flex flex-col justify-between"
+      /* Rosso tidak lagi dilukis di sini: latar section selalu melukis di atas kanvas
+         (main z-10 menyusul DOM setelah kanvas z-10) sehingga kartu potret tertutup.
+         Warnanya sekarang di LatarPaddock, satu lapis di bawah kanvas. */
+      className="relative w-full min-h-screen text-[#F7F5F0] pt-32 sm:pt-36 pb-48 md:pb-56 px-6 md:px-12 select-none overflow-hidden flex flex-col justify-between"
     >
       <MeshPortal bab={4} className="left-1/2 top-[28vh] h-[60vh] w-[23vw] -translate-x-1/2" />
       <div className="w-full max-w-[1600px] mx-auto z-20">

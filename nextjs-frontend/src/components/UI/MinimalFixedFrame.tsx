@@ -1,31 +1,13 @@
 "use client";
 
-import React, { useEffect, useState, useSyncExternalStore } from "react";
+import React, { useEffect, useState } from "react";
 import { usePortfolioMode } from "@/context/PortfolioModeContext";
 import { useBabAktif } from "@/components/SmoothScrollProvider";
-import { bacaCuplik, dengarCuplik, type CuplikanFrame } from "@/lib/perfStats";
 import { ArrowUpRight, Cpu, Sparkles, FileText, Activity, Volume2, VolumeX, Terminal, Layers } from "lucide-react";
 
 interface FrameProps {
   onChapterClick: (ch: number) => void;
 }
-
-// Hanya field yang benar-benar dikembalikan /api/telemetry yang dibaca di sini. edgeNode dan sla
-// pernah ada di interface ini dan tidak pernah ada sumber datanya, jadi keduanya keluar.
-interface TelemetryData {
-  status: string;
-  latencyMs: number;
-  heapMb: number | null;
-  backend: { reachable: boolean; db: string | null; rttMs: number | null };
-  watch: {
-    hijau: number;
-    total: number;
-    tautan: string;
-    terakhir: { nomor: number; kesimpulan: string } | null;
-  } | null;
-}
-
-const DASH = "—";
 
 const CHAPTER_LABELS = [
   "THE PROLOGUE",
@@ -33,23 +15,6 @@ const CHAPTER_LABELS = [
   "SELECTED ARCHIVES",
   "THE PADDOCK & DISPATCH",
 ];
-
-// Komponen kecil yang berdiri sendiri supaya pembaruan 1 Hz dari pengukur frame hanya
-// menyentuh teks ini, bukan seluruh frame HUD.
-const KinerjaKanvas: React.FC = () => {
-  const cuplik = useSyncExternalStore<CuplikanFrame | null>(
-    dengarCuplik,
-    bacaCuplik,
-    () => null
-  );
-  if (!cuplik) return null;
-  return (
-    <>
-      {" "}
-      • {cuplik.fps} FPS • p95 {cuplik.p95Ms}ms • DPR {cuplik.dpr} • {cuplik.frames}f
-    </>
-  );
-};
 
 export const MinimalFixedFrame: React.FC<FrameProps> = ({ onChapterClick }) => {
   const currentChapter = useBabAktif();
@@ -65,23 +30,22 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ onChapterClick }) => {
     audioMuted,
     toggleAudio,
   } = usePortfolioMode();
-  const [telemetry, setTelemetry] = useState<TelemetryData | null>(null);
+  // Yang dibaca di sini hanya "apakah /api/telemetry menjawab" — angkanya tampil di
+  // drawer, bukan di pil, supaya pil tidak melebar menutupi isi halaman.
+  const [telemetryHidup, setTelemetryHidup] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
-    const fetchTelemetry = async () => {
+    const periksa = async () => {
       try {
         const res = await fetch("/api/telemetry");
-        if (res.ok) {
-          const data = await res.json();
-          if (isMounted) setTelemetry(data);
-        }
+        if (isMounted) setTelemetryHidup(res.ok);
       } catch {
-        // Fallback default
+        if (isMounted) setTelemetryHidup(false);
       }
     };
-    fetchTelemetry();
-    const interval = setInterval(fetchTelemetry, 30000);
+    periksa();
+    const interval = setInterval(periksa, 30000);
     return () => {
       isMounted = false;
       clearInterval(interval);
@@ -266,8 +230,12 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ onChapterClick }) => {
         </div>
       </div>
 
-      {/* ── BOTTOM BAR ── */}
-      <div className="w-full flex items-end justify-between pointer-events-auto">
+      {/* ── BOTTOM BAR ──
+          Pita ini tidak lagi `justify-between`: slot tengah menempatkan pil tepat di
+          atas kolom konten, dan setiap sasaran interaktif yang lewat di sana ikut
+          tertelan (terukur sampai 2.237px² pada tombol SPEC baris arsip). Pil sekarang
+          menempel di belakang indeks bab, koordinat didorong ke tepi kanan lewat ml-auto. */}
+      <div className="w-full flex items-end gap-5 pointer-events-auto">
         
         {/* Bottom-Left: Chapter Index — all four chapters reachable */}
         <nav className="flex items-center gap-2.5" aria-label="Chapter index">
@@ -289,63 +257,48 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ onChapterClick }) => {
             );
           })}
           <div className={`h-3 w-[1px] ${isRossoSection ? "bg-white/40" : "bg-[#D41E12]/40"}`} />
-          <span className={`font-mono text-[10px] uppercase tracking-[0.2em] ${subColor} hidden sm:inline`}>
+          {/* Nama bab panjangnya 178px dan mendorong pil HUD ke tengah kolom konten,
+              jadi di layar sempit ia dipensiunkan dulu: CH.04 yang aktif sudah
+              menyebutkan hal yang sama. */}
+          <span className={`font-mono text-[10px] uppercase tracking-[0.2em] ${subColor} hidden xl:inline`}>
             {CHAPTER_LABELS[currentChapter - 1]}
           </span>
         </nav>
 
-        {/* Bottom-Center: Live F1 Pit-Wall Telemetry Bar (Clickable Trigger for Telemetry HUD) */}
+        {/* Pemicu Pit-Wall Telemetry HUD. Dulu pil ini memanjang sampai 831px dan
+            mengulang angka yang sama dengan isi drawer; sekarang hanya status
+            sambungan dan jalan masuknya. */}
         <button
           onClick={() => setTelemetryOpen(!telemetryOpen)}
+          aria-expanded={telemetryOpen}
+          aria-label="Pit-Wall Telemetry HUD"
           className={`hidden lg:flex items-center gap-2 px-3 py-1 rounded-full border ${
             telemetryOpen
               ? activePillBg
               : isRossoSection
               ? "border-white/20 bg-black/20 hover:border-white"
-              : "border-current/10 bg-white/[0.02] hover:border-[#D41E12]"
+              : chipBg
           } backdrop-blur-md transition-all duration-300 cursor-pointer`}
           data-magnetic
-          title="Click to open Pit-Wall Telemetry HUD"
+          title="Open the Pit-Wall Telemetry HUD"
         >
-          <Activity className={`w-3 h-3 ${accentColor} animate-pulse`} />
-          {mode === "engineer" ? (
-            <span className={`font-mono text-[9px] tracking-[0.18em] uppercase ${subColor}`}>
-              <span className={`${accentColor} font-bold`}>● LIVE TELEMETRY:</span>{" "}
-              {telemetry
-                ? `${telemetry.latencyMs}ms • ${
-                    telemetry.heapMb === null ? DASH : `${telemetry.heapMb}MB HEAP`
-                  } • ${
-                    telemetry.backend.db === "ok"
-                      ? "POSTGRESQL HEALTHY"
-                      : telemetry.backend.db === "error"
-                      ? "POSTGRESQL DOWN"
-                      : telemetry.backend.reachable
-                      ? "HEALTH FIELD ABSEN"
-                      : "BACKEND UNREACHABLE"
-                  }`
-                : DASH}
-              <KinerjaKanvas />{" "}
-              {telemetry?.watch ? (
-                <span
-                  title={`Run terjadwal terakhir #${telemetry.watch.terakhir?.nomor ?? "?"} — ${
-                    telemetry.watch.terakhir?.kesimpulan ?? "?"
-                  }`}
-                >
-                  • PROBE {telemetry.watch.hijau}/{telemetry.watch.total}{" "}
-                </span>
-              ) : null}
-              <span className="text-[#D41E12] font-mono text-[8px] ml-1">[HUD ⇡]</span>
-            </span>
-          ) : (
-            <span className={`font-mono text-[9px] tracking-[0.18em] uppercase ${subColor}`}>
-              <span className={`${accentColor} font-bold`}>✦ SPATIAL CRAFT:</span> GLSL LUMINANCE DISPLACEMENT • 60FPS ATELIER{" "}
-              <span className="text-[#D41E12] font-mono text-[8px] ml-1">[HUD ⇡]</span>
-            </span>
-          )}
+          <span
+            className={`w-1.5 h-1.5 rounded-full ${
+              telemetryHidup ? "bg-[#D41E12] animate-pulse" : "bg-current opacity-30"
+            }`}
+            aria-hidden="true"
+          />
+          <Activity className={`w-3 h-3 ${accentColor}`} />
+          <span className={`font-mono text-[9px] tracking-[0.18em] uppercase ${subColor}`}>
+            <span className={`${accentColor} font-bold`}>
+              {mode === "engineer" ? "TELEMETRY" : "SPATIAL CRAFT"}
+            </span>{" "}
+            [HUD ⇡]
+          </span>
         </button>
 
         {/* Bottom-Right: Geographic & Telemetry Metadata */}
-        <div className={`hidden sm:flex flex-col items-end ${chipPlate}`}>
+        <div className={`ml-auto hidden sm:flex flex-col items-end ${chipPlate}`}>
           <span className={`font-mono text-[9px] tracking-[0.2em] uppercase ${subColor}`}>
             COORDINATES // MALANG, ID
           </span>
