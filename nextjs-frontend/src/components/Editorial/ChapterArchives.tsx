@@ -2,65 +2,97 @@
 
 import React from "react";
 import { ArrowUpRight } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import type { RepoBerlian } from "@/lib/server/github";
 import { usePortfolioMode } from "@/context/PortfolioModeContext";
 
 interface ArchivesProps {
-  repos: RepoBerlian[];
+  repos?: RepoBerlian[];
   onHoverProject: (index: number | null) => void;
   hoveredProject: number | null;
 }
 
-const FEATURED_ARCHIVES = [
+interface ArchiveItem {
+  index: string;
+  name: string;
+  title: string;
+  url: string;
+  desc: string;
+  // Engineer mode fields
+  engineerCategory: string;
+  engineerStack: string;
+  engineerMetric: string;
+  // Creator mode fields
+  creatorCategory: string;
+  creatorCraft: string;
+  creatorTag: string;
+}
+
+const FEATURED_ARCHIVES: ArchiveItem[] = [
   {
     index: "01",
     name: "ferrari-ubuntu",
     title: "Ferrari Ubuntu Architecture",
-    category: "OS & SYSTEM PLATFORM",
-    stack: "LINUX SHELL / GTK4 / RESTYLED WEAVE",
-    stars: "12+",
-    desc: "Precision workstation environment based on Ubuntu 24.04 with restrained Scuderia Ferrari aerodynamics, dark macOS-minimalist desktop architecture, and zero-distraction layout.",
     url: "https://github.com/ArkanFzi/ferrari-ubuntu",
+    desc: "Precision workstation environment based on Ubuntu 24.04 with restrained Scuderia Ferrari aerodynamics and dark macOS-minimalist desktop architecture.",
+    engineerCategory: "OS & SYSTEM PLATFORM",
+    engineerStack: "LINUX SHELL / GTK4 / SYSTEMD",
+    engineerMetric: "<120MB IDLE RAM • 0.02s COLD BOOT",
+    creatorCategory: "BESPOKE WORKSTATION UI",
+    creatorCraft: "CUSTOM GTK4 THEME • MONZA RED AESTHETICS",
+    creatorTag: "SPATIAL DESKTOP",
   },
   {
     index: "02",
     name: "pickertime",
     title: "Pickertime Gemini AI Engine",
-    category: "GENERATIVE AI & SCHEDULING",
-    stack: "NEXT.JS 16 / GOOGLE GEMINI 1.5 / TYPESCRIPT",
-    stars: "18+",
-    desc: "Intelligent AI-native meeting scheduler and decision matrix powered by Google Gemini LLM API with natural language slot synthesis.",
     url: "https://github.com/ArkanFzi/pickertime",
+    desc: "Intelligent AI-native meeting scheduler and decision matrix powered by Google Gemini LLM API with natural language slot synthesis.",
+    engineerCategory: "GENERATIVE AI & DISTRIBUTED STATE",
+    engineerStack: "NEXT.JS 16 / GOOGLE GEMINI 1.5 / TYPESCRIPT",
+    engineerMetric: "<80ms NLP SYNTHESIS • HIGH CONCURRENCY",
+    creatorCategory: "GENERATIVE AI EXPERIENCE",
+    creatorCraft: "NATURAL CONVERSATION • FLUID GENERATIVE UI",
+    creatorTag: "AI EXPERIENCE",
   },
   {
     index: "03",
     name: "graphify-devkit",
     title: "Graphify AST Knowledge Engine",
-    category: "COMPILER TOOLING & AST",
-    stack: "TREE-SITTER / AST / PYTHON / NETWORKX",
-    stars: "24+",
-    desc: "AST-based codebase knowledge graph extractor. Maps cross-file dependencies, god nodes, and architectural call-graphs without network latency.",
     url: "https://github.com/ArkanFzi/graphify-devkit",
+    desc: "AST-based codebase knowledge graph extractor. Maps cross-file dependencies, god nodes, and architectural call-graphs without network latency.",
+    engineerCategory: "COMPILER TOOLING & AST ENGINE",
+    engineerStack: "TREE-SITTER / AST / PYTHON / NETWORKX",
+    engineerMetric: "100K+ AST NODES/SEC • ZERO NETWORK I/O",
+    creatorCategory: "CODEBASE KNOWLEDGE GRAPH",
+    creatorCraft: "INTERACTIVE TOPOLOGY • GOD NODE MAPPING",
+    creatorTag: "DATA VISUALIZATION",
   },
   {
     index: "04",
     name: "sekawan-hris",
     title: "Enterprise Microservices HRIS",
-    category: "MISSION-CRITICAL BACKEND",
-    stack: "GO / POSTGRESQL / DOCKER / REDIS",
-    stars: "ENTERPRISE",
-    desc: "High-throughput microservices architecture supporting multi-tenant enterprise human resource tracking, attendance telemetry, and payroll logic.",
     url: "https://sekawanmedia.co.id",
+    desc: "High-throughput microservices architecture supporting multi-tenant enterprise human resource tracking, attendance telemetry, and payroll logic.",
+    engineerCategory: "MISSION-CRITICAL DISTRIBUTED BACKEND",
+    engineerStack: "GO / POSTGRESQL / DOCKER / REDIS",
+    engineerMetric: "99.98% SLA • SUB-15ms QUERY LATENCY",
+    creatorCategory: "ENTERPRISE PRODUCT DESIGN",
+    creatorCraft: "HIGH-DENSITY DATA HIERARCHY • TELEMETRY",
+    creatorTag: "DESIGN SYSTEM",
   },
   {
     index: "05",
     name: "interactive-portfolio",
-    title: "Awwwards Chiaroscuro Portfolio",
-    category: "SPATIAL WEBGL CRAFT",
-    stack: "R3F / THREE.JS GLSL / LENIS / TAILWIND",
-    stars: "SOTY SPEC",
-    desc: "Restraint as a flex: single continuous WebGL canvas rendering custom luminance depth displacement shaders inspired by Charles Leclerc official atelier.",
+    title: "Awwwards Chiaroscuro Monolith",
     url: "https://github.com/ArkanFzi",
+    desc: "Single continuous WebGL canvas rendering custom luminance depth displacement shaders inspired by Charles Leclerc official atelier.",
+    engineerCategory: "GPU SHADER PIPELINE & RENDERING",
+    engineerStack: "R3F / THREE.JS GLSL / LENIS / TAILWIND",
+    engineerMetric: "60FPS SOLID • VOLUMETRIC PARALLAX",
+    creatorCategory: "SPATIAL 3D & SHADER CRAFT",
+    creatorCraft: "LUMINANCE RELIEF • FLUID CHROMATIC SHIFT",
+    creatorTag: "SPATIAL 3D",
   },
 ];
 
@@ -80,25 +112,40 @@ export const ChapterArchives: React.FC<ArchivesProps> = ({
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-[#D41E12] animate-pulse" />
           <span className="font-mono text-[11px] font-bold tracking-[0.25em] uppercase text-[#D41E12]">
-            CHAPTER 03 // SELECTED ARCHIVES
+            CHAPTER 03 // {mode === "engineer" ? "SYSTEMS & ARCHITECTURE" : "SELECTED CREATIVE WORKS"}
           </span>
         </div>
 
         <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-[#6E6A64]">
-          SWISS EDITORIAL INDEX // HOVER TO DISPLACE
+          {mode === "engineer" ? "TELEMETRY & HARDWARE METRICS" : "INTERACTION & SPATIAL TAXONOMY"}
         </span>
       </div>
 
       <div className="w-full max-w-[1600px] mx-auto">
         
-        {/* Section Heading */}
+        {/* Section Heading with Motion Transition */}
         <div className="mb-16 max-w-2xl">
-          <h2 className="font-serif text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-white mb-4">
-            {mode === "engineer" ? "POWER UNIT & CODEBASES" : "SPATIAL CRAFT & INTERFACES"}
-          </h2>
-          <p className="font-sans text-sm text-[#6E6A64] leading-relaxed">
-            Curated selection of open-source architectures and enterprise platforms. Hovering any archive item reflects dynamic displacement onto the central 3D Monolith.
-          </p>
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={mode}
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <span className="font-mono text-[10px] tracking-[0.25em] uppercase text-[#D41E12] block mb-3">
+                {mode === "engineer" ? "POWER UNIT & CODEBASES" : "ATELIER & VISUAL EXPERIMENTS"}
+              </span>
+              <h2 className="font-serif text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-white mb-4">
+                {mode === "engineer" ? "SYSTEMS & ARCHITECTURE" : "SELECTED CREATIVE WORKS"}
+              </h2>
+              <p className="font-sans text-sm text-[#6E6A64] leading-relaxed">
+                {mode === "engineer"
+                  ? "Production-grade microservices, compiler AST engines, and low-latency systems. Hover each record to project spatial telemetry into the central 3D Monolith."
+                  : "Haute-couture digital artifacts, volumetric WebGL shaders, and bespoke desktop environments. Hover each record to project spatial resonance into the central 3D Monolith."}
+              </p>
+            </motion.div>
+          </AnimatePresence>
         </div>
 
         {/* ── FULL-WIDTH EDITORIAL INDEX LIST ── */}
@@ -134,7 +181,7 @@ export const ChapterArchives: React.FC<ArchivesProps> = ({
 
                   <div>
                     <span className="font-mono text-[9px] tracking-[0.22em] uppercase text-[#6E6A64] block mb-1">
-                      {item.category}
+                      {mode === "engineer" ? item.engineerCategory : item.creatorCategory}
                     </span>
                     <h3
                       className={`font-serif text-2xl sm:text-3xl lg:text-4xl font-bold transition-colors duration-300 ${
@@ -146,14 +193,14 @@ export const ChapterArchives: React.FC<ArchivesProps> = ({
                   </div>
                 </div>
 
-                {/* Right: Stack Tags, Stars & Inspect Action */}
+                {/* Right: Mode-driven specs (Engineer: Latency/Throughput/Stack vs Creator: Craft/Tag) */}
                 <div className="flex flex-wrap md:flex-nowrap items-center justify-between md:justify-end gap-6 sm:gap-10">
                   <div className="flex flex-col md:items-end">
                     <span className="font-mono text-[10px] font-bold tracking-[0.16em] uppercase text-[#D41E12]">
-                      {item.stack}
+                      {mode === "engineer" ? item.engineerStack : item.creatorCraft}
                     </span>
-                    <span className="font-mono text-[9px] tracking-[0.2em] text-[#6E6A64] mt-0.5">
-                      STAR DATA: {item.stars}
+                    <span className="font-mono text-[9px] tracking-[0.2em] uppercase text-[#6E6A64] mt-0.5">
+                      {mode === "engineer" ? `METRIC: ${item.engineerMetric}` : `EXPERIENCE: ${item.creatorTag}`}
                     </span>
                   </div>
 

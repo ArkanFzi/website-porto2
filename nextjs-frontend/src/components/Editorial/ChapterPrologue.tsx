@@ -1,9 +1,9 @@
 "use client";
 
 import React from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { usePortfolioMode } from "@/context/PortfolioModeContext";
-import { ArrowDown, Flame, Sparkles } from "lucide-react";
+import { ArrowDown, Cpu, Sparkles } from "lucide-react";
 
 export const ChapterPrologue: React.FC = () => {
   const { mode } = usePortfolioMode();
@@ -11,7 +11,7 @@ export const ChapterPrologue: React.FC = () => {
   return (
     <section
       id="chapter-01"
-      className="relative w-full min-h-screen flex flex-col justify-between pt-28 pb-12 px-6 md:px-12 select-none overflow-hidden"
+      className="relative w-full min-h-screen flex flex-col justify-between pt-28 pb-10 px-6 md:px-12 select-none overflow-hidden"
     >
       {/* ── Top Header Tags (z-20) ── */}
       <div className="w-full max-w-[1600px] mx-auto flex items-center justify-between z-20">
@@ -50,10 +50,10 @@ export const ChapterPrologue: React.FC = () => {
       </div>
 
       {/* ── SANDWICH LAYER 2: FRONT LAYER (z-20, IN FRONT OF 3D CANVAS z-10) ── */}
-      {/* Uses mix-blend-difference & outline stroke so text overlapping the dark portrait punches through cleanly */}
       <div
         className="relative z-20 w-full max-w-[1750px] mx-auto my-auto flex flex-col items-center justify-center text-center pointer-events-none"
       >
+        {/* Massive Typography with mix-blend-difference & sharp white stroke */}
         <div className="mix-blend-difference select-none w-full">
           <span
             className="font-serif text-[11vw] font-black tracking-tighter uppercase leading-[0.85] text-[#F7F5F0] block whitespace-nowrap opacity-90"
@@ -73,37 +73,50 @@ export const ChapterPrologue: React.FC = () => {
           </span>
         </div>
 
-        {/* Editorial Subtitle Statement (z-20) */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 1.0, ease: "easeOut", delay: 0.4 }}
-          className="mt-6 flex flex-col items-center max-w-xl mx-auto pointer-events-auto"
-        >
-          <div className="flex items-center gap-2 mb-2 font-mono text-[10px] font-bold tracking-[0.22em] uppercase text-[#D41E12]">
+        {/* Clean Editorial Subtitle (NO pill/capsule background, pure Swiss typography) */}
+        <div className="mt-8 flex flex-col items-center max-w-2xl mx-auto pointer-events-auto h-16 justify-center">
+          <AnimatePresence mode="wait">
             {mode === "engineer" ? (
-              <>
-                <Flame className="w-3.5 h-3.5 text-[#D41E12]" />
-                <span>LEAD SYSTEMS ARCHITECT • MICROSERVICES ENGINE</span>
-              </>
+              <motion.div
+                key="engineer-sub"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                className="flex flex-col items-center"
+              >
+                <div className="flex items-center gap-2 mb-1.5 font-mono text-[10px] font-bold tracking-[0.22em] uppercase text-[#D41E12]">
+                  <Cpu className="w-3.5 h-3.5 text-[#D41E12]" />
+                  <span>MODE: THE ENGINEER // CORE RUNTIME</span>
+                </div>
+                <p className="font-mono text-xs sm:text-sm text-[#0A0A0A] font-bold tracking-[0.08em] uppercase text-center">
+                  SYSTEMS ARCHITECT — GO / TYPESCRIPT / LINUX &amp; MICROSERVICES
+                </p>
+              </motion.div>
             ) : (
-              <>
-                <Sparkles className="w-3.5 h-3.5 text-[#D41E12]" />
-                <span>CREATIVE TECHNOLOGIST • SHADER CRAFT</span>
-              </>
+              <motion.div
+                key="creator-sub"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                className="flex flex-col items-center"
+              >
+                <div className="flex items-center gap-2 mb-1.5 font-mono text-[10px] font-bold tracking-[0.22em] uppercase text-[#D41E12]">
+                  <Sparkles className="w-3.5 h-3.5 text-[#D41E12]" />
+                  <span>MODE: THE CREATOR // SPATIAL ATELIER</span>
+                </div>
+                <p className="font-mono text-xs sm:text-sm text-[#0A0A0A] font-bold tracking-[0.08em] uppercase text-center">
+                  CREATIVE TECHNOLOGIST — WEBGL / GLSL / GENERATIVE AI &amp; SPATIAL DESIGN
+                </p>
+              </motion.div>
             )}
-          </div>
-
-          <p className="font-sans text-xs sm:text-sm text-[#0A0A0A] font-medium leading-relaxed tracking-normal text-center bg-[#F7F5F0]/70 px-4 py-1.5 rounded-full backdrop-blur-sm">
-            {mode === "engineer"
-              ? "Architecting high-throughput microservices, compiler AST engines, and distributed backend systems with Formula 1 precision."
-              : "Sculpting sensorial WebGL spatial interfaces, generative AI agents, and couture digital aesthetics inspired by Monaco Grand Prix."}
-          </p>
-        </motion.div>
+          </AnimatePresence>
+        </div>
       </div>
 
-      {/* ── Bottom Section Edge (z-20, No yellow/orange button) ── */}
-      <div className="w-full max-w-[1600px] mx-auto flex items-end justify-between z-20 pt-6 swiss-border-t">
+      {/* ── Bottom Section Edge (z-20, Clean Swiss Hairline, No floating yellow/orange buttons) ── */}
+      <div className="w-full max-w-[1600px] mx-auto flex items-end justify-between z-20 pt-4 swiss-border-t">
         <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-[#6E6A64]">
           SCUDERIA PROTOCOL // #16
         </span>
