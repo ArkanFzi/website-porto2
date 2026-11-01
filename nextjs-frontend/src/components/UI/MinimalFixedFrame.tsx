@@ -9,14 +9,16 @@ interface FrameProps {
   onChapterClick: (ch: number) => void;
 }
 
+// Hanya field yang benar-benar dikembalikan /api/telemetry yang dibaca di sini. edgeNode dan sla
+// pernah ada di interface ini dan tidak pernah ada sumber datanya, jadi keduanya keluar.
 interface TelemetryData {
   status: string;
-  edgeNode: string;
-  runtime: string;
   latencyMs: number;
-  heapMb: number;
-  sla: string;
+  heapMb: number | null;
+  backend: { reachable: boolean; db: string | null; rttMs: number | null };
 }
+
+const DASH = "—";
 
 const CHAPTER_LABELS = [
   "THE PROLOGUE",

@@ -1,9 +1,32 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { NextConfig } from "next";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8080";
 
+// Versi Next dibaca dari paket yang terpasang, bukan dari string yang diketik tangan. Bedanya
+// penting: rute /api/telemetry menampilkan angka ini sebagai fakta runtime, dan "NEXT.JS 16.4"
+// yang ditulis tangan tetap tertulis 16.4 setelah paketnya dibump. Gagal baca menghasilkan ""
+// yang di sisi hilir tampil sebagai "—".
+function versiNext(): string {
+  try {
+    const pkg = JSON.parse(
+      readFileSync(join(process.cwd(), "node_modules", "next", "package.json"), "utf8")
+    ) as { version?: unknown };
+    return typeof pkg.version === "string" ? pkg.version : "";
+  } catch {
+    return "";
+  }
+}
+
 const nextConfig: NextConfig = {
   output: "standalone",
+  env: {
+    // Diisi `github.sha` pada langkah Build di job `web` (.github/workflows/ci.yml). Build lokal
+    // tanpa variabel ini menghasilkan string kosong, dan HUD menampilkan "—".
+    APP_COMMIT: process.env.APP_COMMIT ?? "",
+    NEXT_VERSION: versiNext(),
+  },
   async rewrites() {
     return [
       { source: "/api/login", destination: `${BACKEND_URL}/api/login` },
@@ -17,6 +40,8 @@ const nextConfig: NextConfig = {
       { source: "/api/journey", destination: `${BACKEND_URL}/api/journey` },
       { source: "/api/journey/:path*", destination: `${BACKEND_URL}/api/journey/:path*` },
       { source: "/api/health", destination: `${BACKEND_URL}/api/health` },
+      { source: "/api/visit", destination: `${BACKEND_URL}/api/visit` },
+      { source: "/api/visits", destination: `${BACKEND_URL}/api/visits` },
     ];
   },
   // Header keamanan pernah nol total: respons produksi hanya membawa x-powered-by dan

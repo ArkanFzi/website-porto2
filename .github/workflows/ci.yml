@@ -103,6 +103,10 @@ jobs:
         env:
           BACKEND_URL: https://backend.invalid
           NEXT_TELEMETRY_DISABLED: "1"
+          # HUD telemetri menampilkan commit ini (lewat env.APP_COMMIT di next.config.ts). Tanpa
+          # baris ini yang tersedia hanya string kosong dan panel menulis "—" — bukan hash yang
+          # diketik tangan di kode dan berhenti benar setelah commit berikutnya.
+          APP_COMMIT: ${{ github.sha }}
         run: npm run build
 
       - name: Kontrak API (tripwire)
