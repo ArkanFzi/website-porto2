@@ -90,7 +90,8 @@ export const CaseStudyModal: React.FC<ModalProps> = ({ caseStudy, onClose }) => 
             </div>
 
             {/* Metrics Callout */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono text-[10px]">
+            {/* Hanya angka yang punya sumber ukur per proyek yang boleh tampil di sini. */}
+            <div className="grid grid-cols-2 gap-3 font-mono text-[10px]">
               <div className="p-3 rounded bg-white/[0.02] border border-white/10">
                 <span className="text-white/40 block">p99 LATENCY</span>
                 <span className="text-sm font-bold text-white">{caseStudy.latencyP99}</span>
@@ -99,15 +100,11 @@ export const CaseStudyModal: React.FC<ModalProps> = ({ caseStudy, onClose }) => 
                 <span className="text-white/40 block">THROUGHPUT</span>
                 <span className="text-sm font-bold text-[#D41E12]">{caseStudy.concurrencyRps}</span>
               </div>
-              <div className="p-3 rounded bg-white/[0.02] border border-white/10">
-                <span className="text-white/40 block">SECURITY</span>
-                <span className="text-sm font-bold text-emerald-400">TLS 1.3 / OWASP</span>
-              </div>
-              <div className="p-3 rounded bg-white/[0.02] border border-white/10">
-                <span className="text-white/40 block">REDUNDANCY</span>
-                <span className="text-sm font-bold text-white">Multi-AZ Pool</span>
-              </div>
             </div>
+            <p className="font-mono text-[10px] uppercase tracking-widest text-white/40 -mt-4">
+              Both figures are measured on the project itself with the sample size written
+              inline; anything without a measurement stays n/a rather than estimated.
+            </p>
 
             {/* Architecture Decomposition */}
             <div className="space-y-2">
