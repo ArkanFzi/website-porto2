@@ -1,4 +1,4 @@
-// Bukti lima objek panggung tambahan (Tahap 2). Dua jalur bukti, keduanya dari frame
+// Bukti objek panggung tambahan (Tahap 2 dan seterusnya). Dua jalur bukti, keduanya dari frame
 // nyata: sensus objek (window.__render.objek = nama objek yang masuk daftar gambar frame
 // itu, ditulis PengukurRender) dan penghitung THREE info.render (calls/segitiga/titik/
 // garis). Sensus menjawab "objeknya benar-benar ada", penghitung menjawab "ukurannya
@@ -19,7 +19,7 @@ const TITIK_BENANG = 24; // harus sama dengan TITIK di BenangRosso.tsx
 const SISI_SANGKAR = 12; // EdgesGeometry balok = 12 segmen
 const SEG_KOMPAS = 2; // jarum + ekor
 const PARTIKEL_DEBU = 140;
-const LIMA = ['bilah', 'benang', 'debu', 'kompas', 'sangkar'];
+const EKSTRA = ['bilah', 'benang', 'debu', 'jejak', 'kompas', 'sangkar'];
 
 const browser = await puppeteer.launch({
   executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome',
@@ -48,6 +48,17 @@ const page = await browser.newPage();
 await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
 const galat = [];
 page.on('pageerror', (e) => galat.push(String(e).slice(0, 200)));
+// Semua bacaan yang benar-benar dikonsumsi browser dicatat di sini. Yang ditagih bagian 7
+// adalah "angka yang dilukis datang dari respons yang dibaca", dan itu tidak bisa dibuktikan
+// dengan fetch baru: latencyMs diukur per request, jadi angka dari request lain memang
+// berbeda dan gerbangnya akan gagal karena alasan yang salah.
+const bacaan = [];
+page.on('response', async (res) => {
+  const u = res.url();
+  if (res.request().method() !== 'GET' || !/\/api\/telemetry(\?|$)/.test(u)) return;
+  const b = await res.json().catch(() => null);
+  if (b && Number.isFinite(b.latencyMs)) bacaan.push(b);
+});
 await page.goto(FE + '/', { waitUntil: 'domcontentloaded', timeout: 60000 });
 await new Promise((r) => setTimeout(r, 6000));
 
@@ -112,13 +123,17 @@ const cekMin = (nama, dapat, harus) => {
 };
 const ada = (daftar, nama) => daftar.includes(nama);
 
-// ── 1. Keadaan diam: hanya bilah telemetri yang boleh menambah kartu ──
+// ── 1. Keadaan diam: hanya data yang sudah punya angka yang boleh menambah kartu ──
 await parkir(0.05);
 const diam = await serap(300);
 await foto('01-bab1-diam');
 console.log('diam     ', JSON.stringify(diam.puncak), JSON.stringify(diam.nama), 't=' + diam.terakhir?.t);
 cek('laporan uji masuk ke jendela server', seedOk, true);
-cek('bilah ada saat diam', ada(diam.nama, 'bilah'), true);for (const n of ['benang', 'debu', 'kompas', 'sangkar'])
+cek('bilah ada saat diam', ada(diam.nama, 'bilah'), true);
+// Jejak butuh satu angka durasi yang terukur, dan /api/telemetry selalu mengukurnya, jadi
+// objeknya boleh bangun saat diam — yang tidak boleh adalah bentuk tanpa angka di dalamnya.
+cek('jejak ada saat diam', ada(diam.nama, 'jejak'), true);
+for (const n of ['benang', 'debu', 'kompas', 'sangkar'])
   cek(`${n} tidak ada saat diam`, ada(diam.nama, n), false);
 
 // ── 2. Benang rosso: di tengah perpindahan bab 1 ke bab 2 ──
@@ -293,7 +308,7 @@ cek('sangkar tidak ada tanpa hover', ada(sbl.nama, 'sangkar'), false);
 cek('sangkar ada saat hover', ada(sts.nama, 'sangkar'), true);
 cekMin('sangkar menyumbang 12 segmen LINES', sts.puncak.garis - sbl.puncak.garis, SISI_SANGKAR);
 
-// ── 5. prefers-reduced-motion: lima objek hilang, kartu tetap ──
+// ── 5. prefers-reduced-motion: semua objek ekstra hilang, kartu tetap ──
 await parkir(0.375);
 const sebelum5 = (await serap(300)).nama;
 await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
@@ -304,7 +319,7 @@ await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-pr
 await new Promise((r) => setTimeout(r, 700));
 const pulih = (await serap(300)).nama;
 console.log('reduce   sebelum:', JSON.stringify(sebelum5), '| reduce:', JSON.stringify(kurangi.nama), JSON.stringify(kurangi.terakhir), '| pulih:', JSON.stringify(pulih));
-cek('reduce-motion menghapus semua objek ekstra', LIMA.some((n) => ada(kurangi.nama, n)), false);
+cek('reduce-motion menghapus semua objek ekstra', EKSTRA.some((n) => ada(kurangi.nama, n)), false);
 cek('reduce-motion tidak menghapus kartu', (kurangi.terakhir?.segitiga ?? 0) > 0, true);
 cek('pulih setelah aba-aba dicabut', ada(pulih, 'bilah'), true);
 
@@ -411,6 +426,80 @@ cek('DOM dan panggung melukis tinggi yang sama', bedaSisi, 0);
 cek('rasio bilah berasal dari angka API', angkaAsing, 0);
 
 await foto('08-laci-bilah-dom');
+await page.click('button[aria-label="Pit-Wall Telemetry HUD"]');
+
+// ── 8. Jejak arsitektur: panjang segmen = durasi yang diukur, hop tanpa angka tanpa bentuk ──
+// Hukumnya ditulis ULANG di sini dari kontrak yang didokumentasikan lib/jejakArsitektur: hop
+// Node adalah selisih total handler dengan fetch backend, hop backend adalah rttMs, PostgreSQL
+// tidak pernah punya durasi, dan lantai sumbu 8 ms menahan satu milidetik agar tidak memanjang
+// jadi garis sepanjang kanvas. Kalau komponen menyisipkan konstantanya sendiri, bagian ini
+// menolak.
+const LANTAI_MS = 8;
+const hopDariApi = (b) => {
+  const rtt =
+    typeof b?.backend?.rttMs === 'number' && b.backend.rttMs <= b.latencyMs ? b.backend.rttMs : null;
+  return [rtt === null ? b.latencyMs : b.latencyMs - rtt, rtt, null];
+};
+
+await parkir(0.375);
+await page.click('button[aria-label="Pit-Wall Telemetry HUD"]');
+await new Promise((r) => setTimeout(r, 800));
+// Instans ditulis pada frame yang sedang jalan, jadi satu gulir kecil dibutuhkan supaya yang
+// terbaca adalah hasil bacaan terbaru, bukan sisa gambar terakhir.
+await page.mouse.wheel({ deltaY: 40 });
+await new Promise((r) => setTimeout(r, 500));
+
+const jejak = await page.evaluate(() => {
+  const j = window.__jejak;
+  const pecahan = (id) => {
+    const el = document.querySelector(`[data-jejak-bar="${id}"]`);
+    if (!el) return null;
+    const wadah = el.parentElement.getBoundingClientRect().width;
+    return wadah > 0 ? el.getBoundingClientRect().width / wadah : -1;
+  };
+  return {
+    panggung: j
+      ? { hop: j.hop, ms: j.ms, px: j.px, mulai: j.mulai, pxPerMs: j.pxPerMs, anggaranPx: j.anggaranPx, totalMs: j.totalMs }
+      : null,
+    dom: { node: pecahan('node'), backend: pecahan('backend'), database: pecahan('database') },
+    kotakDatabase: !!document.querySelector('[data-jejak-hop="database"] [data-jejak-bar]'),
+    objek: window.__render?.objek ?? [],
+  };
+});
+
+const j = jejak.panggung;
+const pecahanHarus = (ms) => (ms && ms > 0 ? Math.min(ms / Math.max(j?.totalMs ?? 0, LANTAI_MS), 1) : 0);
+const bedaPecahan = j
+  ? ['node', 'backend', 'database'].filter((id, i) => {
+      const harus = pecahanHarus(j.ms[i]);
+      const panggung = j.px[i] / j.anggaranPx;
+      const dom = jejak.dom[id];
+      if (harus === 0) return dom !== null || panggung !== 0;
+      return Math.abs(dom - harus) > 0.02 || Math.abs(panggung - harus) > 0.02;
+    })
+  : ['tidak ada lukisan'];
+console.log(
+  'jejak    ',
+  `bacaan=${bacaan.length}`,
+  'hop api:',
+  JSON.stringify(bacaan.length ? hopDariApi(bacaan[bacaan.length - 1]) : null),
+  '| panggung:',
+  JSON.stringify(j),
+  '| dom:',
+  JSON.stringify(jejak.dom)
+);
+cek('jejak melukis hop yang sama dengan arsitektur terukur', j ? j.hop.join(',') : null, 'node,backend,database');
+cek('durasi yang dilukis adalah angka yang dibaca browser dari API', j ? bacaan.some((b) => hopDariApi(b).every((m, i) => m === j.ms[i])) : false, true);
+cek('penggaris yang sama dipakai semua segmen', j ? j.px.every((p, i) => Math.abs(p - (j.ms[i] ?? 0) * j.pxPerMs) < 0.01) : false, true);
+cek('segmen tersusun tanpa celah', j ? j.mulai.every((m, i) => (i === 0 ? m === 0 : Math.abs(m - (j.mulai[i - 1] + j.px[i - 1])) < 0.01)) : false, true);
+cek('hop tanpa angka tidak punya panjang di panggung', j ? j.px[2] : null, 0);
+cek('hop tanpa angka tidak punya bilah di DOM', jejak.kotakDatabase, false);
+cek('lantai sumbu menahan garis agar tidak melebar', j ? j.px.reduce((a, p) => a + p, 0) <= j.anggaranPx + 0.01 : false, true);
+cek('DOM dan panggung melukis pecahan yang sama', bedaPecahan.length, 0);
+cek('jejak hanya satu objek', jejak.objek.filter((n) => n === 'jejak').length, 1);
+cek('jumlah hop sama dengan total yang dijumlah penggaris', j ? Math.abs(j.px[0] + j.px[1] - j.totalMs * j.pxPerMs) < 0.01 : false, true);
+
+await foto('09-jejak-arsitektur');
 await page.click('button[aria-label="Pit-Wall Telemetry HUD"]');
 
 await browser.close();

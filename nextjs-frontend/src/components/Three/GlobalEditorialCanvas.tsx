@@ -7,6 +7,7 @@ import { AktorPotret, type AktorProps } from "./stage/AktorPotret";
 import { BenangRosso } from "./stage/ekstra/BenangRosso";
 import { BilahTelemetri } from "./stage/ekstra/BilahTelemetri";
 import { Debu } from "./stage/ekstra/Debu";
+import { JejakArsitektur } from "./stage/ekstra/JejakArsitektur";
 import { KompasGulir } from "./stage/ekstra/KompasGulir";
 import { RollCage } from "./stage/ekstra/RollCage";
 import { PengukurRender } from "./stage/PengukurRender";
@@ -154,6 +155,8 @@ export const GlobalEditorialCanvas: React.FC<CanvasProps> = ({
             <KompasGulir {...aktor} />
             {/* Bilah telemetri digambar dari sampel p95Ms pengunjung, bukan angka hiasan. */}
             <BilahTelemetri {...aktor} />
+            {/* Garis waktu arsitektur: panjang segmen = milidetik yang diukur rute /api/telemetry. */}
+            <JejakArsitektur {...aktor} />
           </Suspense>
           {/* Alat ukur, bukan bagian isi panggung: write-only, tidak memengaruhi render. */}
           {process.env.NODE_ENV !== "production" && <PengukurRender />}

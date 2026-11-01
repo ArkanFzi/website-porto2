@@ -17,6 +17,13 @@ import {
   rasioAmbang,
   type BuketMenit,
 } from "@/lib/buketMenit";
+import {
+  MIN_TOTAL_MS,
+  hopsDari,
+  pecahanJejak,
+  totalMs,
+  type HopId,
+} from "@/lib/jejakArsitektur";
 import { PEGA } from "@/lib/motion";
 
 // Kontrak GET /api/visits di go-backend: {"total":int,"today":int,"uniqueLast24h":int}.
@@ -29,6 +36,14 @@ interface VisitsPayload {
 const DASH = "—";
 const POLL_MS = 5000;
 const VISIT_KEY = "af-visit-counted";
+
+/** Nama manusia tiap lompatan pada ARCHITECTURE TRACE. Yang boleh disebut di sini hanya
+ *  lompatan yang durasinya benar-benar diukur rute /api/telemetry — lihat lib/jejakArsitektur. */
+const JEJAK_LABEL: Record<HopId, string> = {
+  node: "Next.js / Node di luar probe",
+  backend: "Go backend /api/health",
+  database: "PostgreSQL ping",
+};
 
 function nilai(v: string | number | null | undefined, satuan = ""): string {
   if (v === null || v === undefined || v === "") return DASH;
@@ -258,6 +273,10 @@ export const TelemetryDrawer: React.FC = () => {
       : telemetry.backend.db === "error"
         ? "ERROR"
         : DASH;
+  // Garis waktu arsitektur: hukum dan angkanya sama dengan yang dilukis instancedMesh di
+  // panggung, jadi rasio kedua lukisan tidak bisa berpisah (lib/jejakArsitektur).
+  const hops = hopsDari(telemetry?.latencyMs, telemetry?.backend?.rttMs);
+  const jejakTotal = totalMs(hops);
   const commit = telemetry?.gitCommit ? telemetry.gitCommit.slice(0, 7) : DASH;
   const jam = telemetry?.timestamp ? telemetry.timestamp.slice(11, 19) : DASH;
   // Gumpalan menit dibaca dari bacaan store yang sama; `kini` ikut cap waktu server supaya
@@ -516,25 +535,70 @@ export const TelemetryDrawer: React.FC = () => {
                     <Server className="w-3 h-3 text-[#D41E12]" /> ARCHITECTURE TRACE
                   </span>
                   
-                  {/* Setiap baris adalah satu lompatan yang benar-benar diukur rute /api/telemetry */}
+                  {/* Satu baris per lompatan yang durasinya benar-benar diukur rute
+                      /api/telemetry. Aturan "tidak ada angka, tidak ada bentuk" ditegakkan di
+                      sini: hop tanpa pengukuran tidak dapat kotak maupun bilah, hanya keterangan
+                      bahwa memang tidak ada angkanya. */}
                   <div className="space-y-1.5 font-mono text-[9px]">
-                    <div className="flex items-center gap-2 p-1.5 rounded bg-white/[0.03] border border-white/5 text-white/80">
-                      <span className="text-[#D41E12] font-bold">01.</span>
-                      <span>
-                        Next.js {nilai(telemetry?.runtime.next)} / Node{" "}
-                        {nilai(telemetry?.runtime.node)}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 p-1.5 rounded bg-white/[0.03] border border-white/5 text-white/80">
-                      <span className="text-[#D41E12] font-bold">02.</span>
-                      <span>
-                        Go backend /api/health — {telemetry ? `${telemetry.latencyMs}ms` : DASH}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 p-1.5 rounded bg-white/[0.03] border border-white/5 text-white/80">
-                      <span className="text-[#D41E12] font-bold">03.</span>
-                      <span>PostgreSQL ping — {dbLabel}</span>
-                    </div>
+                    {hops.length === 0 ? (
+                      <div className="text-white/35">
+                        Belum ada request terukur — tidak ada yang boleh dilukis.
+                      </div>
+                    ) : (
+                      hops.map((h, i) => {
+                        const pecahan = pecahanJejak(h.ms, jejakTotal);
+                        const angka =
+                          h.ms === null
+                            ? h.id === "database"
+                              ? `durasi tidak diukur · status ${dbLabel}`
+                              : "durasi tidak diukur"
+                            : `${h.ms}ms`;
+                        return (
+                          <div
+                            key={h.id}
+                            data-jejak-hop={h.id}
+                            className={
+                              h.ms === null
+                                ? "p-1.5 text-white/35"
+                                : "p-1.5 rounded bg-white/[0.03] border border-white/5 text-white/80"
+                            }
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="text-[#D41E12] font-bold">
+                                {String(i + 1).padStart(2, "0")}.
+                              </span>
+                              <span>
+                                {JEJAK_LABEL[h.id]} — {angka}
+                              </span>
+                            </div>
+                            {h.id === "node" && (telemetry?.runtime.next || telemetry?.runtime.node) ? (
+                              <div className="pl-5 text-white/35">
+                                Next.js {nilai(telemetry?.runtime.next)} / Node{" "}
+                                {nilai(telemetry?.runtime.node)}
+                              </div>
+                            ) : null}
+                            {pecahan > 0 ? (
+                              <div className="mt-1.5 h-[3px]">
+                                <div
+                                  data-jejak-bar={h.id}
+                                  className="h-full bg-white/60"
+                                  style={{ width: `${pecahan * 100}%` }}
+                                  title={`${JEJAK_LABEL[h.id]}: ${angka} dari ${jejakTotal} ms total terukur`}
+                                />
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                  <div className="mt-1.5 text-white/30 font-mono text-[8px]">
+                    {telemetry
+                      ? `Panjang bilah = ms terukur ÷ ${Math.max(
+                          jejakTotal,
+                          MIN_TOTAL_MS
+                        )} ms. PostgreSQL hanya menjawab ok/error, jadi tidak pernah punya durasi.`
+                      : "Durasi lompatan datang dari GET /api/telemetry yang sama dengan yang dipakai panggung."}
                   </div>
                 </div>
 
