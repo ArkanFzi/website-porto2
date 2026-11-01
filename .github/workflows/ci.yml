@@ -112,6 +112,12 @@ jobs:
       - name: Kontrak API (tripwire)
         run: node tools/ci/api-contract-check.mjs
 
+      - name: Anggaran aset halaman depan
+        run: node tools/ci/perf-budget.mjs
+        # Diukur dari HTML hasil build rute /, jadi butuh langkah Build di atas.
+        # Gerbangnya hanya membandingkan angka terhadap tools/ci/perf-budget.json dan
+        # gagal kalau payload awal tumbuh melewati ruang yang sudah ditulis di sana.
+
   api:
     name: api
     runs-on: ubuntu-latest

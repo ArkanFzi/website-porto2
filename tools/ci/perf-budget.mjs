@@ -65,23 +65,19 @@ const jalurBerkas = (url) => {
 
 const budget = existsSync(BUDGET_FILE) ? JSON.parse(readFileSync(BUDGET_FILE, "utf8")) : {};
 const aset = [];
+const terlihat = new Set();
 for (const url of [...bacaHtml(), ...(budget.asetTambahan ?? [])]) {
+  // Satu URL dihitung sekali meski muncul di HTML dan di daftar tambahan.
+  if (terlihat.has(url)) continue;
+  terlihat.add(url);
   const abs = jalurBerkas(url);
   if (!abs) {
     console.error(`GAGAL: HTML merujuk aset yang tidak ada di hasil build: ${url}`);
     process.exit(1);
   }
-  // Aset tambahan (mis tekstur WebGL) sengaja tidak muncul di HTML hasil build.
-  // Jangan dihitung dua kali.
-  if (budget.asetTambahan?.includes(url)) {
-    const kategori = /\.(webp)$/i.test(abs) ? "aset" : /\/static\/media\//.test(url) ? "font" : "aset";
-    const { mentah, kirim } = ukur(abs);
-    aset.push({ url, kategori, mentah, kirim });
-    continue;
-  }
   const kategori = /\/static\/media\//.test(url)
     ? "font"
-    : /\.(css)$/i.test(url)
+    : /\.css$/i.test(url)
       ? "css"
       : /\.js$/i.test(url)
         ? "js"
@@ -90,7 +86,7 @@ for (const url of [...bacaHtml(), ...(budget.asetTambahan ?? [])]) {
   aset.push({ url, kategori, mentah, kirim });
 }
 
-const total = (k) => aset.filter((a) => a.kirim > 0 && budget.asetTambahan?.includes(a.url)).reduce((a, x) => a + (k ? x[k] : 0), 0);
+const total = (k) => aset.reduce((a, x) => a + (k ? x[k] : 0), 0);
 const perKategori = {};
 for (const a of aset) perKategori[a.kategori] = (perKategori[a.kategori] ?? 0) + a.kirim;
 
