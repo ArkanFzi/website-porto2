@@ -78,43 +78,42 @@ const fragmentShader = /* glsl */ `
 
     // Precision Leica Monochrom luminance calculation
     float lum = dot(baseColor, vec3(0.299, 0.587, 0.114));
+    float contrastLum = smoothstep(0.03, 0.95, lum);
+    vec3 monoBase = vec3(contrastLum);
 
-    // Interactive Chiaroscuro Specular & Scuderia Rosso Rim Light
-    vec3 normal = normalize(vNormal);
-    vec3 lightDir = normalize(vec3(uMouse.x * 2.0, uMouse.y * 2.0, 1.5));
-    vec3 viewDir = normalize(vViewPosition);
+    // ── SCUDERIA ROSSO ACCENTS (MERAH SCUDERIA) ──
+    // 1. Precision Red contour bands tracing chiaroscuro relief
+    float contourBand = abs(fract(lum * 13.0 - uTime * 0.04) - 0.5);
+    float laserContour = smoothstep(0.09, 0.02, contourBand);
+    vec3 rossoLaser = vec3(0.831, 0.117, 0.07) * laserContour * (1.1 - contrastLum * 0.5);
 
-    float diffuse = max(dot(normal, lightDir), 0.0);
-    float rim = 1.0 - max(dot(viewDir, normal), 0.0);
-    rim = pow(rim, 3.0);
+    // 2. Interactive Cursor Reactive Red Lighting
+    vec2 cursorLightPos = (uMouse * 0.5 + 0.5);
+    float cursorDist = distance(uv, cursorLightPos);
+    float cursorGlow = smoothstep(0.65, 0.0, cursorDist);
+    vec3 cursorRed = vec3(1.0, 0.157, 0.0) * cursorGlow * (0.35 + (1.0 - contrastLum) * 0.65);
 
-    // Fluorescent Maranello Red (#FF2800) rim specular
-    vec3 rimColor = vec3(1.0, 0.157, 0.0) * rim * 1.4;
-
-    // Rich contrast curve on portrait luminance
-    float contrastLum = smoothstep(0.04, 0.94, lum);
-    vec3 finalColor = vec3(contrastLum);
-    finalColor += rimColor * (0.5 + diffuse * 0.5);
+    // 3. Silhouette Rosso Rim Specular
+    float distCenter = length(uv - vec2(0.5));
+    float rimLight = pow(distCenter * 1.45, 2.2);
+    vec3 rossoRim = vec3(1.0, 0.157, 0.0) * rimLight * 0.55;
 
     // ── PERSONA 1: THE ENGINEER (uPersona = 0.0) ──
-    // Subtle titanium precision tone with delicate contour highlight
-    vec3 engineerColor = finalColor * vec3(0.96, 0.98, 1.0);
-    // Surgical Rosso accent only on deepest shadows and outer rim
-    float shadowRim = (1.0 - contrastLum) * rim * 0.8;
-    engineerColor += vec3(0.83, 0.117, 0.07) * shadowRim;
+    // High-contrast monochrome with sharp, vivid Scuderia Rosso laser telemetry
+    vec3 engineerColor = monoBase + rossoLaser * 0.95 + cursorRed * 0.55 + rossoRim * 0.45;
 
     // ── PERSONA 2: THE CREATOR (uPersona = 1.0) ──
-    // Warm haute-couture halation & Rosso Corsa silk glow on highlights
-    vec3 halation = vec3(0.98, 0.15, 0.06) * pow(contrastLum, 2.5) * 0.45;
-    vec3 creatorColor = finalColor + halation;
+    // Warm cinematic halation & expressive Rosso Corsa silk glow
+    vec3 halation = vec3(0.98, 0.16, 0.06) * pow(contrastLum, 2.2) * 0.6;
+    vec3 creatorColor = monoBase + rossoLaser * 0.5 + halation + cursorRed * 0.75 + rossoRim * 0.5;
 
     // Smooth blend between personas
-    finalColor = mix(engineerColor, creatorColor, uPersona);
+    vec3 finalColor = mix(engineerColor, creatorColor, uPersona);
 
     // ── CHAPTER 3 HOVER: PROJECT AURA ──
     if (uHover > 0.01) {
       float pulse = sin(uTime * 3.0) * 0.5 + 0.5;
-      vec3 projectAura = vec3(0.83, 0.117, 0.07) * pulse * 0.6;
+      vec3 projectAura = vec3(0.831, 0.117, 0.07) * pulse * 0.6;
       finalColor = mix(finalColor, finalColor * vec3(1.15, 0.4, 0.3) + projectAura, uHover * 0.7);
     }
 
@@ -127,19 +126,18 @@ const fragmentShader = /* glsl */ `
       finalColor = mix(finalColor, duotone * 1.2, ch4Factor * 0.9);
     }
 
-    // ── ORGANIC EDGE VIGNETTE & ALPHA DISSOLVE ──
-    // Meluruhkan tepi persegi foto secara mulus tanpa garis kotak tajam
-    float edgeX = smoothstep(0.0, 0.09, uv.x) * smoothstep(1.0, 0.91, uv.x);
-    float edgeY = smoothstep(0.0, 0.06, uv.y) * smoothstep(1.0, 0.94, uv.y);
-    float edgeAlpha = edgeX * edgeY;
+    // ── CLEAN RECTANGULAR MONOLITH FRAMING (BEBAS BLOB BULAT) ──
+    vec2 cardUv = abs(uv - 0.5) * 2.0; // from 0.0 (center) to 1.0 (border)
+    vec2 cornerDist = max(cardUv - vec2(0.90, 0.94), 0.0);
+    float cornerRadius = length(cornerDist);
+    float cardAlpha = 1.0 - smoothstep(0.04, 0.09, cornerRadius);
 
-    // Soft corner curve
-    float d = distance(uv, vec2(0.5));
-    float radialFalloff = smoothstep(0.68, 0.36, d);
-    float alpha = edgeAlpha * radialFalloff;
+    // Subtle Scuderia Rosso hairline border glow around monolith card
+    float hairline = smoothstep(0.09, 0.05, cornerRadius) - smoothstep(0.05, 0.02, cornerRadius);
+    finalColor += vec3(0.831, 0.117, 0.07) * hairline * 1.6;
 
-    // Di Chapter 4 (Paddock merah), fade out secara elegan
-    alpha = mix(alpha, alpha * (1.0 - ch4Factor * 0.85), ch4Factor);
+    // Fade out in Chapter 4
+    float alpha = cardAlpha * (1.0 - ch4Factor * 0.85);
 
     gl_FragColor = vec4(finalColor, alpha);
   }
