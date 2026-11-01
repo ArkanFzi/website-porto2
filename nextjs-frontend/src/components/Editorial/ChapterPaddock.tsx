@@ -1,7 +1,7 @@
 "use client";
 
-import React from "react";
-import { ArrowUpRight } from "lucide-react";
+import React, { useState } from "react";
+import { ArrowUpRight, Send, CheckCircle2 } from "lucide-react";
 
 const SOCIAL_CHANNELS = [
   { name: "GITHUB", url: "https://github.com/ArkanFzi" },
@@ -12,6 +12,55 @@ const SOCIAL_CHANNELS = [
 ];
 
 export const ChapterPaddock: React.FC = () => {
+  const [dispatchInput, setDispatchInput] = useState("");
+  const [dispatchStatus, setDispatchStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [statusMessage, setStatusMessage] = useState("");
+
+  const handleQuickDispatch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!dispatchInput.trim()) return;
+
+    // Detect email
+    const emailMatch = dispatchInput.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+    if (!emailMatch) {
+      setDispatchStatus("error");
+      setStatusMessage("ERR: INCLUDE A VALID EMAIL (e.g. you@domain.com — let's build)");
+      return;
+    }
+
+    const email = emailMatch[0];
+    const message = dispatchInput.replace(email, "").replace(/^[\s—\-:]+/, "").trim() || "Interested in collaborating.";
+
+    setDispatchStatus("loading");
+    setStatusMessage("TRANSMITTING TELEMETRY DISPATCH...");
+
+    try {
+      const res = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Direct Dispatch Visitor",
+          email,
+          subject: "Editorial Telemetry Dispatch",
+          body: message,
+        }),
+      });
+
+      if (res.ok) {
+        setDispatchStatus("success");
+        setStatusMessage("TRANSMISSION CONFIRMED // LOGGED TO SYSTEM INBOX");
+        setDispatchInput("");
+      } else {
+        const data = await res.json().catch(() => null);
+        setDispatchStatus("error");
+        setStatusMessage(data?.error || "DISPATCH FAILED // RETRY IN A MOMENT");
+      }
+    } catch {
+      setDispatchStatus("error");
+      setStatusMessage("SERVER UNREACHABLE // USE DIRECT MAILTO BELOW");
+    }
+  };
+
   return (
     <section
       id="chapter-04"
@@ -20,7 +69,7 @@ export const ChapterPaddock: React.FC = () => {
       <div className="w-full max-w-[1600px] mx-auto z-20">
         
         {/* ── Top Header Tags ── */}
-        <div className="w-full flex items-center justify-between pb-6 border-b border-white/20 mb-16 sm:mb-24">
+        <div className="w-full flex items-center justify-between pb-6 border-b border-white/20 mb-12 sm:mb-16">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
             <span className="font-mono text-[11px] font-bold tracking-[0.25em] uppercase text-white">
@@ -34,7 +83,7 @@ export const ChapterPaddock: React.FC = () => {
         </div>
 
         {/* ── GIANT FULL-WIDTH DISPLAY MAGNETIC CTA ── */}
-        <div className="my-auto py-12 sm:py-20">
+        <div className="py-6 sm:py-10">
           <span className="font-mono text-[10px] sm:text-xs tracking-[0.3em] uppercase text-white/70 block mb-4">
             NEXT STEPS // OPEN FOR COLLABORATION
           </span>
@@ -44,15 +93,60 @@ export const ChapterPaddock: React.FC = () => {
             className="group block"
             data-magnetic
           >
-            <h2 className="font-serif text-[clamp(46px,8.5vw,140px)] font-bold tracking-tighter uppercase leading-[0.88] text-white group-hover:text-[#0A0A0A] transition-colors duration-500">
+            <h2 className="font-serif text-[clamp(44px,8vw,130px)] font-bold tracking-tighter uppercase leading-[0.88] text-white group-hover:text-[#0A0A0A] transition-colors duration-500">
               LET&apos;S BUILD THE
               <br />
               <span className="inline-flex items-center gap-4 sm:gap-8">
                 EXTRAORDINARY
-                <ArrowUpRight className="inline-block w-[clamp(44px,8vw,130px)] h-[clamp(44px,8vw,130px)] transition-transform duration-500 group-hover:translate-x-4 group-hover:-translate-y-4" />
+                <ArrowUpRight className="inline-block w-[clamp(40px,7.5vw,120px)] h-[clamp(40px,7.5vw,120px)] transition-transform duration-500 group-hover:translate-x-4 group-hover:-translate-y-4" />
               </span>
             </h2>
           </a>
+        </div>
+
+        {/* ── HIGH-CRAFT SINGLE-LINE MICRO-DISPATCH CONSOLE (GO BACKEND CONNECTED) ── */}
+        <div className="max-w-2xl w-full my-6 pt-4">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-white/80" />
+            <span className="font-mono text-[9px] tracking-[0.22em] uppercase text-white/80">
+              PIT-TO-CAR COMMAND DISPATCH // LOGS TO POSTGRESQL INBOX
+            </span>
+          </div>
+
+          <form
+            onSubmit={handleQuickDispatch}
+            className="relative flex items-center border-b border-white/40 focus-within:border-white transition-colors duration-300 pb-1"
+          >
+            <span className="font-mono text-xs text-white/60 mr-2">&gt;</span>
+            <input
+              type="text"
+              value={dispatchInput}
+              onChange={(e) => setDispatchInput(e.target.value)}
+              placeholder="you@company.com — let's build something spatial"
+              className="w-full bg-transparent py-2 font-mono text-xs text-white placeholder-white/40 focus:outline-none"
+              disabled={dispatchStatus === "loading"}
+            />
+            <button
+              type="submit"
+              disabled={dispatchStatus === "loading" || !dispatchInput.trim()}
+              className="inline-flex items-center gap-1.5 font-mono text-[9px] font-bold tracking-[0.2em] uppercase text-white hover:text-[#0A0A0A] shrink-0 px-3 py-1 cursor-pointer transition-colors disabled:opacity-40"
+              data-magnetic
+            >
+              <span>{dispatchStatus === "loading" ? "TRANSMITTING" : "DISPATCH"}</span>
+              <Send className="w-2.5 h-2.5" />
+            </button>
+          </form>
+
+          {statusMessage && (
+            <div className="flex items-center gap-1.5 mt-2">
+              {dispatchStatus === "success" && <CheckCircle2 className="w-3 h-3 text-white" />}
+              <span className={`font-mono text-[9px] tracking-[0.16em] uppercase ${
+                dispatchStatus === "error" ? "text-white underline" : "text-white/90"
+              }`}>
+                {statusMessage}
+              </span>
+            </div>
+          )}
         </div>
 
       </div>

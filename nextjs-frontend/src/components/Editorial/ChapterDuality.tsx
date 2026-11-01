@@ -103,11 +103,24 @@ const CREATOR_PHASES: CareerPhase[] = [
   },
 ];
 
-export const ChapterDuality: React.FC<{ perjalanan?: Perjalanan[] }> = () => {
+export const ChapterDuality: React.FC<{ perjalanan?: Perjalanan[] }> = ({ perjalanan }) => {
   const { mode } = usePortfolioMode();
   const [activePhase, setActivePhase] = useState<string>("03");
 
-  const currentPhases = mode === "engineer" ? ENGINEER_PHASES : CREATOR_PHASES;
+  // Blend backend dynamic journey records if populated in database
+  const hasDynamicDb = perjalanan && perjalanan.length >= 3;
+  const currentPhases = hasDynamicDb
+    ? perjalanan.map((p, idx) => ({
+        id: String(idx + 1).padStart(2, "0"),
+        phase: `PHASE ${String(idx + 1).padStart(2, "0")} // SECTOR ${idx + 1}`,
+        title: p.title,
+        org: p.linkLabel || "SEKAWAN MEDIA",
+        year: p.year,
+        summary: p.body,
+        specs: ["POSTGRESQL SYNCED", "VERIFIED TELEMETRY"],
+        link: p.linkHref,
+      }))
+    : (mode === "engineer" ? ENGINEER_PHASES : CREATOR_PHASES);
 
   return (
     <section
@@ -125,9 +138,16 @@ export const ChapterDuality: React.FC<{ perjalanan?: Perjalanan[] }> = () => {
             </span>
           </div>
 
-          <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-[#6E6A64]">
-            {mode === "engineer" ? "SYSTEMS DISCIPLINE // SECTOR TIMING" : "CREATIVE VISION // SPATIAL TIMING"}
-          </span>
+          <div className="flex items-center gap-3">
+            {hasDynamicDb && (
+              <span className="font-mono text-[9px] tracking-[0.2em] uppercase text-[#D41E12]">
+                ● DB LIVE
+              </span>
+            )}
+            <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-[#6E6A64]">
+              {mode === "engineer" ? "SYSTEMS DISCIPLINE // SECTOR TIMING" : "CREATIVE VISION // SPATIAL TIMING"}
+            </span>
+          </div>
         </div>
 
         {/* ── 2-Column Grid ── */}

@@ -1,12 +1,21 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { usePortfolioMode } from "@/context/PortfolioModeContext";
-import { ArrowUpRight, Cpu, Sparkles } from "lucide-react";
+import { ArrowUpRight, Cpu, Sparkles, FileText, Activity } from "lucide-react";
 
 interface FrameProps {
   currentChapter: number; // 1 to 4
   onChapterClick: (ch: number) => void;
+}
+
+interface TelemetryData {
+  status: string;
+  edgeNode: string;
+  runtime: string;
+  latencyMs: number;
+  heapMb: number;
+  sla: string;
 }
 
 const CHAPTER_LABELS = [
@@ -18,6 +27,28 @@ const CHAPTER_LABELS = [
 
 export const MinimalFixedFrame: React.FC<FrameProps> = ({ currentChapter, onChapterClick }) => {
   const { mode, setMode } = usePortfolioMode();
+  const [telemetry, setTelemetry] = useState<TelemetryData | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchTelemetry = async () => {
+      try {
+        const res = await fetch("/api/telemetry");
+        if (res.ok) {
+          const data = await res.json();
+          if (isMounted) setTelemetry(data);
+        }
+      } catch {
+        // Fallback default
+      }
+    };
+    fetchTelemetry();
+    const interval = setInterval(fetchTelemetry, 30000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   const isDarkSection = currentChapter >= 3;
   const isRossoSection = currentChapter === 4;
@@ -92,17 +123,35 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ currentChapter, onChap
           </button>
         </div>
 
-        {/* Top-Right: Magnetic Button "INITIATE CONTACT" */}
-        <button
-          onClick={() => onChapterClick(4)}
-          className={`group flex items-center gap-2 px-4 py-2 rounded-full border ${borderColor} backdrop-blur-md bg-white/5 hover:border-[#D41E12] transition-all duration-300 cursor-pointer`}
-          data-magnetic
-        >
-          <span className={`font-mono text-[10px] font-bold tracking-[0.2em] uppercase ${textColor} group-hover:text-[#D41E12] transition-colors`}>
-            INITIATE CONTACT
-          </span>
-          <ArrowUpRight className="w-3.5 h-3.5 text-[#D41E12] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-        </button>
+        {/* Top-Right: Action Group (Curated Dossier PDF + Initiate Contact) */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          {/* Dossier PDF Trigger via /api/cv */}
+          <a
+            href="/api/cv"
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`hidden md:flex items-center gap-1.5 px-3.5 py-2 rounded-full border ${borderColor} backdrop-blur-md bg-white/5 hover:border-[#D41E12] transition-all duration-300 cursor-pointer group`}
+            data-magnetic
+            title="Download Headless Chromium Generated Dossier PDF"
+          >
+            <FileText className="w-3 h-3 text-[#D41E12] group-hover:scale-110 transition-transform" />
+            <span className={`font-mono text-[9px] font-bold tracking-[0.18em] uppercase ${textColor} group-hover:text-[#D41E12] transition-colors`}>
+              DOSSIER SPEC [PDF]
+            </span>
+          </a>
+
+          {/* Magnetic Button "INITIATE CONTACT" */}
+          <button
+            onClick={() => onChapterClick(4)}
+            className={`group flex items-center gap-2 px-4 py-2 rounded-full border ${borderColor} backdrop-blur-md bg-white/5 hover:border-[#D41E12] transition-all duration-300 cursor-pointer`}
+            data-magnetic
+          >
+            <span className={`font-mono text-[10px] font-bold tracking-[0.2em] uppercase ${textColor} group-hover:text-[#D41E12] transition-colors`}>
+              INITIATE CONTACT
+            </span>
+            <ArrowUpRight className="w-3.5 h-3.5 text-[#D41E12] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+          </button>
+        </div>
       </div>
 
       {/* ── BOTTOM BAR ── */}
@@ -117,6 +166,21 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ currentChapter, onChap
           <span className={`font-mono text-[10px] uppercase tracking-[0.2em] ${subColor}`}>
             {CHAPTER_LABELS[currentChapter - 1]}
           </span>
+        </div>
+
+        {/* Bottom-Center: Live F1 Pit-Wall Telemetry Bar */}
+        <div className="hidden lg:flex items-center gap-2 px-3 py-1 rounded-full border border-current/10 backdrop-blur-md bg-white/[0.02]">
+          <Activity className="w-3 h-3 text-[#D41E12] animate-pulse" />
+          {mode === "engineer" ? (
+            <span className={`font-mono text-[9px] tracking-[0.18em] uppercase ${subColor}`}>
+              <span className="text-[#D41E12] font-bold">● LIVE TELEMETRY:</span>{" "}
+              {telemetry ? `${telemetry.edgeNode} • ${telemetry.latencyMs}ms • ${telemetry.heapMb}MB HEAP • ${telemetry.sla}` : "MONACO-01 • <15ms • 99.98% SLA"}
+            </span>
+          ) : (
+            <span className={`font-mono text-[9px] tracking-[0.18em] uppercase ${subColor}`}>
+              <span className="text-[#D41E12] font-bold">✦ SPATIAL CRAFT:</span> GLSL LUMINANCE DISPLACEMENT • 60FPS ATELIER
+            </span>
+          )}
         </div>
 
         {/* Bottom-Right: Geographic & Telemetry Metadata */}
