@@ -141,7 +141,7 @@ const FEATURED_ARCHIVES: ArchiveItem[] = [
   {
     index: "05",
     name: "interactive-portfolio",
-    title: "Awwwards Chiaroscuro Monolith",
+    title: "Chiaroscuro Monolith",
     url: "https://github.com/ArkanFzi",
     desc: "One continuous WebGL canvas rendering a custom GLSL luminance-displacement monolith over a Swiss editorial grid — measured at 60 FPS on GPU, 23.5 FPS on software rendering.",
     starsFallback: "PUBLIC REPO",

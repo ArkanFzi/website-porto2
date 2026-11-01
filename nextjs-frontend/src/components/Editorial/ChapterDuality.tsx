@@ -88,11 +88,11 @@ const CREATOR_PHASES: CareerPhase[] = [
     id: "03",
     phase: "PHASE 03 // REAL-TIME 3D WEBGL & SHADERS",
     title: "Volumetric Shaders & Spatial Atelier",
-    org: "AWWWARDS RESEARCH",
+    org: "GITHUB OPEN SOURCE",
     year: "MAY 2026 — PRESENT",
     summary: "Sculpting immersive WebGL experiences using React Three Fiber, custom GLSL vertex/fragment displacement, luminance-driven depth maps, and velocity-coupled chromatic aberration.",
     specs: ["R3F / THREE.JS", "CUSTOM GLSL SHADERS", "LUMINANCE DISPLACEMENT", "CHROMATIC ABERRATION"],
-    link: "https://sekawanmedia.co.id",
+    link: "https://github.com/ArkanFzi/website-porto2",
   },
   {
     id: "04",

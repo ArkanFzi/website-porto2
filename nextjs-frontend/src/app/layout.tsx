@@ -28,7 +28,7 @@ export const metadata: Metadata = {
   // membacanya dari host apa pun halaman itu jatuh (termasuk *.run.app).
   metadataBase: new URL(SITE_URL),
   title: "M. Arkan Fauzi — Systems Architect & Creative Technologist // #16",
-  description: "Awwwards-grade interactive editorial portfolio of M. Arkan Fauzi (@ArkanFzi). Haute-couture minimalism meets real-time WebGL Chiaroscuro shader sculpture.",
+  description: "Interactive editorial portfolio of M. Arkan Fauzi (@ArkanFzi): a Swiss-grid editorial page carried by one real-time WebGL chiaroscuro shader, with telemetry measured live from the running services.",
   keywords: ["Arkan Fauzi", "Full Stack Engineer", "WebGL", "Three.js", "Scuderia Ferrari", "Creative Technologist"],
   alternates: { canonical: "/" },
   openGraph: {
