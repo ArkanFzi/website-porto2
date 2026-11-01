@@ -1,8 +1,11 @@
 "use client";
 
-import React, { Suspense } from "react";
+import React, { Suspense, useEffect, useRef, useState } from "react";
 import { Canvas } from "@react-three/fiber";
+import { PerformanceMonitor } from "@react-three/drei";
 import { ChiaroscuroMonolith } from "./ChiaroscuroMonolith";
+
+type Frameloop = "always" | "demand" | "never";
 
 interface CanvasProps {
   scrollProgressRef: React.RefObject<number>;
@@ -10,11 +13,45 @@ interface CanvasProps {
   scrollVelocityRef: React.RefObject<number>;
 }
 
+// Ambiens shader hanya hidup selama pengunjung masih bergerak. Setelah itu loop
+// dihentikan (demand = nol frame) supaya laptop iGPU tidak dibakar untuk gerakan
+// yang tidak dilihat; satu event pointer/scroll/ketik mengembalikannya seketika.
+const IDLE_MS = 4000;
+const AKTIVITAS = ["scroll", "pointermove", "pointerdown", "keydown", "wheel", "touchstart"];
+
+const DPR_MIN = 1;
+const DPR_MAKS = 1.5;
+const DPR_AWAL = 1.25;
+
 export const GlobalEditorialCanvas: React.FC<CanvasProps> = ({
   scrollProgressRef,
   hoveredProject,
   scrollVelocityRef,
 }) => {
+  const [frameloop, setFrameloop] = useState<Frameloop>("always");
+  const [dpr, setDpr] = useState<number>(DPR_AWAL);
+  const idleTimer = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    const wake = () => {
+      if (document.hidden) return;
+      setFrameloop((f) => (f === "always" ? f : "always"));
+      window.clearTimeout(idleTimer.current);
+      idleTimer.current = window.setTimeout(() => setFrameloop("demand"), IDLE_MS);
+    };
+
+    const lihatLagi = () => setFrameloop(document.hidden ? "never" : "always");
+
+    AKTIVITAS.forEach((evt) => window.addEventListener(evt, wake, { passive: true }));
+    document.addEventListener("visibilitychange", lihatLagi);
+    wake();
+    return () => {
+      window.clearTimeout(idleTimer.current);
+      AKTIVITAS.forEach((evt) => window.removeEventListener(evt, wake));
+      document.removeEventListener("visibilitychange", lihatLagi);
+    };
+  }, []);
+
   return (
     <div
       aria-hidden="true"
@@ -22,13 +59,22 @@ export const GlobalEditorialCanvas: React.FC<CanvasProps> = ({
     >
       <Canvas
         camera={{ position: [0, 0, 5], fov: 42 }}
-        dpr={[1, 2]}
+        dpr={dpr}
+        frameloop={frameloop}
         gl={{
           antialias: true,
           alpha: true,
           powerPreference: "high-performance",
         }}
       >
+        <PerformanceMonitor
+          ms={1000}
+          iterations={12}
+          flipflops={3}
+          onDecline={() => setDpr((d) => Math.max(DPR_MIN, d - 0.25))}
+          onIncline={() => setDpr((d) => Math.min(DPR_MAKS, d + 0.25))}
+          onFallback={() => setDpr(DPR_MIN)}
+        />
         <Suspense fallback={null}>
           <ChiaroscuroMonolith
             scrollProgressRef={scrollProgressRef}
