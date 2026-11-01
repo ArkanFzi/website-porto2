@@ -44,6 +44,7 @@
 
 html {
   background-color: var(--bg-paper);
+  background-image: radial-gradient(circle at 50% 25%, #FCFAF6 0%, #F6F3EC 55%, #EBE6DC 100%);
   color: var(--fg-obsidian);
   text-rendering: optimizeLegibility;
 }

@@ -54,22 +54,28 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ currentChapter, onChap
   const isRossoSection = currentChapter === 4;
 
   const textColor = isRossoSection
-    ? "text-[#F7F5F0]"
+    ? "text-white"
     : isDarkSection
     ? "text-[#F7F5F0]"
     : "text-[#0A0A0A]";
 
   const subColor = isRossoSection
-    ? "text-[#F7F5F0]/70"
+    ? "text-white/80"
     : isDarkSection
     ? "text-[#6E6A64]"
     : "text-[#6E6A64]";
 
   const borderColor = isRossoSection
-    ? "border-white/20"
+    ? "border-white/30"
     : isDarkSection
     ? "border-white/10"
     : "border-[rgba(10,10,10,0.08)]";
+
+  const activePillBg = isRossoSection
+    ? "bg-white text-[#D41E12] shadow-[0_0_14px_rgba(255,255,255,0.4)]"
+    : "bg-[#D41E12] text-white shadow-[0_0_12px_rgba(212,30,18,0.4)]";
+
+  const accentColor = isRossoSection ? "text-white" : "text-[#D41E12]";
 
   return (
     <header className="fixed inset-0 pointer-events-none z-50 p-6 md:p-10 flex flex-col justify-between">
@@ -84,9 +90,11 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ currentChapter, onChap
         >
           <div className="flex flex-col">
             <span
-              className={`font-serif text-xl font-bold tracking-tight ${textColor} group-hover:text-[#D41E12] transition-colors`}
+              className={`font-serif text-xl font-bold tracking-tight ${textColor} ${
+                isRossoSection ? "group-hover:text-black" : "group-hover:text-[#D41E12]"
+              } transition-colors`}
             >
-              AF<span className="text-[#D41E12] font-mono text-sm ml-0.5">#16</span>
+              AF<span className={`${accentColor} font-mono text-sm ml-0.5`}>#16</span>
             </span>
             <span className={`font-mono text-[9px] tracking-[0.24em] uppercase ${subColor}`}>
               M. ARKAN FAUZI
@@ -95,12 +103,14 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ currentChapter, onChap
         </button>
 
         {/* Top-Center: Minimal Dual-Persona Switcher */}
-        <div className={`flex items-center p-1 rounded-full border ${borderColor} backdrop-blur-md bg-white/5`}>
+        <div className={`flex items-center p-1 rounded-full border ${borderColor} backdrop-blur-md ${
+          isRossoSection ? "bg-black/20" : "bg-white/5"
+        }`}>
           <button
             onClick={() => setMode("engineer")}
             className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-mono font-bold tracking-[0.16em] uppercase transition-all duration-300 cursor-pointer ${
               mode === "engineer"
-                ? "bg-[#D41E12] text-white shadow-[0_0_12px_rgba(212,30,18,0.4)]"
+                ? activePillBg
                 : `${subColor} hover:${textColor}`
             }`}
             data-magnetic
@@ -113,7 +123,7 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ currentChapter, onChap
             onClick={() => setMode("creator")}
             className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-mono font-bold tracking-[0.16em] uppercase transition-all duration-300 cursor-pointer ${
               mode === "creator"
-                ? "bg-[#D41E12] text-white shadow-[0_0_12px_rgba(212,30,18,0.4)]"
+                ? activePillBg
                 : `${subColor} hover:${textColor}`
             }`}
             data-magnetic
@@ -130,12 +140,18 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ currentChapter, onChap
             href="/api/cv"
             target="_blank"
             rel="noopener noreferrer"
-            className={`hidden md:flex items-center gap-1.5 px-3.5 py-2 rounded-full border ${borderColor} backdrop-blur-md bg-white/5 hover:border-[#D41E12] transition-all duration-300 cursor-pointer group`}
+            className={`hidden md:flex items-center gap-1.5 px-3.5 py-2 rounded-full border ${borderColor} backdrop-blur-md ${
+              isRossoSection
+                ? "bg-black/20 hover:bg-white hover:text-[#D41E12]"
+                : "bg-white/5 hover:border-[#D41E12]"
+            } transition-all duration-300 cursor-pointer group`}
             data-magnetic
             title="Download Headless Chromium Generated Dossier PDF"
           >
-            <FileText className="w-3 h-3 text-[#D41E12] group-hover:scale-110 transition-transform" />
-            <span className={`font-mono text-[9px] font-bold tracking-[0.18em] uppercase ${textColor} group-hover:text-[#D41E12] transition-colors`}>
+            <FileText className={`w-3 h-3 ${accentColor} group-hover:scale-110 transition-transform`} />
+            <span className={`font-mono text-[9px] font-bold tracking-[0.18em] uppercase ${textColor} ${
+              isRossoSection ? "group-hover:text-[#D41E12]" : "group-hover:text-[#D41E12]"
+            } transition-colors`}>
               DOSSIER SPEC [PDF]
             </span>
           </a>
@@ -143,13 +159,19 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ currentChapter, onChap
           {/* Magnetic Button "INITIATE CONTACT" */}
           <button
             onClick={() => onChapterClick(4)}
-            className={`group flex items-center gap-2 px-4 py-2 rounded-full border ${borderColor} backdrop-blur-md bg-white/5 hover:border-[#D41E12] transition-all duration-300 cursor-pointer`}
+            className={`group flex items-center gap-2 px-4 py-2 rounded-full border ${borderColor} backdrop-blur-md ${
+              isRossoSection
+                ? "bg-black/20 hover:bg-white hover:text-[#D41E12]"
+                : "bg-white/5 hover:border-[#D41E12]"
+            } transition-all duration-300 cursor-pointer`}
             data-magnetic
           >
-            <span className={`font-mono text-[10px] font-bold tracking-[0.2em] uppercase ${textColor} group-hover:text-[#D41E12] transition-colors`}>
+            <span className={`font-mono text-[10px] font-bold tracking-[0.2em] uppercase ${textColor} ${
+              isRossoSection ? "group-hover:text-[#D41E12]" : "group-hover:text-[#D41E12]"
+            } transition-colors`}>
               INITIATE CONTACT
             </span>
-            <ArrowUpRight className="w-3.5 h-3.5 text-[#D41E12] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+            <ArrowUpRight className={`w-3.5 h-3.5 ${accentColor} group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform`} />
           </button>
         </div>
       </div>
@@ -159,26 +181,28 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ currentChapter, onChap
         
         {/* Bottom-Left: Active Chapter Index */}
         <div className="flex items-center gap-3">
-          <span className="font-mono text-xs font-bold text-[#D41E12] tracking-wider">
+          <span className={`font-mono text-xs font-bold ${accentColor} tracking-wider`}>
             CH. 0{currentChapter}
           </span>
-          <div className="h-3 w-[1px] bg-[#D41E12]/40" />
+          <div className={`h-3 w-[1px] ${isRossoSection ? "bg-white/40" : "bg-[#D41E12]/40"}`} />
           <span className={`font-mono text-[10px] uppercase tracking-[0.2em] ${subColor}`}>
             {CHAPTER_LABELS[currentChapter - 1]}
           </span>
         </div>
 
         {/* Bottom-Center: Live F1 Pit-Wall Telemetry Bar */}
-        <div className="hidden lg:flex items-center gap-2 px-3 py-1 rounded-full border border-current/10 backdrop-blur-md bg-white/[0.02]">
-          <Activity className="w-3 h-3 text-[#D41E12] animate-pulse" />
+        <div className={`hidden lg:flex items-center gap-2 px-3 py-1 rounded-full border ${
+          isRossoSection ? "border-white/20 bg-black/20" : "border-current/10 bg-white/[0.02]"
+        } backdrop-blur-md`}>
+          <Activity className={`w-3 h-3 ${accentColor} animate-pulse`} />
           {mode === "engineer" ? (
             <span className={`font-mono text-[9px] tracking-[0.18em] uppercase ${subColor}`}>
-              <span className="text-[#D41E12] font-bold">● LIVE TELEMETRY:</span>{" "}
+              <span className={`${accentColor} font-bold`}>● LIVE TELEMETRY:</span>{" "}
               {telemetry ? `${telemetry.edgeNode} • ${telemetry.latencyMs}ms • ${telemetry.heapMb}MB HEAP • ${telemetry.sla}` : "MONACO-01 • <15ms • 99.98% SLA"}
             </span>
           ) : (
             <span className={`font-mono text-[9px] tracking-[0.18em] uppercase ${subColor}`}>
-              <span className="text-[#D41E12] font-bold">✦ SPATIAL CRAFT:</span> GLSL LUMINANCE DISPLACEMENT • 60FPS ATELIER
+              <span className={`${accentColor} font-bold`}>✦ SPATIAL CRAFT:</span> GLSL LUMINANCE DISPLACEMENT • 60FPS ATELIER
             </span>
           )}
         </div>

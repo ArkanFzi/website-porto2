@@ -64,7 +64,7 @@ export const ChapterPaddock: React.FC = () => {
   return (
     <section
       id="chapter-04"
-      className="relative w-full min-h-screen bg-[#D41E12] text-[#F7F5F0] pt-36 pb-16 px-6 md:px-12 select-none overflow-hidden transition-colors duration-700 flex flex-col justify-between"
+      className="relative w-full min-h-screen bg-[#D41E12] text-[#F7F5F0] pt-32 sm:pt-36 pb-36 px-6 md:px-12 select-none overflow-hidden transition-colors duration-700 flex flex-col justify-between"
     >
       <div className="w-full max-w-[1600px] mx-auto z-20">
         
@@ -152,7 +152,7 @@ export const ChapterPaddock: React.FC = () => {
       </div>
 
       {/* ── MINIMALIST SOCIAL LINKS & SIGNATURE STRIP ── */}
-      <div className="w-full max-w-[1600px] mx-auto z-20 pt-8 border-t border-white/20 flex flex-col sm:flex-row items-center justify-between gap-6">
+      <div className="w-full max-w-[1600px] mx-auto z-20 pt-8 mb-8 border-t border-white/20 flex flex-col sm:flex-row items-center justify-between gap-6">
         
         {/* Left: Copyright */}
         <div className="flex flex-col sm:flex-row items-center gap-3 text-center sm:text-left">

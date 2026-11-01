@@ -125,7 +125,7 @@ export const ChapterDuality: React.FC<{ perjalanan?: Perjalanan[] }> = ({ perjal
   return (
     <section
       id="chapter-02"
-      className="relative w-full min-h-screen pt-36 pb-36 px-6 md:px-12 select-none"
+      className="relative w-full min-h-screen pt-36 sm:pt-44 pb-48 px-6 md:px-12 select-none"
     >
       <div className="w-full max-w-[1600px] mx-auto">
         
@@ -150,16 +150,14 @@ export const ChapterDuality: React.FC<{ perjalanan?: Perjalanan[] }> = ({ perjal
           </div>
         </div>
 
-        {/* ── 2-Column Grid ── */}
-        {/* Left: Empty space allocated for the 3D Monolith at [-2.2, 0, 0] with rotY 0.25 rad */}
-        {/* Right: Pure Swiss Editorial Career List */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-start">
+        {/* ── 2-Column Grid (Reserved space on left md:col-span-5 for 3D Monolith) ── */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-12 lg:gap-16 items-start">
           
-          {/* Left Column (Clear space for 3D Monolith) */}
-          <div className="lg:col-span-5 min-h-[100px] lg:min-h-[550px] pointer-events-none" />
+          {/* Left Column: Reserved clean space for 3D Monolith */}
+          <div className="hidden md:block md:col-span-5 min-h-[400px] lg:min-h-[550px] pointer-events-none" />
 
           {/* Right Column: Editorial Headline & Swiss Line List */}
-          <div className="lg:col-span-7 flex flex-col">
+          <div className="col-span-1 md:col-span-7 flex flex-col">
             
             {/* Elegant Editorial Headline with Persona Motion */}
             <AnimatePresence mode="wait">

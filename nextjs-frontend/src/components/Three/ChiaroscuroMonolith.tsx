@@ -1,14 +1,14 @@
 "use client";
 
-import React, { useRef, useEffect, useMemo } from "react";
-import * as THREE from "three";
+import React, { useRef, useMemo, useEffect } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useTexture } from "@react-three/drei";
+import * as THREE from "three";
 import { usePortfolioMode } from "@/context/PortfolioModeContext";
 
 interface MonolithProps {
-  scrollProgress: number; // 0.0 to 1.0
-  hoveredProject: number | null; // index of hovered project in Ch 3
+  scrollProgress: number; // 0 to 1 from Lenis
+  hoveredProject: number | null;
   scrollVelocity: number;
 }
 
@@ -16,10 +16,8 @@ const vertexShader = /* glsl */ `
   uniform float uTime;
   uniform vec2 uMouse;
   uniform float uVelocity;
-  uniform float uDepthScale;
-  uniform float uChapter;
+  uniform float uPersona;
   uniform float uHover;
-  uniform float uPersona; // 0.0 = Engineer, 1.0 = Creator
 
   varying vec2 vUv;
   varying vec3 vNormal;
@@ -31,21 +29,18 @@ const vertexShader = /* glsl */ `
 
     vec3 pos = position;
 
-    // Mode-dependent vertex distortion
-    // Creator: Fluid organic liquid wave
-    float fluidWave = sin(pos.y * 4.0 + uTime * 2.8) * cos(pos.x * 3.0 + uTime * 2.0);
-    // Engineer: Precision mechanical vibration
-    float mechVibe = sin(pos.y * 30.0 + uTime * 5.0) * 0.015;
-
+    // Organic kinetic displacement
+    float fluidWave = sin(pos.y * 3.5 + uTime * 2.2) * cos(pos.x * 3.0 + uTime * 1.8) * 0.035;
+    float mechVibe = sin(pos.y * 24.0 + uTime * 4.0) * 0.008;
     float wave = mix(mechVibe, fluidWave, uPersona);
-    pos.z += wave * clamp(uVelocity * 0.12, -0.28, 0.28);
+    pos.z += wave * clamp(uVelocity * 0.1, -0.2, 0.2);
 
-    // Micro interactive cursor parallax tilt
-    pos.z += (uMouse.x * pos.x + uMouse.y * pos.y) * 0.18;
+    // Subtle 3D parallax responsive to cursor
+    pos.z += (uMouse.x * pos.x + uMouse.y * pos.y) * 0.12;
 
     // Hover ripple on project inspect
     if (uHover > 0.01) {
-      pos.z += sin(pos.y * 12.0 + uTime * 4.5) * 0.12 * uHover;
+      pos.z += sin(pos.y * 10.0 + uTime * 4.0) * 0.08 * uHover;
     }
 
     vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
@@ -60,7 +55,7 @@ const fragmentShader = /* glsl */ `
   uniform vec2 uMouse;
   uniform float uVelocity;
   uniform float uPersona; // 0.0 = Engineer, 1.0 = Creator
-  uniform float uChapter; // 0.0 to 3.0
+  uniform float uScroll;  // 0.0 to 1.0
   uniform float uHover;
   uniform float uHoverIndex;
 
@@ -71,72 +66,82 @@ const fragmentShader = /* glsl */ `
   void main() {
     vec2 uv = vUv;
 
-    // Liquid Chromatic Aberration scaled by velocity and persona
-    float aberrationBase = clamp(abs(uVelocity) * 0.025, 0.0, 0.04);
-    float aberration = mix(aberrationBase * 0.5, aberrationBase * 1.5, uPersona);
-    vec2 dir = normalize(uv - 0.5 + vec2(0.001));
+    // Velocity-based chromatic aberration at edges
+    float aberrationBase = clamp(abs(uVelocity) * 0.015, 0.0, 0.025);
+    float aberration = mix(aberrationBase * 0.6, aberrationBase * 1.4, uPersona);
+    vec2 dir = normalize(uv - 0.5 + vec2(0.0001));
 
-    float r = texture2D(uTexture, uv + dir * aberration * 1.5).r;
+    float r = texture2D(uTexture, uv + dir * aberration).r;
     float g = texture2D(uTexture, uv).g;
-    float b = texture2D(uTexture, uv - dir * aberration * 1.5).b;
+    float b = texture2D(uTexture, uv - dir * aberration).b;
     vec3 baseColor = vec3(r, g, b);
 
-    // Luminance computation from chiaroscuro portrait
+    // Precision Leica Monochrom luminance calculation
     float lum = dot(baseColor, vec3(0.299, 0.587, 0.114));
 
-    // Interactive Chiaroscuro Specular & Rosso Corsa Rim Light
+    // Interactive Chiaroscuro Specular & Scuderia Rosso Rim Light
     vec3 normal = normalize(vNormal);
-    vec3 lightDir = normalize(vec3(uMouse.x * 2.5, uMouse.y * 2.5, 1.4));
+    vec3 lightDir = normalize(vec3(uMouse.x * 2.0, uMouse.y * 2.0, 1.5));
     vec3 viewDir = normalize(vViewPosition);
 
     float diffuse = max(dot(normal, lightDir), 0.0);
     float rim = 1.0 - max(dot(viewDir, normal), 0.0);
-    rim = pow(rim, 3.2);
+    rim = pow(rim, 3.0);
 
-    // Fluorescent Maranello Red (#FF2800) rim light
-    vec3 rimColor = vec3(1.0, 0.157, 0.0) * rim * 1.6;
+    // Fluorescent Maranello Red (#FF2800) rim specular
+    vec3 rimColor = vec3(1.0, 0.157, 0.0) * rim * 1.4;
 
-    // Crisp high-contrast monochrome base
-    vec3 finalColor = vec3(lum);
-    finalColor += rimColor * (0.6 + diffuse * 0.4);
+    // Rich contrast curve on portrait luminance
+    float contrastLum = smoothstep(0.04, 0.94, lum);
+    vec3 finalColor = vec3(contrastLum);
+    finalColor += rimColor * (0.5 + diffuse * 0.5);
 
     // ── PERSONA 1: THE ENGINEER (uPersona = 0.0) ──
-    // Precision technical grid & red contour scanlines over shadow regions
-    float engineerScan = sin(uv.y * 380.0) * 0.04;
-    float contourBands = abs(fract(lum * 16.0 + uTime * 0.08) - 0.5);
-    float laserContour = smoothstep(0.06, 0.01, contourBands);
-    vec3 engineerColor = finalColor + engineerScan;
-    engineerColor = mix(engineerColor, vec3(0.83, 0.117, 0.07), laserContour * 0.65 * (1.0 - lum));
+    // Subtle titanium precision tone with delicate contour highlight
+    vec3 engineerColor = finalColor * vec3(0.96, 0.98, 1.0);
+    // Surgical Rosso accent only on deepest shadows and outer rim
+    float shadowRim = (1.0 - contrastLum) * rim * 0.8;
+    engineerColor += vec3(0.83, 0.117, 0.07) * shadowRim;
 
     // ── PERSONA 2: THE CREATOR (uPersona = 1.0) ──
-    // Warm cinematic halation & expressive Rosso Corsa silk glow
-    vec3 halation = vec3(0.98, 0.12, 0.05) * pow(lum, 2.2) * 0.55;
+    // Warm haute-couture halation & Rosso Corsa silk glow on highlights
+    vec3 halation = vec3(0.98, 0.15, 0.06) * pow(contrastLum, 2.5) * 0.45;
     vec3 creatorColor = finalColor + halation;
 
-    // Blend between Engineer & Creator shaders smoothly
+    // Smooth blend between personas
     finalColor = mix(engineerColor, creatorColor, uPersona);
 
     // ── CHAPTER 3 HOVER: PROJECT AURA ──
     if (uHover > 0.01) {
-      float pulse = sin(uTime * 3.5) * 0.5 + 0.5;
-      vec3 projectAura = vec3(0.83, 0.117, 0.07) * pulse * 0.8;
-      finalColor = mix(finalColor, finalColor * vec3(1.2, 0.35, 0.25) + projectAura, uHover * 0.8);
+      float pulse = sin(uTime * 3.0) * 0.5 + 0.5;
+      vec3 projectAura = vec3(0.83, 0.117, 0.07) * pulse * 0.6;
+      finalColor = mix(finalColor, finalColor * vec3(1.15, 0.4, 0.3) + projectAura, uHover * 0.7);
     }
 
-    // ── CHAPTER 4 FINALE: HIGH-CONTRAST SCUDERIA RED DUOTONE ──
-    float ch4Factor = smoothstep(2.2, 2.9, uChapter);
+    // ── CHAPTER 4 FINALE: SCUDERIA DUOTONE SHIFT ──
+    float ch4Factor = smoothstep(0.82, 0.96, uScroll);
     if (ch4Factor > 0.001) {
-      vec3 deepCrimson = vec3(0.478, 0.043, 0.02);
-      vec3 brightRosso = vec3(0.831, 0.117, 0.07);
-      vec3 duotone = mix(deepCrimson, brightRosso, lum);
-      finalColor = mix(finalColor, duotone * 1.4, ch4Factor * 0.95);
+      vec3 deepCrimson = vec3(0.48, 0.04, 0.02);
+      vec3 brightRosso = vec3(0.90, 0.15, 0.08);
+      vec3 duotone = mix(deepCrimson, brightRosso, contrastLum);
+      finalColor = mix(finalColor, duotone * 1.2, ch4Factor * 0.9);
     }
 
-    // Vignette falloff around edges of monolith
-    float d = distance(uv, vec2(0.5));
-    finalColor *= smoothstep(0.72, 0.35, d);
+    // ── ORGANIC EDGE VIGNETTE & ALPHA DISSOLVE ──
+    // Meluruhkan tepi persegi foto secara mulus tanpa garis kotak tajam
+    float edgeX = smoothstep(0.0, 0.09, uv.x) * smoothstep(1.0, 0.91, uv.x);
+    float edgeY = smoothstep(0.0, 0.06, uv.y) * smoothstep(1.0, 0.94, uv.y);
+    float edgeAlpha = edgeX * edgeY;
 
-    gl_FragColor = vec4(finalColor, 1.0);
+    // Soft corner curve
+    float d = distance(uv, vec2(0.5));
+    float radialFalloff = smoothstep(0.68, 0.36, d);
+    float alpha = edgeAlpha * radialFalloff;
+
+    // Di Chapter 4 (Paddock merah), fade out secara elegan
+    alpha = mix(alpha, alpha * (1.0 - ch4Factor * 0.85), ch4Factor);
+
+    gl_FragColor = vec4(finalColor, alpha);
   }
 `;
 
@@ -150,8 +155,8 @@ export const ChiaroscuroMonolith: React.FC<MonolithProps> = ({
   const { mode } = usePortfolioMode();
   const { viewport } = useThree();
 
-  // Load portrait texture
-  const texture = useTexture("/images/arkan-portrait.png");
+  // Load real portrait texture from /FotoDiriFix.webp (1200x2150)
+  const texture = useTexture("/FotoDiriFix.webp");
 
   const mouse = useRef({ x: 0, y: 0, targetX: 0, targetY: 0 });
   const prevMode = useRef(mode);
@@ -169,7 +174,7 @@ export const ChiaroscuroMonolith: React.FC<MonolithProps> = ({
   // Trigger tilt kick whenever mode changes
   useEffect(() => {
     if (prevMode.current !== mode) {
-      tiltImpulse.current = 0.35;
+      tiltImpulse.current = 0.28;
       prevMode.current = mode;
     }
   }, [mode]);
@@ -180,9 +185,8 @@ export const ChiaroscuroMonolith: React.FC<MonolithProps> = ({
       uTime: { value: 0 },
       uMouse: { value: new THREE.Vector2(0, 0) },
       uVelocity: { value: 0 },
-      uDepthScale: { value: 0.35 },
       uPersona: { value: 0.0 },
-      uChapter: { value: 0 },
+      uScroll: { value: 0.0 },
       uHover: { value: 0 },
       uHoverIndex: { value: 0 },
     }),
@@ -203,14 +207,11 @@ export const ChiaroscuroMonolith: React.FC<MonolithProps> = ({
     mat.uniforms.uTime.value += delta;
     mat.uniforms.uMouse.value.set(mouse.current.x, mouse.current.y);
     mat.uniforms.uVelocity.value = THREE.MathUtils.lerp(mat.uniforms.uVelocity.value, scrollVelocity, 0.1);
-    
+    mat.uniforms.uScroll.value = scrollProgress;
+
     // Smooth lerp for uPersona (0.0 for engineer, 1.0 for creator)
     const targetPersona = mode === "engineer" ? 0.0 : 1.0;
     mat.uniforms.uPersona.value = THREE.MathUtils.lerp(mat.uniforms.uPersona.value, targetPersona, 0.08);
-
-    // Map scrollProgress (0 to 1) to chapters (0.0 to 3.0)
-    const chapter = scrollProgress * 3.0;
-    mat.uniforms.uChapter.value = chapter;
 
     // Hover state interpolation
     const targetHover = hoveredProject !== null ? 1.0 : 0.0;
@@ -219,60 +220,78 @@ export const ChiaroscuroMonolith: React.FC<MonolithProps> = ({
       mat.uniforms.uHoverIndex.value = hoveredProject;
     }
 
-    // ── CHAPTER-CHOREOGRAPHED TRANSFORMS ──
-    const baseW = Math.min(viewport.width * 0.38, 3.8);
-    const baseH = baseW / 0.746;
-    meshRef.current.scale.set(baseW, baseH, 1);
+    // ── CALIBRATED SIZING (1200x2150 Aspect Ratio = 1.792) ──
+    const baseW = Math.min(viewport.width * 0.26, 2.3);
+    meshRef.current.scale.set(baseW, baseW, 1);
+
+    // ── PRECISION CHOREOGRAPHED SCROLL POSITIONS ──
+    const p = Math.max(0, Math.min(1, scrollProgress));
+    const isNarrow = viewport.width < 8.5;
+    const colLeftX = isNarrow ? -viewport.width * 0.18 : -Math.min(viewport.width * 0.25, 2.3);
+    const colRightX = isNarrow ? viewport.width * 0.18 : Math.min(viewport.width * 0.25, 2.2);
 
     let targetX = 0;
     let targetY = 0;
     let targetZ = 0;
     let targetRotY = 0;
 
-    if (chapter < 0.8) {
-      // Section 01 (Hero): Center [0, 0, 0]
-      targetX = mouse.current.x * 0.2;
-      targetY = mouse.current.y * 0.2;
+    if (p < 0.12) {
+      // ── CHAPTER 01 (HERO): Center [0, 0.05, 0] ──
+      targetX = mouse.current.x * 0.15;
+      targetY = 0.05 + mouse.current.y * 0.15;
       targetZ = 0;
-      targetRotY = mouse.current.x * 0.12;
-    } else if (chapter < 1.8) {
-      // Section 02 (About): Left Column [-2.2, 0, 0], rotY 0.25 rad
-      const t = (chapter - 0.8) / 1.0;
-      targetX = THREE.MathUtils.lerp(0, -2.2, t) + mouse.current.x * 0.15;
-      targetY = mouse.current.y * 0.15;
+      targetRotY = mouse.current.x * 0.1;
+    } else if (p < 0.22) {
+      // ── TRANSITION: HERO -> CHAPTER 02 (Glides to left before text appears) ──
+      const t = (p - 0.12) / 0.10;
+      targetX = THREE.MathUtils.lerp(0, colLeftX, t) + mouse.current.x * 0.12;
+      targetY = THREE.MathUtils.lerp(0.05, 0.0, t) + mouse.current.y * 0.12;
       targetZ = 0;
-      targetRotY = THREE.MathUtils.lerp(0, 0.25, t) + mouse.current.x * 0.08;
-    } else if (chapter < 2.6) {
-      // Section 03 (Works): Right Column [2.0, 0, -0.5], rotY -0.2 rad
-      const t = (chapter - 1.8) / 0.8;
-      targetX = THREE.MathUtils.lerp(-2.2, 2.0, t) + mouse.current.x * 0.18;
-      targetY = mouse.current.y * 0.18;
-      targetZ = THREE.MathUtils.lerp(0, -0.5, t);
-      targetRotY = THREE.MathUtils.lerp(0.25, -0.2, t);
+      targetRotY = THREE.MathUtils.lerp(0, 0.22, t) + mouse.current.x * 0.06;
+    } else if (p < 0.52) {
+      // ── CHAPTER 02 (DUALITY): Locked in Left Column ──
+      targetX = colLeftX + mouse.current.x * 0.12;
+      targetY = mouse.current.y * 0.12;
+      targetZ = 0;
+      targetRotY = 0.22 + mouse.current.x * 0.06;
+    } else if (p < 0.62) {
+      // ── TRANSITION: CHAPTER 02 -> CHAPTER 03 (Glides to right column) ──
+      const t = (p - 0.52) / 0.10;
+      targetX = THREE.MathUtils.lerp(colLeftX, colRightX, t) + mouse.current.x * 0.14;
+      targetY = mouse.current.y * 0.14;
+      targetZ = THREE.MathUtils.lerp(0, -0.4, t);
+      targetRotY = THREE.MathUtils.lerp(0.22, -0.18, t);
+    } else if (p < 0.84) {
+      // ── CHAPTER 03 (WORKS): Locked in Right Column ──
+      targetX = colRightX + mouse.current.x * 0.14;
+      targetY = mouse.current.y * 0.14;
+      targetZ = -0.4;
+      targetRotY = -0.18 + mouse.current.x * 0.06;
     } else {
-      // Section 04 (Finale): Silhouette Far Back [0, -0.4, -2.0]
-      const t = (chapter - 2.6) / 0.4;
-      targetX = THREE.MathUtils.lerp(2.0, 0, t);
-      targetY = -0.4;
-      targetZ = THREE.MathUtils.lerp(-0.5, -2.0, t);
-      targetRotY = THREE.MathUtils.lerp(-0.2, -0.1, t);
+      // ── CHAPTER 04 (FINALE): Recedes into distance ──
+      const t = (p - 0.84) / 0.16;
+      targetX = THREE.MathUtils.lerp(colRightX, 0, t);
+      targetY = -0.3;
+      targetZ = THREE.MathUtils.lerp(-0.4, -2.5, t);
+      targetRotY = THREE.MathUtils.lerp(-0.18, 0, t);
     }
 
     // Apply quick tilt impulse when persona changes
-    const impulseRotZ = Math.sin(mat.uniforms.uTime.value * 14.0) * tiltImpulse.current;
-    const impulseRotY = tiltImpulse.current * (mode === "engineer" ? -0.15 : 0.15);
+    const impulseRotZ = Math.sin(mat.uniforms.uTime.value * 12.0) * tiltImpulse.current;
+    const impulseRotY = tiltImpulse.current * (mode === "engineer" ? -0.12 : 0.12);
 
     meshRef.current.position.x = THREE.MathUtils.lerp(meshRef.current.position.x, targetX, 0.08);
     meshRef.current.position.y = THREE.MathUtils.lerp(meshRef.current.position.y, targetY, 0.08);
     meshRef.current.position.z = THREE.MathUtils.lerp(meshRef.current.position.z, targetZ, 0.08);
     meshRef.current.rotation.y = THREE.MathUtils.lerp(meshRef.current.rotation.y, targetRotY + impulseRotY, 0.08);
-    meshRef.current.rotation.x = THREE.MathUtils.lerp(meshRef.current.rotation.x, -mouse.current.y * 0.1, 0.08);
+    meshRef.current.rotation.x = THREE.MathUtils.lerp(meshRef.current.rotation.x, -mouse.current.y * 0.08, 0.08);
     meshRef.current.rotation.z = THREE.MathUtils.lerp(meshRef.current.rotation.z, impulseRotZ, 0.1);
   });
 
   return (
     <mesh ref={meshRef} position={[0, 0, 0]}>
-      <planeGeometry args={[1, 1, 96, 96]} />
+      {/* 1 : 1.792 aspect ratio matching FotoDiriFix.webp (1200x2150) */}
+      <planeGeometry args={[1, 1.792, 96, 96]} />
       <shaderMaterial
         ref={materialRef}
         vertexShader={vertexShader}

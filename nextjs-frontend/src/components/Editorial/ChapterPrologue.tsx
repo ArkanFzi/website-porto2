@@ -3,7 +3,7 @@
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { usePortfolioMode } from "@/context/PortfolioModeContext";
-import { ArrowDown, Cpu, Sparkles } from "lucide-react";
+import { Cpu, Sparkles } from "lucide-react";
 
 export const ChapterPrologue: React.FC = () => {
   const { mode } = usePortfolioMode();
@@ -11,10 +11,10 @@ export const ChapterPrologue: React.FC = () => {
   return (
     <section
       id="chapter-01"
-      className="relative w-full min-h-screen flex flex-col justify-between pt-28 pb-10 px-6 md:px-12 select-none overflow-hidden"
+      className="relative w-full min-h-screen flex flex-col justify-between pt-24 sm:pt-28 pb-20 px-6 md:px-12 select-none overflow-hidden"
     >
       {/* ── Top Header Tags (z-20) ── */}
-      <div className="w-full max-w-[1600px] mx-auto flex items-center justify-between z-20">
+      <div className="w-full max-w-[1600px] mx-auto flex items-center justify-between pb-6 swiss-border-b z-20">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-[#D41E12] animate-pulse" />
           <span className="font-mono text-[11px] font-bold tracking-[0.25em] uppercase text-[#D41E12]">
@@ -22,9 +22,9 @@ export const ChapterPrologue: React.FC = () => {
           </span>
         </div>
 
-        <div className="flex items-center gap-4 text-right">
+        <div className="flex items-center gap-3">
           <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-[#6E6A64]">
-            {mode === "engineer" ? "HIGH-THROUGHPUT TELEMETRY" : "HAUTE-COUTURE SPATIAL 3D"}
+            HIGH-THROUGHPUT TELEMETRY
           </span>
         </div>
       </div>
@@ -32,21 +32,16 @@ export const ChapterPrologue: React.FC = () => {
       {/* ── SANDWICH LAYER 1: BACK LAYER (z-0, BEHIND 3D CANVAS z-10) ── */}
       <div
         aria-hidden="true"
-        className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none z-0 overflow-hidden"
+        className="absolute inset-0 z-0 flex flex-col items-center justify-center text-center pointer-events-none select-none overflow-hidden"
       >
-        <motion.div
-          initial={{ y: "15%", opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
-          className="w-full max-w-[1750px] mx-auto flex flex-col items-center justify-center select-none"
-        >
+        <div className="w-full max-w-[1750px] mx-auto px-4 opacity-[0.92]">
           <span className="font-serif text-[11vw] font-black tracking-tighter uppercase leading-[0.85] text-[#0A0A0A] block whitespace-nowrap">
             M. ARKAN
           </span>
           <span className="font-serif text-[11vw] font-black tracking-tighter uppercase leading-[0.85] text-[#0A0A0A] block whitespace-nowrap">
             FAUZI
           </span>
-        </motion.div>
+        </div>
       </div>
 
       {/* ── SANDWICH LAYER 2: FRONT LAYER (z-20, IN FRONT OF 3D CANVAS z-10) ── */}
@@ -72,59 +67,51 @@ export const ChapterPrologue: React.FC = () => {
             FAUZI
           </span>
         </div>
-
-        {/* Clean Editorial Subtitle (NO pill/capsule background, pure Swiss typography) */}
-        <div className="mt-8 flex flex-col items-center max-w-2xl mx-auto pointer-events-auto h-16 justify-center">
-          <AnimatePresence mode="wait">
-            {mode === "engineer" ? (
-              <motion.div
-                key="engineer-sub"
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -12 }}
-                transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-                className="flex flex-col items-center"
-              >
-                <div className="flex items-center gap-2 mb-1.5 font-mono text-[10px] font-bold tracking-[0.22em] uppercase text-[#D41E12]">
-                  <Cpu className="w-3.5 h-3.5 text-[#D41E12]" />
-                  <span>MODE: THE ENGINEER // CORE RUNTIME</span>
-                </div>
-                <p className="font-mono text-xs sm:text-sm text-[#0A0A0A] font-bold tracking-[0.08em] uppercase text-center">
-                  SYSTEMS ARCHITECT — GO / TYPESCRIPT / LINUX &amp; MICROSERVICES
-                </p>
-              </motion.div>
-            ) : (
-              <motion.div
-                key="creator-sub"
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -12 }}
-                transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-                className="flex flex-col items-center"
-              >
-                <div className="flex items-center gap-2 mb-1.5 font-mono text-[10px] font-bold tracking-[0.22em] uppercase text-[#D41E12]">
-                  <Sparkles className="w-3.5 h-3.5 text-[#D41E12]" />
-                  <span>MODE: THE CREATOR // SPATIAL ATELIER</span>
-                </div>
-                <p className="font-mono text-xs sm:text-sm text-[#0A0A0A] font-bold tracking-[0.08em] uppercase text-center">
-                  CREATIVE TECHNOLOGIST — WEBGL / GLSL / GENERATIVE AI &amp; SPATIAL DESIGN
-                </p>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
       </div>
 
-      {/* ── Bottom Section Edge (z-20, Clean Swiss Hairline, No floating yellow/orange buttons) ── */}
-      <div className="w-full max-w-[1600px] mx-auto flex items-end justify-between z-20 pt-4 swiss-border-t">
-        <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-[#6E6A64]">
-          SCUDERIA PROTOCOL // #16
-        </span>
+      {/* ── Subtitle positioned cleanly below the photo area with safe clearance ── */}
+      <div className="w-full max-w-[1600px] mx-auto z-20 flex flex-col items-center text-center pt-2 pb-6">
+        <AnimatePresence mode="wait">
+          {mode === "engineer" ? (
+            <motion.div
+              key="engineer-sub"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+              className="flex flex-col items-center"
+            >
+              <div className="flex items-center gap-2 mb-1.5 font-mono text-[10px] font-bold tracking-[0.22em] uppercase text-[#D41E12]">
+                <Cpu className="w-3.5 h-3.5 text-[#D41E12]" />
+                <span>MODE: THE ENGINEER // CORE RUNTIME</span>
+              </div>
+              <p className="font-mono text-xs sm:text-sm text-[#0A0A0A] font-bold tracking-[0.08em] uppercase text-center max-w-xl">
+                SYSTEMS ARCHITECT — GO / TYPESCRIPT / LINUX &amp; MICROSERVICES
+              </p>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="creator-sub"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+              className="flex flex-col items-center"
+            >
+              <div className="flex items-center gap-2 mb-1.5 font-mono text-[10px] font-bold tracking-[0.22em] uppercase text-[#D41E12]">
+                <Sparkles className="w-3.5 h-3.5 text-[#D41E12]" />
+                <span>MODE: THE CREATOR // SPATIAL ATELIER</span>
+              </div>
+              <p className="font-mono text-xs sm:text-sm text-[#0A0A0A] font-bold tracking-[0.08em] uppercase text-center max-w-xl">
+                CREATIVE TECHNOLOGIST — WEBGL / GLSL / GENERATIVE AI &amp; SPATIAL DESIGN
+              </p>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        <div className="flex items-center gap-2 font-mono text-[10px] tracking-[0.2em] uppercase text-[#D41E12]">
-          <span>SCROLL TO TRAVERSE</span>
-          <ArrowDown className="w-3 h-3 animate-bounce" />
-        </div>
+        <span className="font-mono text-[9px] tracking-[0.25em] uppercase text-[#D41E12] mt-3 animate-pulse">
+          SCROLL TO TRAVERSE ↓
+        </span>
       </div>
     </section>
   );
