@@ -192,7 +192,9 @@ export const ChapterArchives: React.FC<ArchivesProps> = ({
         className="left-[56vw] top-[20vh] h-[60vh] w-[23vw] xl:left-[calc(3rem+1000px+3rem)] xl:right-6 xl:w-auto"
       />
       {/* ── Top Header Tags ── */}
-      <div className="w-full max-w-[1600px] mx-auto flex items-center justify-between pb-6 border-b border-white/10 mb-16">
+      {/* Header dan daftar wajib berbagi kotak isi yang sama: tanpa pr-8 tepi kanan
+          tombol panah jatuh tepat di tepi papan dan setengah lingkarannya hilang di atas kertas. */}
+      <div className="w-full max-w-[1600px] mx-auto xl:max-w-[1000px] xl:mx-0 xl:pr-8 flex items-center justify-between pb-6 border-b border-white/10 mb-16">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-[#D41E12] animate-pulse" />
           <span className="font-mono text-[11px] font-bold tracking-[0.25em] uppercase text-[#D41E12]">
@@ -213,7 +215,7 @@ export const ChapterArchives: React.FC<ArchivesProps> = ({
         </div>
       </div>
 
-      <div className="w-full max-w-[1600px] mx-auto xl:max-w-[1000px] xl:mx-0">
+      <div className="w-full max-w-[1600px] mx-auto xl:max-w-[1000px] xl:mx-0 xl:pr-8">
         
         {/* Section Heading with Motion Transition */}
         <div className="mb-16 max-w-2xl">
