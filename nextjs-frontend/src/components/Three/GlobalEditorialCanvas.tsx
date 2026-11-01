@@ -5,15 +5,15 @@ import { Canvas } from "@react-three/fiber";
 import { ChiaroscuroMonolith } from "./ChiaroscuroMonolith";
 
 interface CanvasProps {
-  scrollProgress: number;
+  scrollProgressRef: React.RefObject<number>;
   hoveredProject: number | null;
-  scrollVelocity: number;
+  scrollVelocityRef: React.RefObject<number>;
 }
 
 export const GlobalEditorialCanvas: React.FC<CanvasProps> = ({
-  scrollProgress,
+  scrollProgressRef,
   hoveredProject,
-  scrollVelocity,
+  scrollVelocityRef,
 }) => {
   return (
     <div
@@ -31,9 +31,9 @@ export const GlobalEditorialCanvas: React.FC<CanvasProps> = ({
       >
         <Suspense fallback={null}>
           <ChiaroscuroMonolith
-            scrollProgress={scrollProgress}
+            scrollProgressRef={scrollProgressRef}
             hoveredProject={hoveredProject}
-            scrollVelocity={scrollVelocity}
+            scrollVelocityRef={scrollVelocityRef}
           />
         </Suspense>
       </Canvas>

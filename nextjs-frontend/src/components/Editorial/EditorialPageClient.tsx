@@ -35,16 +35,16 @@ const EditorialInner: React.FC<PageClientProps> = ({
   certificates,
   experiences,
 }) => {
-  const { scrollProgress, scrollVelocity, currentChapter, scrollToChapter } = useScrollData();
+  const { scrollProgressRef, scrollVelocityRef, currentChapter, scrollToChapter } = useScrollData();
   const [hoveredProject, setHoveredProject] = useState<number | null>(null);
 
   return (
     <div className="relative min-h-screen w-full transition-colors duration-700">
       {/* ── Single Continuous Global 3D Canvas (Midground) ── */}
       <GlobalEditorialCanvas
-        scrollProgress={scrollProgress}
+        scrollProgressRef={scrollProgressRef}
         hoveredProject={hoveredProject}
-        scrollVelocity={scrollVelocity}
+        scrollVelocityRef={scrollVelocityRef}
       />
 
       {/* ── Fixed Frame (Monogram, Switcher, Indeks, Contact) ── */}

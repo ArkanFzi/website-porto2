@@ -8,9 +8,9 @@ import { usePortfolioMode } from "@/context/PortfolioModeContext";
 import audioEngine from "@/lib/audioEngine";
 
 interface MonolithProps {
-  scrollProgress: number; // 0 to 1 from Lenis
+  scrollProgressRef: React.RefObject<number>; // 0 to 1 from Lenis
   hoveredProject: number | null;
-  scrollVelocity: number;
+  scrollVelocityRef: React.RefObject<number>;
 }
 
 const vertexShader = /* glsl */ `
@@ -153,9 +153,9 @@ const fragmentShader = /* glsl */ `
 `;
 
 export const ChiaroscuroMonolith: React.FC<MonolithProps> = ({
-  scrollProgress,
+  scrollProgressRef,
   hoveredProject,
-  scrollVelocity,
+  scrollVelocityRef,
 }) => {
   const meshRef = useRef<THREE.Mesh>(null);
   const materialRef = useRef<THREE.ShaderMaterial>(null);
@@ -214,8 +214,8 @@ export const ChiaroscuroMonolith: React.FC<MonolithProps> = ({
 
     mat.uniforms.uTime.value += delta;
     mat.uniforms.uMouse.value.set(mouse.current.x, mouse.current.y);
-    mat.uniforms.uVelocity.value = THREE.MathUtils.lerp(mat.uniforms.uVelocity.value, scrollVelocity, 0.1);
-    mat.uniforms.uScroll.value = scrollProgress;
+    mat.uniforms.uVelocity.value = THREE.MathUtils.lerp(mat.uniforms.uVelocity.value, scrollVelocityRef.current, 0.1);
+    mat.uniforms.uScroll.value = scrollProgressRef.current;
 
     // Smooth lerp for uPersona (0.0 for engineer, 1.0 for creator)
     const targetPersona = mode === "engineer" ? 0.0 : 1.0;
@@ -226,7 +226,7 @@ export const ChiaroscuroMonolith: React.FC<MonolithProps> = ({
     mat.uniforms.uWireframe.value = THREE.MathUtils.lerp(mat.uniforms.uWireframe.value, targetWireframe, 0.12);
 
     // Audio Engine scroll velocity rev
-    audioEngine.updateScrollVelocity(scrollVelocity);
+    audioEngine.updateScrollVelocity(scrollVelocityRef.current);
 
     // Hover state interpolation
     const targetHover = hoveredProject !== null ? 1.0 : 0.0;
@@ -240,7 +240,7 @@ export const ChiaroscuroMonolith: React.FC<MonolithProps> = ({
     meshRef.current.scale.set(baseW, baseW, 1);
 
     // ── PRECISION CHOREOGRAPHED SCROLL POSITIONS ──
-    const p = Math.max(0, Math.min(1, scrollProgress));
+    const p = Math.max(0, Math.min(1, scrollProgressRef.current));
     const isNarrow = viewport.width < 8.5;
     const colLeftX = isNarrow ? -viewport.width * 0.22 : -Math.min(viewport.width * 0.30, 2.95);
     const colRightX = isNarrow ? viewport.width * 0.18 : Math.min(viewport.width * 0.25, 2.2);

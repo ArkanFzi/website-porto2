@@ -1,31 +1,29 @@
 "use client";
 
-import React, { useEffect, useState, createContext, useContext } from "react";
+import React, { useEffect, useRef, useState, createContext, useContext } from "react";
 import Lenis from "lenis";
 
 interface ScrollContextType {
-  scrollProgress: number;
-  scrollVelocity: number;
+  scrollProgressRef: React.RefObject<number>;
+  scrollVelocityRef: React.RefObject<number>;
   currentChapter: number;
-  lenis: Lenis | null;
   scrollToChapter: (ch: number) => void;
 }
 
 const ScrollContext = createContext<ScrollContextType>({
-  scrollProgress: 0,
-  scrollVelocity: 0,
+  scrollProgressRef: { current: 0 },
+  scrollVelocityRef: { current: 0 },
   currentChapter: 1,
-  lenis: null,
   scrollToChapter: () => {},
 });
 
 export const useScrollData = () => useContext(ScrollContext);
 
 export const SmoothScrollProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [scrollProgress, setScrollProgress] = useState(0);
-  const [scrollVelocity, setScrollVelocity] = useState(0);
+  const scrollProgressRef = useRef(0);
+  const scrollVelocityRef = useRef(0);
+  const lenisRef = useRef<Lenis | null>(null);
   const [currentChapter, setCurrentChapter] = useState(1);
-  const [lenis, setLenis] = useState<Lenis | null>(null);
 
   useEffect(() => {
     const lenisInstance = new Lenis({
@@ -37,17 +35,16 @@ export const SmoothScrollProvider: React.FC<{ children: React.ReactNode }> = ({ 
       wheelMultiplier: 1.0,
     });
 
-    setLenis(lenisInstance);
+    lenisRef.current = lenisInstance;
 
-    const raf = (time: number) => {
+    let reqId = requestAnimationFrame(function raf(time: number) {
       lenisInstance.raf(time);
-      requestAnimationFrame(raf);
-    };
-    const reqId = requestAnimationFrame(raf);
+      reqId = requestAnimationFrame(raf);
+    });
 
-    lenisInstance.on("scroll", (e: { progress: number; velocity: number }) => {
-      setScrollProgress(e.progress);
-      setScrollVelocity(e.velocity);
+    const onScroll = (e: { progress: number; velocity: number }) => {
+      scrollProgressRef.current = e.progress;
+      scrollVelocityRef.current = e.velocity;
 
       // Determine active chapter (1 to 4)
       if (e.progress < 0.25) {
@@ -59,28 +56,30 @@ export const SmoothScrollProvider: React.FC<{ children: React.ReactNode }> = ({ 
       } else {
         setCurrentChapter(4);
       }
-    });
+    };
+    lenisInstance.on("scroll", onScroll);
 
     return () => {
       cancelAnimationFrame(reqId);
+      lenisInstance.off("scroll", onScroll);
       lenisInstance.destroy();
+      lenisRef.current = null;
     };
   }, []);
 
   const scrollToChapter = (ch: number) => {
     const target = document.getElementById(`chapter-0${ch}`);
-    if (target && lenis) {
-      lenis.scrollTo(target, { duration: 1.4 });
+    if (target && lenisRef.current) {
+      lenisRef.current.scrollTo(target, { duration: 1.4 });
     }
   };
 
   return (
     <ScrollContext.Provider
       value={{
-        scrollProgress,
-        scrollVelocity,
+        scrollProgressRef,
+        scrollVelocityRef,
         currentChapter,
-        lenis,
         scrollToChapter,
       }}
     >
