@@ -24,6 +24,17 @@ import { usePortalRegistry, type PortalKotak } from "./usePortalRegistry";
  *  tinggi daripada rasio potret. */
 const muat = (kotak: PortalKotak) => Math.min(kotak.lebar, kotak.tinggi / RASIO_POTRET);
 
+/** Besarnya dolly kamera saat gulir paling cepat, DERAJAT fov. Batas satu derajat bukan
+ *  rasa-rasa: di atas itu kartu visibly lepas dari kotak DOM yang memotongnya dan
+ *  gerakannya terbaca sebagai zoom, bukan sebagai dorongan pendek. */
+const DOLLY_DERAJAT = 1;
+
+/** Velositas Lenis (pixel per frame) yang sudah memeroleh dolly penuh. */
+const KECEPATAN_PENUH = 25;
+
+/** Konstanta waktu pegas dolly, detik. */
+const TAU_DOLLY = 0.14;
+
 /** Bentuk window.__panggung — dibaca verifier, tidak pernah dipakai kode produksi. */
 export interface PembacaanPanggung {
   p: number;
@@ -50,6 +61,13 @@ export interface PembacaanPanggung {
   persona: number;
   /** Reticle kartu: [u, v, dipegang (0|1), reveal]. u,v = titik cahaya pada UV kartu. */
   kursor: [number, number, number, number];
+  /** Penyimpangan fov kamera dari dasarnya, derajat bertanda. Gerbang verifier menuntut
+   *  |nilai ini| tidak pernah melewati DOLLY_DERAJAT dan kembali ke nol setelah gulir. */
+  dolly: number;
+  /** [fov hidup, jarak kamera ke titik asal]. Verifier memakai dua angka ini untuk
+   *  mengubah world→NDC sendiri, jadi klaim "kartu duduk di tengah kotaknya" bisa diuji
+   *  tanpa menelan kalibrasi yang sedang diuji. */
+  kamera: [number, number];
 }
 
 const bundar = (n: number) => Math.round(n * 1e4) / 1e4;
@@ -62,6 +80,8 @@ interface BacaanTambahan {
   balik: number;
   persona: number;
   kursor: [number, number, number, number];
+  dolly: number;
+  kamera: [number, number];
 }
 
 const tulisPanggungDebug = (
@@ -72,7 +92,7 @@ const tulisPanggungDebug = (
   kotak: PortalKotak,
   tambahan: BacaanTambahan
 ) => {
-  const { putar, jejak, balik, persona, kursor } = tambahan;
+  const { putar, jejak, balik, persona, kursor, dolly, kamera } = tambahan;
   const jendela = window as unknown as { __panggung?: PembacaanPanggung };
   jendela.__panggung = {
     p: bundar(p),
@@ -93,6 +113,8 @@ const tulisPanggungDebug = (
     balik: bundar(balik),
     persona: bundar(persona),
     kursor: kursor.map(bundar) as [number, number, number, number],
+    dolly: bundar(dolly),
+    kamera: kamera.map(bundar) as [number, number],
   };
 };
 
@@ -109,7 +131,13 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
   const { scrollProgressRef, scrollVelocityRef, hoveredProject, mode, wireframe } = props;
   const meshRef = useRef<THREE.Mesh>(null);
   const materialRef = useRef<THREE.ShaderMaterial>(null);
-  const { viewport, size, camera, invalidate } = useThree();
+  const { size, camera, invalidate } = useThree();
+  /** fov sebelum panggung menyentuh kamera, ditangkap pada effect mount. Kalibrasi
+   *  pixel→world diturunkan dari angka ini, bukan dari camera.fov yang sedang berjalan,
+   *  karena r3f hanya menghitung ulang viewport saat OBJEK kamera diganti — perubahan
+   *  fov dari dolly tidak pernah terlihat di sana. */
+  const fovDasar = useRef(0);
+  const lensaRef = useRef<THREE.PerspectiveCamera | null>(null);
   const portal = usePortalRegistry();
   const kurangiGerak = useSyncExternalStore(
     dengarKurangiGerak,
@@ -167,6 +195,14 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
     };
   }, []);
 
+  // fov dasar ditangkap sebelum panggung sempat menyentuh kamera, lewat ref sendiri:
+  // nilai dari useThree tidak boleh ditulis langsung dan polanya sama dengan meshRef.
+  useEffect(() => {
+    const cam = camera as THREE.PerspectiveCamera;
+    lensaRef.current = cam;
+    fovDasar.current = cam.fov;
+  }, [camera]);
+
   // MODE, hover kartu arsip, dan wireframe adalah keadaan yang datang dari React, bukan
   // dari peristiwa input. Pada reduce-motion kanvas bahkan tidak memasang listener
   // aktivitas (frameloop "demand" permanen), jadi tanpa satu frame yang diminta di sini
@@ -217,6 +253,34 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
     mat.uniforms.uVelocity.value = THREE.MathUtils.lerp(mat.uniforms.uVelocity.value, scrollVelocityRef.current, 0.1);
     mat.uniforms.uScroll.value = scrollProgressRef.current;
 
+    // ── DOLLY DARI KECEPATAN GULIR ──
+    // Gulir cepat mendorong kamera ke dalam, gulir balik menariknya keluar, besarnya
+    // dibatasi DOLLY_DERAJAT dari fov dasar. Pegasnya eksponensial per detik (bukan lerp
+    // per frame) supaya satu frame panjang tidak membuat kamera melompat; begitu
+    // velositas habis, targetnya fov dasar lagi dan kartu diam di tempat ia berangkat.
+    // reduce-motion mengunci fov: yang boleh hilang gerakannya, bukan keadaan kameranya.
+    // Kamera dipegang lewat ref sendiri: nilai yang datang dari useThree tidak boleh
+    // ditulis langsung, dan dolly memang menulis fov — polanya sama dengan meshRef.
+    const lensa = lensaRef.current;
+    let dolly = 0;
+    let sisaDolly = 0;
+    if (lensa) {
+      const laju = THREE.MathUtils.clamp(scrollVelocityRef.current / KECEPATAN_PENUH, -1, 1);
+      const fovTarget = kurangiGerak ? fovDasar.current : fovDasar.current - laju * DOLLY_DERAJAT;
+      sisaDolly = fovTarget - lensa.fov;
+      if (Math.abs(sisaDolly) > 1e-4) {
+        lensa.fov += sisaDolly * (1 - Math.exp(-delta / TAU_DOLLY));
+        lensa.updateProjectionMatrix();
+      } else if (lensa.fov !== fovTarget) {
+        // Ditutup tepat: pegas asimptotik tidak pernah benar-benar sampai, dan fov yang
+        // masih bergerak 1e-7 membuat loop "demand" tidak pernah boleh tidur.
+        lensa.fov = fovTarget;
+        lensa.updateProjectionMatrix();
+        sisaDolly = 0;
+      }
+      dolly = lensa.fov - fovDasar.current;
+    }
+
     // Persona: mode jadi basis, hover kartu arsip menyilangkan potret ke sisi
     // sebaliknya (engineer <-> creator) sehingga hover membaca perubahan wajah,
     // bukan hanya aura merah.
@@ -256,7 +320,12 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
 
     const layarX = size.width;
     const layarY = size.height;
-    const dpp = viewport.width / layarX; // world per pixel pada bidang z = 0
+    // world per pixel pada bidang z = 0, dari fov DASAR. Rumerusnya sama dengan
+    // viewport.width / size.width milik r3f (2·tan(fov/2)·jarak / tinggi layar), tapi
+    // tidak ikut berubah saat dolly bergerak — jadi kartu tetap seukuran kotak DOM-nya
+    // pada sikap dasar dan dolly hanya terlihat sebagai dorongan ±1 derajat.
+    const dpp =
+      (2 * Math.tan(THREE.MathUtils.degToRad(fovDasar.current) / 2) * camera.position.z) / layarY;
     const pxPerWorld = (z: number) => (1 / dpp) * (camera.position.z / (camera.position.z - z));
     const kotak = k.kotak;
 
@@ -286,6 +355,18 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
     meshRef.current.position.z = THREE.MathUtils.lerp(meshRef.current.position.z, targetZ, 0.08);
     dasar.current.rotY = THREE.MathUtils.lerp(dasar.current.rotY, targetRotY, 0.08);
     dasar.current.rotX = THREE.MathUtils.lerp(dasar.current.rotX, -mouse.current.y * 0.08, 0.08);
+    // Sisa jarak kartu ke sikap yang dituntut portal. Angka ini ikut menahan loop
+    // "demand" tetap bangun: tanpa itu satu frame pemicu (gerak pointer, satu tick
+    // gulir) hanya menutup 8% dari jarak lalu tidurnya datang, dan kartu berhenti
+    // beberapa pixel sebelum kotaknya — terlihat sebagai kartu yang tidak pernah
+    // benar-benar mendarat, dan membuat verifier membaca sikap yang masih bergerak
+    // sebagai sikap akhir.
+    const sisaSikap =
+      Math.abs(targetX - meshRef.current.position.x) +
+      Math.abs(targetY - meshRef.current.position.y) +
+      Math.abs(targetZ - meshRef.current.position.z) +
+      Math.abs(targetRotY - dasar.current.rotY) +
+      Math.abs(-mouse.current.y * 0.08 - dasar.current.rotX);
 
     // Rotasi perintah pengunjung (seret pointer atau panah keyboard) DITUMPUK di atas
     // koreografi bab, bukan menggantikannya: target nol berarti kartu pulang ke sikap
@@ -307,7 +388,9 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
       sudutBalik > 0 ||
       Math.abs(perintah.x - pusing.current.x) > 1e-4 ||
       Math.abs(perintah.y - pusing.current.y) > 1e-4 ||
-      Math.abs((mat.uniforms.uPersona.value as number) - targetPersona) > 1e-3
+      Math.abs((mat.uniforms.uPersona.value as number) - targetPersona) > 1e-3 ||
+      Math.abs(sisaDolly) > 1e-4 ||
+      sisaSikap > 1e-3
     )
       invalidate();
 
@@ -397,6 +480,8 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
         balik: balik.current,
         persona: mat.uniforms.uPersona.value as number,
         kursor: [uv.x, uv.y, dipegang ? 1 : 0, mat.uniforms.uReveal.value as number],
+        dolly,
+        kamera: [lensa?.fov ?? fovDasar.current, camera.position.z],
       });
 
     }
