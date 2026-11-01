@@ -175,30 +175,67 @@ const bacaBaris = () =>
 
 // Posisi pointer dari bagian 3 sudah jatuh di atas baris arsip setelah parkir, jadi
 // hover harus dilepas lebih dulu — kalau tidak, "sebelum" dan "sesudah" membacanya sama.
+// Yang ditunggu adalah keadaannya, bukan waktunya: padding-left masih transisi 300ms di
+// atas re-render React, dan baseline yang keburu terbaca 24px membuat gerbang membandingkan
+// dua keadaan hover yang identik.
 const lepasHover = async () => {
   await page.mouse.move(8, 8);
-  await new Promise((r) => setTimeout(r, 400));
+  for (let i = 0; i < 12; i++) {
+    await new Promise((r) => setTimeout(r, 150));
+    const bersih = await page.evaluate(() =>
+      [...document.querySelectorAll("#chapter-03 [data-magnetic]")].every(
+        (el) => getComputedStyle(el).paddingLeft === "0px"
+      )
+    );
+    if (bersih) return;
+  }
 };
 
+/** Tunggu Lenis berhenti: enam pembacaan scrollY yang tidak bergeser. */
+const diamDiTempat = async () => {
+  let terakhir = -1;
+  let diam = 0;
+  for (let i = 0; i < 40; i++) {
+    await new Promise((r) => setTimeout(r, 100));
+    const kini = await page.evaluate(() => Math.round(window.scrollY));
+    diam = Math.abs(kini - terakhir) < 2 ? diam + 1 : 0;
+    terakhir = kini;
+    if (diam >= 3) return kini;
+  }
+  return terakhir;
+};
+
+// Lenis adalah pemilik posisi gulir, jadi window.scrollTo native bisa ditimpa kembali ke
+// nilai animasinya (terukur: target 3019, halaman bertahan di 2443 dan baris arsip tidak
+// pernah terlihat). Yang dipakai pengunjung adalah roda mouse, jadi bagian ini menggulir
+// dengan roda sampai sebuah baris benar-benar terlihat. Kalau tidak ketemu, `target` tetap
+// null dan gerbang "baris arsip terlihat setelah parkir" gagal dengan angka di log, bukan
+// diam-diam melewatkan percobaan hover.
 const parkirKeBaris = async () => {
-  return page.evaluate(async () => {
-    const el = document.querySelector('#chapter-03 [data-magnetic]');
-    if (!el) return { galat: 'tidak ada #chapter-03 [data-magnetic]' };
-    const b = el.getBoundingClientRect();
-    const maks = document.documentElement.scrollHeight - window.innerHeight;
-    // Target absolut, bukan delta dari scrollY saat ini: posisi awal bagian ini datang
-    // dari gulir roda di bagian 3, dan delta membuat parkir bergeser per run.
-    const y = Math.min(maks, Math.max(0, b.top + window.scrollY - window.innerHeight * 0.4));
-    window.scrollTo(0, Math.round(y));
-    await new Promise((r) => setTimeout(r, 1500));
-    return { jumlah: document.querySelectorAll('#chapter-03 [data-magnetic]').length, scrollY: Math.round(window.scrollY) };
-  });
+  let langkah = 0;
+  let t = await bacaBaris();
+  while (!t && langkah < 24) {
+    await page.mouse.wheel({ deltaY: 160 });
+    await new Promise((r) => setTimeout(r, 120));
+    await diamDiTempat();
+    langkah++;
+    t = await bacaBaris();
+  }
+  // Debu dan kompas hidup dari velositas; tanpa jeda idle, "sebelum" bisa masih memuat
+  // segmen kompas dan selisih garis sangkar terbaca kurang.
+  await new Promise((r) => setTimeout(r, 1200));
+  return {
+    jumlah: await page.evaluate(() => document.querySelectorAll('#chapter-03 [data-magnetic]').length),
+    scrollY: await page.evaluate(() => Math.round(window.scrollY)),
+    langkah,
+  };
 };
 
 const parkir4 = await parkirKeBaris();
 const target = await bacaBaris();
 let sbl = await serap(300);
 let sts = sbl;
+let plLepas = null;
 // Hover pointer adalah peristiwa asinkron yang bisa hilang saat halaman masih settling
 // setelah gulir roda di bagian 3; tanpa percobaan ulang bagian ini jadi flaky (pernah
 // gagal sekali dari tiga jalan). Tiga percobaan dengan jeda melepas hover membuat hasilnya
@@ -206,12 +243,16 @@ let sts = sbl;
 for (let percobaan = 1; percobaan <= 3 && target; percobaan++) {
   await lepasHover();
   sbl = await serap(300);
+  // Baseline padding dibaca SETELAH hover dilepas, bukan dari `target`: pointer bagian 3
+  // bisa sudah jatuh di atas baris yang sama saat `target` diambil, sehingga pl-nya sudah
+  // 24px dan "sebelum vs sesudah" memperbandingkan dua keadaan hover yang identik.
+  plLepas = (await bacaBaris())?.pl ?? plLepas;
   if (percobaan === 1) await foto('05-bab3-tanpa-hover');
   await page.mouse.move(target.x, target.y);
   await new Promise((r) => setTimeout(r, 250 * percobaan));
   sts = await serap(300);
   const kini = await bacaBaris();
-  if (kini && kini.pl !== target.pl) break;
+  if (kini && plLepas && kini.pl !== plLepas) break;
 }
 const barisKini = await bacaBaris();
 await foto('06-bab3-hover');
@@ -219,6 +260,8 @@ console.log(
   'sangkar  ',
   JSON.stringify(parkir4),
   JSON.stringify(target),
+  '| pl lepas:',
+  plLepas,
   '| sebelum:',
   JSON.stringify(sbl.nama),
   JSON.stringify(sbl.puncak.garis),
@@ -226,7 +269,8 @@ console.log(
   JSON.stringify(sts.nama),
   JSON.stringify(sts.puncak.garis)
 );
-cek('hover baris arsip sampai ke state', target?.pl !== barisKini?.pl, true);
+cek('baris arsip terlihat setelah parkir', !!target, true);
+cek('hover baris arsip sampai ke state', !!target && !!plLepas && barisKini?.pl !== plLepas, true);
 cek('sangkar tidak ada tanpa hover', ada(sbl.nama, 'sangkar'), false);
 cek('sangkar ada saat hover', ada(sts.nama, 'sangkar'), true);
 cekMin('sangkar menyumbang 12 segmen LINES', sts.puncak.garis - sbl.puncak.garis, SISI_SANGKAR);

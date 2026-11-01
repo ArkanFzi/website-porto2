@@ -11,6 +11,12 @@ import { KompasGulir } from "./stage/ekstra/KompasGulir";
 import { RollCage } from "./stage/ekstra/RollCage";
 import { PengukurRender } from "./stage/PengukurRender";
 import { mulai, mulaiLapor, setDprKanvas } from "@/lib/perfStats";
+import {
+  bacaKurangiGerak,
+  bacaKurangiGerakSaatSSR,
+  dengarKurangiGerak,
+} from "@/lib/motion";
+
 
 type Frameloop = "always" | "demand" | "never";
 
@@ -23,26 +29,29 @@ interface CanvasProps {
 // Ambiens shader hanya hidup selama pengunjung masih bergerak. Setelah itu loop
 // dihentikan (demand = nol frame) supaya laptop iGPU tidak dibakar untuk gerakan
 // yang tidak dilihat; satu event pointer/scroll/ketik mengembalikannya seketika.
+// pointerup, focusin, focusout ikut terdaftar karena mesin kartu mengubah KEADAAN
+// pada peristiwa itu — seret dilepas (reticle pulang ke pointer), kontrol reticle
+// difokus/dilepas — dan keadaan yang tidak meminta frame akan tertinggal satu
+// tindakan di belakang layarnya.
 const IDLE_MS = 4000;
-const AKTIVITAS = ["scroll", "pointermove", "pointerdown", "keydown", "wheel", "touchstart"];
+const AKTIVITAS = [
+  "scroll",
+  "pointermove",
+  "pointerdown",
+  "pointerup",
+  "focusin",
+  "focusout",
+  "keydown",
+  "wheel",
+  "touchstart",
+];
 
 const DPR_MIN = 1;
 const DPR_MAKS = 1.5;
 const DPR_AWAL = 1.25;
 
-// MediaQueryList dibuat sekali; hook store membacanya tanpa effect-setState.
-let mqKurangiGerak: MediaQueryList | undefined;
-const mediaKurangiGerak = () =>
-  (mqKurangiGerak ??= window.matchMedia("(prefers-reduced-motion: reduce)"));
-const dengarKurangiGerak = (ubah: () => void) => {
-  const mq = mediaKurangiGerak();
-  mq.addEventListener("change", ubah);
-  return () => mq.removeEventListener("change", ubah);
-};
-const bacaKurangiGerak = () => mediaKurangiGerak().matches;
-const bacaKurangiGerakSaatSSR = () => false;
-
 export const GlobalEditorialCanvas: React.FC<CanvasProps> = ({
+
   scrollProgressRef,
   hoveredProject,
   scrollVelocityRef,

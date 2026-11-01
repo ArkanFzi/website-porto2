@@ -3,11 +3,18 @@
 /** Mesin panggung: mengubah satu angka gulir menjadi posisi, sikap, dan uniform
  *  kartu potret setiap frame. Dipisah dari komponen supaya objek 3D baru cukup
  *  mengimpor hook ini (atau menulis mesinnya sendiri) tanpa menyalin shader. */
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import audioEngine from "@/lib/audioEngine";
-import { bacaTarget, laporKotakKartu } from "@/lib/putaran";
+import {
+  DURASI,
+  bacaKurangiGerak,
+  bacaKurangiGerakSaatSSR,
+  dengarKurangiGerak,
+} from "@/lib/motion";
+import { bacaTarget, bacaFokusKartu, laporKotakKartu } from "@/lib/putaran";
+
 import type { PortfolioMode } from "@/context/PortfolioModeContext";
 import { buatUniformPanggung, RASIO_POTRET } from "./chiaroscuroMaterial";
 import { sikap, type Sikap } from "./koreografi";
@@ -38,9 +45,24 @@ export interface PembacaanPanggung {
   putar: [number, number, number, number];
   /** Jejak pointer: [jumlah sampel hidup, rentang terjauh antar sampel dalam UV]. */
   jejak: [number, number];
+  /** Sisa flip MODE (1 → 0) dan silang wajah yang sedang berlaku (0 engineer, 1 creator). */
+  balik: number;
+  persona: number;
+  /** Reticle kartu: [u, v, dipegang (0|1), reveal]. u,v = titik cahaya pada UV kartu. */
+  kursor: [number, number, number, number];
 }
 
 const bundar = (n: number) => Math.round(n * 1e4) / 1e4;
+
+/** Bacaan yang hanya ada untuk verifier; sisanya adalah sikap kartu yang juga dibaca
+ *  shader. Dikumpulkan dalam satu objek supaya daftar posisi tidak terus memanjang. */
+interface BacaanTambahan {
+  putar: [number, number, number, number];
+  jejak: [number, number];
+  balik: number;
+  persona: number;
+  kursor: [number, number, number, number];
+}
 
 const tulisPanggungDebug = (
   mesh: THREE.Mesh,
@@ -48,9 +70,9 @@ const tulisPanggungDebug = (
   p: number,
   k: Sikap,
   kotak: PortalKotak,
-  putar: [number, number, number, number],
-  jejak: [number, number]
+  tambahan: BacaanTambahan
 ) => {
+  const { putar, jejak, balik, persona, kursor } = tambahan;
   const jendela = window as unknown as { __panggung?: PembacaanPanggung };
   jendela.__panggung = {
     p: bundar(p),
@@ -68,8 +90,12 @@ const tulisPanggungDebug = (
     portal: [bundar(kotak.kiri), bundar(kotak.atas), bundar(kotak.lebar), bundar(kotak.tinggi)],
     putar: putar.map(bundar) as [number, number, number, number],
     jejak,
+    balik: bundar(balik),
+    persona: bundar(persona),
+    kursor: kursor.map(bundar) as [number, number, number, number],
   };
 };
+
 
 export interface PanggungProps {
   scrollProgressRef: React.RefObject<number>; // 0 to 1 from Lenis
@@ -85,6 +111,11 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
   const materialRef = useRef<THREE.ShaderMaterial>(null);
   const { viewport, size, camera, invalidate } = useThree();
   const portal = usePortalRegistry();
+  const kurangiGerak = useSyncExternalStore(
+    dengarKurangiGerak,
+    bacaKurangiGerak,
+    bacaKurangiGerakSaatSSR
+  );
   const uniforms = useMemo(() => buatUniformPanggung(texture), [texture]);
 
   const mouse = useRef({ x: 0, y: 0, targetX: 0, targetY: 0, aktif: false });
@@ -95,9 +126,18 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
     titik: new THREE.Vector3(),
     pusat: new THREE.Vector3(),
     ndc: new THREE.Vector2(),
+    /** UV pointer pada bidang kartu, dan apakah pointer memang sedang di dalam jendela.
+     *  Keduanya ditulis terus setiap frame meski reticle dipegang, supaya saat fokus
+     *  dilepas cahaya langsung pulang ke posisi pointer yang sebenarnya. */
+    uv: new THREE.Vector2(0.5, 0.5),
+    diLayar: false,
   });
+
   const prevMode = useRef(mode);
-  const tiltImpulse = useRef(0);
+  /** Sisa flip pergantian MODE: 1 = baru diperintahkan, 0 = kartu sudah utuh lagi. */
+  const balik = useRef(0);
+  /** uPersona saat flip dimulai — silang wajah dihitung dari sini, bukan dari 0/1. */
+  const personaMulai = useRef(0);
   /** Rotasi hasil easing menuju sudut yang diperintahkan pengunjung (seret/panah). */
   const pusing = useRef({ x: 0, y: 0 });
   /** Sikap yaw/pitch hasil koreografi SEBELUM rotasi pengunjung. Ditulis terpisah karena
@@ -112,34 +152,65 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
       mouse.current.targetX = (e.clientX / window.innerWidth) * 2 - 1;
       mouse.current.targetY = -(e.clientY / window.innerHeight) * 2 + 1;
       mouse.current.aktif = true;
+      proyeksi.current.diLayar = true;
+    };
+    // Pointer keluar jendela: proyeksi terakhir tidak boleh dipakai untuk melepas fokus
+    // ke titik yang sudah bukan posisi kursor.
+    const handleKeluar = () => {
+      proyeksi.current.diLayar = false;
     };
     window.addEventListener("mousemove", handleMouseMove, { passive: true });
-    return () => window.removeEventListener("mousemove", handleMouseMove);
+    document.addEventListener("pointerleave", handleKeluar);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("pointerleave", handleKeluar);
+    };
   }, []);
 
-  // Trigger tilt kick whenever mode changes
+  // MODE, hover kartu arsip, dan wireframe adalah keadaan yang datang dari React, bukan
+  // dari peristiwa input. Pada reduce-motion kanvas bahkan tidak memasang listener
+  // aktivitas (frameloop "demand" permanen), jadi tanpa satu frame yang diminta di sini
+  // pergantian wajah tidak akan pernah tampil — yang boleh mati itu rotasinya, bukan
+  // keadaan kartunya.
   useEffect(() => {
-    if (prevMode.current !== mode) {
-      tiltImpulse.current = 0.28;
-      prevMode.current = mode;
-    }
-  }, [mode]);
+    invalidate();
+  }, [mode, hoveredProject, wireframe, invalidate]);
 
   useFrame((_, delta) => {
     const mat = materialRef.current;
     if (!mat || !meshRef.current) return;
 
+    // MODE jadi transisi, bukan sekadar ganti warna: nilai wajah saat pergantian
+    // dibaca dari material yang benar-benar tampil di frame ini, jadi flip yang
+    // dipotong di tengah tetap melanjutkan dari wajah yang sedang terlihat.
+    if (prevMode.current !== mode) {
+      personaMulai.current = mat.uniforms.uPersona.value as number;
+      prevMode.current = mode;
+      if (!kurangiGerak) balik.current = 1;
+    }
+
+    // Reticle dipegang sejak sini: nilainya datang dari modul putaran, tempat seret
+    // pointer dan fokus keyboard menulis keadaan yang sama.
+    const dipegang = bacaFokusKartu();
+
     // Smooth mouse interpolation
     mouse.current.x += (mouse.current.targetX - mouse.current.x) * 0.08;
     mouse.current.y += (mouse.current.targetY - mouse.current.y) * 0.08;
+    // Kartu yang difokus lewat keyboard menyala sama terangnya dengan kartu yang disentuh
+    // pointer: reveal tidak lagi milik pointer saja, karena cahaya itulah reticle-nya.
     mat.uniforms.uReveal.value = THREE.MathUtils.lerp(
       mat.uniforms.uReveal.value,
-      mouse.current.aktif ? 1 : 0,
+      mouse.current.aktif || dipegang ? 1 : 0,
       0.08
     );
 
-    // Smooth decay of tilt impulse
-    tiltImpulse.current = THREE.MathUtils.lerp(tiltImpulse.current, 0, 0.08);
+    // MODE jadi transisi 3D: satu putaran penuh membawa pergantian wajah. Putarannya
+    // 360°, bukan 180° — pada setengah putaran potret membaca cermin dan wajah penulis
+    // terbalik, jadi putaran dihentikan di titik awal dengan sikap yang sama.
+    if (balik.current > 0) {
+      balik.current = Math.max(0, balik.current - delta / DURASI.lapang);
+    }
+    const maju = 1 - balik.current;
 
     mat.uniforms.uTime.value += delta;
     mat.uniforms.uMouse.value.set(mouse.current.x, mouse.current.y);
@@ -151,7 +222,16 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
     // bukan hanya aura merah.
     const basisPersona = mode === "engineer" ? 0.0 : 1.0;
     const targetPersona = hoveredProject !== null ? 1 - basisPersona : basisPersona;
-    mat.uniforms.uPersona.value = THREE.MathUtils.lerp(mat.uniforms.uPersona.value, targetPersona, 0.08);
+    if (balik.current > 0) {
+      // Selama flip, silang wajah dipegang putaran (bukan lerp per frame): muka lama
+      // bertahan sampai kartu tegak lurus kamera, wajah baru selesai sebelum putaran
+      // berakhir — pergantian MODE terbaca sebagai satu tindakan, bukan dua efek.
+      const campur = THREE.MathUtils.clamp((maju - 0.5) / 0.4, 0, 1);
+      mat.uniforms.uPersona.value =
+        personaMulai.current + (targetPersona - personaMulai.current) * campur;
+    } else {
+      mat.uniforms.uPersona.value = THREE.MathUtils.lerp(mat.uniforms.uPersona.value, targetPersona, 0.08);
+    }
 
     // Smooth lerp for uWireframe
     const targetWireframe = wireframe ? 1.0 : 0.0;
@@ -194,9 +274,9 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
     );
     mat.uniforms.uNdcPerPx.value.set(2 / layarX, 2 / layarY);
 
-    // Apply quick tilt impulse when persona changes
-    const impulseRotZ = Math.sin(mat.uniforms.uTime.value * 12.0) * tiltImpulse.current;
-    const impulseRotY = tiltImpulse.current * (mode === "engineer" ? -0.12 : 0.12);
+    // Putaran flip dilicinkan di kedua ujungnya (smoothstep) supaya kartu selalu
+    // berhenti tepat pada yaw sikap bab-nya, tidak pernah di tengah putaran.
+    const sudutBalik = balik.current > 0 ? Math.PI * 2 * (maju * maju * (3 - 2 * maju)) : 0;
 
     const skala = muat(kotak) / pxPerWorld(k.pas);
     meshRef.current.scale.set(skala, skala, 1);
@@ -204,9 +284,8 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
     meshRef.current.position.x = THREE.MathUtils.lerp(meshRef.current.position.x, targetX, 0.08);
     meshRef.current.position.y = THREE.MathUtils.lerp(meshRef.current.position.y, targetY, 0.08);
     meshRef.current.position.z = THREE.MathUtils.lerp(meshRef.current.position.z, targetZ, 0.08);
-    dasar.current.rotY = THREE.MathUtils.lerp(dasar.current.rotY, targetRotY + impulseRotY, 0.08);
+    dasar.current.rotY = THREE.MathUtils.lerp(dasar.current.rotY, targetRotY, 0.08);
     dasar.current.rotX = THREE.MathUtils.lerp(dasar.current.rotX, -mouse.current.y * 0.08, 0.08);
-    meshRef.current.rotation.z = THREE.MathUtils.lerp(meshRef.current.rotation.z, impulseRotZ, 0.1);
 
     // Rotasi perintah pengunjung (seret pointer atau panah keyboard) DITUMPUK di atas
     // koreografi bab, bukan menggantikannya: target nol berarti kartu pulang ke sikap
@@ -214,15 +293,24 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
     const perintah = bacaTarget();
     pusing.current.x += (perintah.x - pusing.current.x) * 0.15;
     pusing.current.y += (perintah.y - pusing.current.y) * 0.15;
-    meshRef.current.rotation.y = dasar.current.rotY + pusing.current.x;
+    meshRef.current.rotation.y = dasar.current.rotY + pusing.current.x + sudutBalik;
     meshRef.current.rotation.x = dasar.current.rotX + pusing.current.y;
     // Loop "demand" mati 4 detik setelah halaman diam. Tanpa meminta frame berikut
-    // sendiri, pegas kembali dan langkah panah berhenti di tengah jalan.
+    // sendiri, pegas kembali, langkah panah, flip MODE, dan silang wajah berhenti di
+    // tengah jalan — pada reduce-motion silang wajah adalah satu-satunya yang tersisa.
+    // sudutBalik ikut diperiksa karena frame terakhir flip melaporkan sisanya 0 sambil
+    // angkanya masih satu putaran penuh: tanpa frame penutup itu mesh berhenti di
+    // rotY = sikap + 2π, yang secara visual sama tapi membuat siapa pun yang membandingkan
+    // sikap membaca satu putaran yang tidak pernah ada.
     if (
+      balik.current > 0 ||
+      sudutBalik > 0 ||
       Math.abs(perintah.x - pusing.current.x) > 1e-4 ||
-      Math.abs(perintah.y - pusing.current.y) > 1e-4
+      Math.abs(perintah.y - pusing.current.y) > 1e-4 ||
+      Math.abs((mat.uniforms.uPersona.value as number) - targetPersona) > 1e-3
     )
       invalidate();
+
 
     // Mesin kartu yang tahu di mana kartu duduk, jadi modul seret tidak perlu menebak
     // tata letak: seret hanya diterima di atas kartu dan tepi 40px-nya.
@@ -237,9 +325,29 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
     pr.normal.set(0, 0, 1).applyQuaternion(mesh.quaternion);
     mesh.updateWorldMatrix(true, false);
     pr.bidang.setFromNormalAndCoplanarPoint(pr.normal, mesh.getWorldPosition(pr.pusat));
-    if (pr.ray.ray.intersectPlane(pr.bidang, pr.titik)) {
+    const jatuh = pr.ray.ray.intersectPlane(pr.bidang, pr.titik) !== null;
+    if (jatuh) {
       mesh.worldToLocal(pr.titik);
-      mat.uniforms.uCursorUV.value.set(pr.titik.x + 0.5, pr.titik.y / RASIO_POTRET + 0.5);
+      pr.uv.set(pr.titik.x + 0.5, pr.titik.y / RASIO_POTRET + 0.5);
+    }
+    const uv = mat.uniforms.uCursorUV.value;
+    if (dipegang) {
+      // Focus-lock: cahaya DITAHAN pada titik kartu tempat pengunjung mengambilnya,
+      // bukan dilayani ulang setiap frame. Memutar kartu 12° menggeser proyeksi pointer
+      // jauh lebih besar daripada gerakan jarinya, jadi tanpa penahanan ini cahaya
+      // meluncur keluar wajah justru pada saat orang paling ingin melihat wajah itu.
+      // Penahan hanya berlaku selama titik itu masih di dalam kartu: reticle yang
+      // tertinggal di luar kartu — pointer yang sudah cabut lalu kontrol keyboard difokus
+      // — ditarik ke tengah, supaya pengguna keyboard melihat wajah menyala, bukan hitam.
+      const diLuar =
+        !pr.diLayar || uv.x < -0.05 || uv.x > 1.05 || uv.y < -0.05 || uv.y > 1.05;
+      if (diLuar) {
+        uv.x += (0.5 - uv.x) * 0.18;
+        uv.y += (0.5 - uv.y) * 0.18;
+        if (Math.abs(0.5 - uv.x) > 1e-3 || Math.abs(0.5 - uv.y) > 1e-3) invalidate();
+      }
+    } else if (jatuh) {
+      uv.set(pr.uv.x, pr.uv.y);
     }
 
     // Jejak pointer: 12 sampel terakhir pada UV kartu, dipakai shader sebagai pita reveal.
@@ -251,7 +359,16 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
     // panjang dari 1/k menghapus SELURUH jejak (terukur pada perenderan perangkat lunak,
     // delta 0,5s → faktor 0), jadi pita hilang justru di mesin yang paling lambat.
     const luntur = Math.exp(-delta / 0.34);
-    for (const s of pita) s.z *= luntur;
+    let pitaHidup = false;
+    for (const s of pita) {
+      s.z *= luntur;
+      if (s.z > 0.05) pitaHidup = true;
+    }
+    // Peluruhan hanya berjalan kalau frame-nya ada. Loop "demand" berhenti begitu
+    // peristiwa pointer selesai, dan satu gerakan hanya menyumbang satu frame: tanpa
+    // bangun sendiri, jejak membeku pada umur terakhirnya (merah yang tidak pernah
+    // padam) dan hanya satu sampel yang pernah tertulis per gerakan.
+    if (pitaHidup) invalidate();
     const cv = mat.uniforms.uCursorUV.value;
     const je = jejakRef.current;
     if (Math.hypot(cv.x - je.u, cv.y - je.v) > 0.01) {
@@ -274,12 +391,14 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
           rentang = Math.max(rentang, Math.hypot(pita[a].x - pita[b].x, pita[a].y - pita[b].y));
         }
       }
-      tulisPanggungDebug(mesh, mat.uniforms.uMask.value, p, k, kotak, [
-        pusing.current.x,
-        pusing.current.y,
-        perintah.x,
-        perintah.y,
-      ], [hidup, bundar(rentang)]);
+      tulisPanggungDebug(mesh, mat.uniforms.uMask.value, p, k, kotak, {
+        putar: [pusing.current.x, pusing.current.y, perintah.x, perintah.y],
+        jejak: [hidup, bundar(rentang)],
+        balik: balik.current,
+        persona: mat.uniforms.uPersona.value as number,
+        kursor: [uv.x, uv.y, dipegang ? 1 : 0, mat.uniforms.uReveal.value as number],
+      });
+
     }
   });
 

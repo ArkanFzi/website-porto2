@@ -6,11 +6,18 @@
 //   · seret di atas kartu memutar kartu, tunduk pada batas ±12°, dan pegas kembali
 //   · panah keyboard pada kontrol yang bisa difokus menghasilkan sudut yang SAMA
 //   · seret yang dimulai di luar kartu tidak memutar apa pun
-//   · prefers-reduced-motion mematikan rotasi, TIDAK mematikan navigasi bab
-// Dibaca dari window.__panggung.putar = [terpasangX, terpasangY, targetX, targetY] —
-// komponen rotasi PERINTAH PENGUNJUNG saja. rotY total tidak dipakai di sini karena ia
-// juga mengandung parallax pointer, sehingga menggeser kursor 400px saja sudah cukup
-// membuat gerbangnya terlihat gagal.
+//   · ganti MODE ENGINEER/CREATOR = satu putaran penuh yang menanggung silang wajah
+//   · reticle focus-lock: cahaya DITAHAN di titik kartu tempat pengunjung mengambilnya,
+//     baik saat kartu diputar maupun saat pointer pindah jauh — dan fokus keyboard
+//     melakukan persis hal yang sama
+//   · prefers-reduced-motion mematikan rotasi, TIDAK mematikan navigasi bab, fokus,
+//     maupun pergantian wajah
+// Rotasi dibaca dari window.__panggung.putar = [terpasangX, terpasangY, targetX,
+// targetY] — komponen rotasi PERINTAH PENGUNJUNG saja. rotY total tidak dipakai untuk
+// gerbang sudut karena ia juga mengandung parallax pointer, sehingga menggeser kursor
+// 400px saja sudah cukup membuat gerbangnya terlihat gagal; rotY total hanya dipakai
+// untuk sapuan flip MODE, di mana parallax jauh lebih kecil dari 360°.
+
 import { createRequire } from 'node:module';
 import { mkdirSync } from 'node:fs';
 
@@ -53,13 +60,92 @@ const kisar = (nama, dapat, target, toleransi) =>
     harus: true,
   });
 
-/** [terpasangX, terpasangY, targetX, targetY] dalam derajat + kotak portal kartu. */
+/** Rotasi perintah pengunjung, kotak portal kartu, jejak, dan reticle. */
 const baca = () =>
   page.evaluate(() => {
     const p = window.__panggung;
-    return p ? { putar: p.putar, portal: p.portal, jejak: p.jejak } : null;
+    return p ? { putar: p.putar, portal: p.portal, jejak: p.jejak, kursor: p.kursor } : null;
   });
 const derajati = (b, i) => DERAJAT(b.putar[i]);
+
+/** Reticle: [u, v, dipegang (0|1), reveal]. u,v = titik cahaya pada UV kartu, jadi
+ *  "terkunci" dibuktikan dari nilainya yang TETAP sementara pointer berpindah jauh. */
+const bacaReticle = async () => {
+  const b = await baca();
+  return b ? { uv: [b.kursor[0], b.kursor[1]], dipegang: b.kursor[2], reveal: b.kursor[3] } : null;
+};
+const jarakUV = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+
+/** Cahaya datang dari pointer yang DIHALUSKAN mesin (lerp 0,08 per frame), jadi membaca
+ *  reticle segera sesudah memindahkan pointer menangkap nilainya di tengah jalan.
+ *  Ditunggu sampai berhenti bergerak — kalau tidak, "titik tempat pengunjung menekan"
+ *  yang dikunci di bawah bukan titik yang sebenarnya, dan jarak pelepasan ikut salah. */
+const tungguReticle = async () => {
+  let tadi = await bacaReticle();
+  for (let i = 0; i < 24; i++) {
+    await diamkan(220);
+    const kini = await bacaReticle();
+    if (jarakUV(tadi.uv, kini.uv) < 0.002) return kini;
+    tadi = kini;
+  }
+  return tadi;
+};
+
+/** MODE dibaca dari rotY/balik/persona; flip hanya boleh terjadi di sana. */
+const bacaMode = () =>
+  page.evaluate(() => {
+    const p = window.__panggung;
+    return p ? { rotY: p.rotY, balik: p.balik, persona: p.persona } : null;
+  });
+
+/** Klik tombol MODE lewat pointer nyata. page.evaluate(el.click()) tidak menghasilkan
+ *  pointerdown, dan kanvas hanya bangun dari loop "demand" karena peristiwa itu —
+ *  flip-nya tidak akan pernah dimulai. */
+const klikMode = async (label) => {
+  const titik = await page.evaluate((t) => {
+    const b = [...document.querySelectorAll('button')].find((x) => (x.textContent ?? '').trim() === t);
+    if (!b) return null;
+    const r = b.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }, label);
+  if (!titik) throw new Error(`tombol MODE "${label}" tidak ditemukan`);
+  const sebelum = await bacaMode();
+  await page.mouse.click(titik.x, titik.y);
+  const rekam = [];
+  for (let i = 0; i < 30; i++) {
+    await diamkan(90);
+    rekam.push(await bacaMode());
+  }
+  return { sebelum, rekam };
+};
+
+/** Sapuan terbesar rotY selama flip, derajat. Putarannya 360° dan berakhir di sikap
+ *  awal, jadi selisih mentah ke target tetap nol; yang diukur di sini puncaknya. */
+const sapuan = (sebelum, rekam) =>
+  Math.max(...rekam.map((r) => Math.abs(DERAJAT(r.rotY - sebelum.rotY))));
+
+/** Silang wajah dilicinkan per frame, bukan per detik: pada perenderan perangkat lunak
+ *  satu frame bisa 200ms, jadi pengendapan ditunggu sampai benar-benar sampai, tidak
+ *  diasumsikan selesai dalam waktu tertentu. */
+const tungguPersona = async (target) => {
+  let k = await bacaMode();
+  for (let i = 0; i < 50; i++) {
+    if (Math.abs(k.persona - target) < 0.02) break;
+    await diamkan(200);
+    k = await bacaMode();
+  }
+  // Sisa flip dibulatkan 4 desimal di bacaan, jadi "balik = 0" masih bisa berarti 4e-5 —
+  // dan pada sekecil itu putarannya masih penuh 360°. Yang ditunggu karena itu sampai
+  // rotY berhenti bergerak, bukan sampai bilangan pembulatnya nol.
+  for (let i = 0; i < 40; i++) {
+    const tadi = k;
+    await diamkan(250);
+    k = await bacaMode();
+    if (Math.abs(DERAJAT(k.rotY - tadi.rotY)) < 0.05) break;
+  }
+  return k;
+};
+
 
 const diamkan = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -127,6 +213,42 @@ const foto = async (nama) => page.screenshot({ path: `${DIR}/${nama}.png` });
 
 await parkir(0.12);
 
+// ── 0 · kartu tergambar sebagai piksel, bukan hanya sebagai uniform ──
+// Semua gerbang di bawah membaca nilai uniform dan sudut. Program GLSL yang gagal
+// kompilasi meninggalkan keduanya sempurna sambil tidak menggambar satu piksel pun —
+// pernah terjadi nyata lewat `uniform vec3 uJejak[JUMLAH_JEJAK];`, nama konstanta
+// TypeScript yang tidak dikenal GLSL. Jadi adu dulu screenshot dengan warna kertas.
+{
+  const gamba = await page.screenshot({ encoding: 'base64' });
+  const [k, a, l, t] = (await baca()).portal;
+  const piksel = await page.evaluate(
+    async ({ gamba, k, a, l, t }) => {
+      const img = new Image();
+      img.src = 'data:image/png;base64,' + gamba;
+      await img.decode();
+      const c = document.createElement('canvas');
+      c.width = img.width;
+      c.height = img.height;
+      const ctx = c.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0);
+      // Strip di dalam portal dan di atas tipografi DOM: 35–65% lebar, 10–22% tinggi.
+      const d = ctx
+        .getImageData(Math.round(k + l * 0.35), Math.round(a + t * 0.1), Math.max(4, Math.round(l * 0.3)), Math.max(4, Math.round(t * 0.12)))
+        .data;
+      let total = 0;
+      let n = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        total += (d[i] + d[i + 1] + d[i + 2]) / 3;
+        n++;
+      }
+      return { rata: total / n, piksel: n };
+    },
+    { gamba, k, a, l, t }
+  );
+  console.log('piksel   ', JSON.stringify({ ...piksel, rata: +piksel.rata.toFixed(1), portal: [k, a, l, t] }));
+  cek('kartu tergambar di layar, bukan hanya di uniform', piksel.rata <= 200, true);
+}
+
 // ── 1 · seret: arah, besaran, batas, pegas kembali ──
 const s6 = await seret(Math.round(6 * PX_PER_DERAJAT));
 kisar('seret 100px memutar 6°', derajati(s6.saat, 2) - derajati(s6.sebelum, 2), 6, 1);
@@ -167,37 +289,129 @@ await foto('01-putar-diam');
   cek('seret di luar kartu tidak memutar', Math.abs(derajati(s.saat, 2) - derajati(s.sebelum, 2)) < 0.3, true);
 }
 
-// ── 4 · jejak pointer: 12 sampel masuk reveal ──
+// ── 4 · reticle focus-lock: cahaya ditahan, kartu boleh berputar ──
+{
+  const p = await baca();
+  const [k, a, l, t] = p.portal;
+  const x = k + l / 2;
+  const y = a + t / 2;
+  await page.mouse.move(x - 60, y);
+  const hover = await tungguReticle();
+
+  cek('hover tanpa dipegang: reticle tidak terkunci', hover.dipegang === 0, true);
+
+  await page.mouse.down();
+  await page.mouse.move(x + 100, y, { steps: 10 });
+  await diamkan(1300);
+  const pegang = await bacaReticle();
+  const saat = await baca();
+  cek('seret: reticle terkunci', pegang.dipegang === 1, true);
+  hasil.push({
+    nama: 'seret: cahaya tinggal padahal pointer pindah 160px',
+    ok: jarakUV(hover.uv, pegang.uv) < 0.06,
+    dapat: `${jarakUV(hover.uv, pegang.uv).toFixed(3)} UV (harus <0,06)`,
+    harus: true,
+  });
+  // Pengikatnya: cahaya menahan diri TEPAT pada saat kartu berputar. Tanpa gerbang ini,
+  // reticle yang diam karena pointer macet juga akan lulus.
+  cek('seret: kartu benar-benar berputar saat cahaya ditahan', Math.abs(derajati(saat, 2)) > 4, true);
+
+  await page.mouse.up();
+  const lepas = await tungguReticle();
+
+  cek('lepas: reticle kembali melayani pointer', lepas.dipegang === 0, true);
+  hasil.push({
+    nama: 'lepas: cahaya pulang ke bawah pointer',
+    ok: jarakUV(pegang.uv, lepas.uv) > 0.15,
+    dapat: `${jarakUV(pegang.uv, lepas.uv).toFixed(3)} UV (harus >0,15)`,
+    harus: true,
+  });
+
+  // Padanan keyboard: TAB ke kontrol yang sama, tanpa menyentuh kartu sama sekali.
+  await page.focus('[data-kontrol-putar]');
+  await diamkan(1300);
+  const kb = await bacaReticle();
+  cek('keyboard: fokus kontrol mengunci reticle', kb.dipegang === 1, true);
+  cek('keyboard: reticle terkunci menyala seperti hover pointer', kb.reveal > 0.9, true);
+  hasil.push({
+    nama: 'paritas: kunci keyboard menahan titik yang sama dengan kunci pointer',
+    ok: jarakUV(kb.uv, lepas.uv) < 0.06,
+    dapat: `${jarakUV(kb.uv, lepas.uv).toFixed(3)} UV (harus <0,06)`,
+    harus: true,
+  });
+  await page.evaluate(() => document.activeElement?.blur());
+  await diamkan(700);
+  cek('blur: reticle lepas lagi', (await bacaReticle()).dipegang === 0, true);
+  await foto('03-reticle-terkunci');
+}
+
+// ── 5 · jejak pointer: 12 sampel masuk reveal ──
 {
   const p = await baca();
   const [k, a, l, t] = p.portal;
   const y = a + t / 2;
   await page.mouse.move(k + 20, y);
   await diamkan(900);
-  // Jeda panjang bukan kemalasan verifier: posisi jejak diambil dari pointer yang
-  // sudah dihaluskan mesin kartu (lerp 0.08 per frame), dan pada perenderan perangkat
-  // lunak 1 frame bisa 200ms — langkah 90ms hanya menempuh ~10% lintasannya.
-  for (let i = 1; i <= 8; i++) {
-    await page.mouse.move(k + 20 + i * Math.max(14, (l - 40) / 8), y + (i % 2 ? 18 : -18));
-    await diamkan(320);
+  // Sampel baru hanya ditulis saat titik cahaya berpindah >0,01 UV, dan perpindahan itu
+  // sendiri dihaluskan per frame — jadi berapa sampel yang "masih hidup" pada satu bacaan
+  // berjarak tetap adalah soal irama mesin (terukur 0..9 antar langkah yang identik).
+  // Yang dijanjikan kode adalah pitanya BISA terisi dan MATI sendiri, jadi yang diukur
+  // puncaknya selama sapuan dan keadaannya setelah sapuan, bukan satu sampel waktu.
+  let puncakHidup = 0;
+  let puncakRentang = 0;
+  for (let i = 1; i <= 24; i++) {
+    await page.mouse.move(k + 20 + (i / 24) * (l - 40), y + (i % 2 ? 14 : -14));
+    await diamkan(45);
+    const j = (await baca()).jejak;
+    if (j[0] > puncakHidup) puncakHidup = j[0];
+    if (j[1] > puncakRentang) puncakRentang = j[1];
   }
-  const j = await baca();
-  cek('jejak menyimpan lebih dari separuh sampel', j.jejak[0] >= 6, true);
-  cek('jejak membentang di kartu, bukan menumpuk di satu titik', j.jejak[1] >= 0.12, true);
+  cek('jejak menyimpan lebih dari separuh sampel selama dilukis', puncakHidup >= 6, true);
+  hasil.push({
+    nama: 'jejak membentang di kartu, bukan menumpuk di satu titik',
+    ok: puncakRentang >= 0.12,
+    dapat: `${puncakRentang.toFixed(3)} UV (harus ≥0,12)`,
+    harus: true,
+  });
   await foto('02-jejak-pointer');
-  await diamkan(1400);
-  const h = await baca();
-  cek('jejak meluruh sendiri saat pointer diam', h.jejak[0] <= 1, true);
+  // Padam sendiri: konvergensi pointer halus bisa memakan beberapa detik pada mesin lambat,
+  // jadi ditunggu sampai pita benar-benar mati dengan batas 10 detik — mentok di batas itu
+  // tetap terbaca sebagai GAGAL, bukan sebagai lulus.
+  let hidup = (await baca()).jejak[0];
+  for (let i = 0; i < 50 && hidup > 1; i++) {
+    await diamkan(200);
+    hidup = (await baca()).jejak[0];
+  }
+  cek('jejak meluruh sendiri saat pointer diam', hidup <= 1, true);
 }
 
-// ── 5 · prefers-reduced-motion: rotasi mati, navigasi tetap hidup ──
+// ── 6 · prefers-reduced-motion: rotasi mati, navigasi tetap hidup ──
+// Reticle TIDAK ikut digate di sini: pada reduce-motion cahaya pointer memang dimatikan
+// oleh shader (lihat chiaroscuroMaterial) dan kanvas tidak memasang listener aktivitas,
+// jadi "fokus mengunci reticle" bukan keadaan yang bisa tampil. Yang diuji: rotasi mati,
+// keadaan kartu (wajah MODE) tetap berubah.
+
 await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
 await diamkan(1200);
 const rd = await seret(300);
 cek('reduce-motion: seret tidak memerintahkan rotasi', Math.abs(derajati(rd.saat, 2)) < 0.3, true);
+cek('reduce-motion: tanpa rotasi, reticle tidak punya alasan untuk dikunci', rd.saat.kursor[2] === 0, true);
 const rk = await panah('ArrowRight', 2);
 cek('reduce-motion: panah pada kontrol tidak memerintahkan rotasi', Math.abs(derajati(rk.saat, 2)) < 0.3, true);
 await page.evaluate(() => document.activeElement?.blur());
+await diamkan(600);
+
+// MODE di bawah reduce-motion: wajah tetap berganti, kartu tidak berputar.
+const rmMode = await klikMode('THE CREATOR');
+const rmSap = sapuan(rmMode.sebelum, rmMode.rekam);
+hasil.push({
+  nama: 'reduce-motion: ganti MODE tidak memutar kartu',
+  ok: rmSap < 3,
+  dapat: `${rmSap.toFixed(1)}° (harus <3)`,
+  harus: true,
+});
+const rmPersona = await tungguPersona(1);
+cek('reduce-motion: wajah tetap berganti tanpa putaran', Math.abs(rmPersona.persona - 1) < 0.05, true);
 
 const sebelumNav = await page.evaluate(() => window.scrollY);
 await page.click('button[title="THE PADDOCK & DISPATCH"]');
@@ -206,6 +420,71 @@ const sesudahNav = await page.evaluate(() => window.scrollY);
 cek('reduce-motion: navigasi bab tetap jalan', Math.abs(sesudahNav - sebelumNav) > 200, true);
 await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }]);
 await diamkan(800);
+
+// ── 7 · MODE ENGINEER/CREATOR: satu putaran penuh menanggung silang wajah ──
+{
+  const flip = await klikMode('THE ENGINEER');
+  const sap = sapuan(flip.sebelum, flip.rekam);
+  // Batas bawah 150°, bukan 350°: flip berlangsung 0,8 detik dan pada perenderan
+  // perangkat lunak hanya ~2-3 frame yang sempat merendernya (terukur 168,7°), jadi
+  // menuntut sampel menyentuh plateau 360° akan menguji framerate, bukan kodenya. Yang
+  // dibuktikan di bawah: kartu benar-benar lewat dari sikap miringnya (tidak mungkin
+  // dihasilkan parallax pointer, yang mentok ±5,7°) — dan gerbang kepulangan di bawah
+  // menuntut sisanya tepat nol, jadi satu putaran penuh itu memang dikerjakan.
+  hasil.push({
+    nama: 'flip MODE menyapu melewati separuh putaran',
+    ok: sap >= 150,
+    dapat: `${sap.toFixed(1)}° (harus ≥150)`,
+    harus: true,
+  });
+  // Satu sampel di tengah rentang tidak bisa dituntut: jendela silang wajah cuma 0,32 detik
+  // dari flip 0,8 detik, dan satu frame perenderan perangkat lunak pernah memakan 500ms —
+  // pembacaan seperti itu menguji irama mesin, bukan kodenya. Yang tahan jumlah frame adalah
+  // ARAHnya: wajah bergerak satu kali ke wajah baru dan tidak pernah berbalik. Bahwa
+  // pergantian itu benar-benar diangkut putaran, bukan ditempel di ujung atau ditanak di
+  // awal, itu dua gerbang jendela di bawah yang membuktikannya.
+  const wajahBaru = 1 - flip.sebelum.persona;
+  const jarak = flip.rekam.map((r) => Math.abs(r.persona - wajahBaru));
+  let berbalik = 0;
+  for (let i = 1; i < jarak.length; i++) if (jarak[i] > jarak[i - 1] + 0.02) berbalik++;
+  cek('wajah bergerak satu arah selama putaran, tidak melompat lalu berbalik', berbalik === 0, true);
+
+  // Dua jendela yang dibatasi sisa flip (bukan waktu dinding): bukti bahwa silang wajah
+  // DIANGKUT putaran. Arah flip ditentukan oleh wajah yang sedang terpasang saat tombol
+  // ditekan — di sini CREATOR → ENGINEER, karena seksi reduce-motion meninggalkan wajah
+  // creator — jadi gerbangnya dibandingkan ke nilai awal, bukan ke angka nol.
+  const wajahAwal = flip.sebelum.persona;
+  const separuhAwal = flip.rekam.filter((r) => r.balik >= 0.5);
+  cek(
+    'setengah pertama putaran masih memegang wajah lama',
+    separuhAwal.length > 0 &&
+      Math.max(...separuhAwal.map((r) => Math.abs(r.persona - wajahAwal))) < 0.25,
+    true
+  );
+  const separuhAkhir = flip.rekam.filter((r) => r.balik > 0);
+  cek(
+    'wajah berganti ketika kartu masih berputar, bukan setelahnya',
+    separuhAkhir.length > 0 &&
+      separuhAkhir.some((r) => Math.abs(r.persona - wajahAwal) > 0.05),
+    true
+  );
+
+  const akhir = await tungguPersona(0);
+  cek('persona ENGINEER tercapai penuh', Math.abs(akhir.persona) < 0.03, true);
+  cek('flip selesai sendiri (sisa balik 0)', akhir.balik === 0, true);
+  // Sikap akhir = sikap awal: putaran 360° berhenti di titik berangkat. Toleransi 6°
+  // bukan kelonggaran — parallax pointer (rotGeyang 0,1 rad) memang menyumbang sampai
+  // ±5,7° antara dua posisi kursor, dan klik MODE memindahkan kursor.
+  const sisa = Math.abs(DERAJAT(akhir.rotY - flip.sebelum.rotY));
+  hasil.push({
+    nama: 'setelah flip kartu pulang ke sikap bab',
+    ok: sisa < 6,
+    dapat: `${sisa.toFixed(2)}° (harus <6)`,
+    harus: true,
+  });
+  await foto('04-flip-mode');
+}
+
 
 if (galat.length) console.log('pageerror:', galat.slice(0, 3));
 for (const h of hasil) console.log(`${h.ok ? 'LULUS' : 'GAGAL '} ${h.nama}: dapat ${h.dapat}, harus ${h.harus}`);

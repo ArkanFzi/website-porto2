@@ -59,9 +59,11 @@ export const fragmentShader = /* glsl */ `
   uniform float uWireframe;
   uniform float uReveal;
   uniform vec2 uCursorUV;
-  /** 12 sampel terakhir jejak pointer pada UV kartu: (u, v, umur). umur 1 = baru,
-   *  meluruh ke 0; slot yang belum pernah dipakai berisi umur 0. */
-  uniform vec3 uJejak[JUMLAH_JEJAK];
+  /** ${JUMLAH_JEJAK} sampel terakhir jejak pointer pada UV kartu: (u, v, umur). umur 1 =
+   *  baru, meluruh ke 0; slot yang belum pernah dipakai berisi umur 0. Nilainya WAJIB
+   *  disisipkan sebagai angka, bukan sebagai nama: GLSL tidak mengenal konstanta TypeScript
+   *  dan shader yang gagal kompilasi membuat kartu tidak tergambar sama sekali. */
+  uniform vec3 uJejak[${JUMLAH_JEJAK}];
   uniform vec4 uMask;      // batas portal dalam NDC: kiri, kanan, bawah, atas
   uniform vec2 uNdcPerPx;  // lebar/satu tinggi layar dalam NDC, untuk tepi potong
 

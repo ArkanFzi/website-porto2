@@ -39,3 +39,18 @@ export const PEGA = {
   kartu: { type: "spring", damping: 25, stiffness: 320 } as const,
   kursor: { damping: 28, stiffness: 350, mass: 0.5 } as const,
 };
+
+/** prefers-reduced-motion, satu MediaQueryList untuk semua pembaca. Dipakai lewat
+ *  useSyncExternalStore: nilai server `false` supaya hydration tidak berbeda, dan
+ *  langganan hanya mengubah komponen saat penonton mengganti pengaturan perangkat. */
+let mqKurangiGerak: MediaQueryList | undefined;
+const mediaKurangiGerak = () =>
+  (mqKurangiGerak ??= window.matchMedia("(prefers-reduced-motion: reduce)"));
+
+export const dengarKurangiGerak = (ubah: () => void) => {
+  const mq = mediaKurangiGerak();
+  mq.addEventListener("change", ubah);
+  return () => mq.removeEventListener("change", ubah);
+};
+export const bacaKurangiGerak = () => mediaKurangiGerak().matches;
+export const bacaKurangiGerakSaatSSR = () => false;

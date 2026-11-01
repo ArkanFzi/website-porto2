@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import * as THREE from "three";
 import { useTexture } from "@react-three/drei";
 import { usePortfolioMode } from "@/context/PortfolioModeContext";
 import { fragmentShader, RASIO_POTRET, vertexShader } from "./chiaroscuroMaterial";
@@ -28,6 +29,7 @@ export const AktorPotret: React.FC<AktorProps> = (props) => {
         uniforms={uniforms}
         transparent={true}
         depthWrite={false}
+        side={THREE.DoubleSide}
       />
     </mesh>
   );

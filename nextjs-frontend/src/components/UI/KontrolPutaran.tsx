@@ -10,6 +10,7 @@ import React, { useEffect, useSyncExternalStore } from "react";
 import { RotateCcw } from "lucide-react";
 import {
   BATAS_DERAJAT,
+  ambilFokus,
   bacaSnapshot,
   derajat,
   dengarPutaran,
@@ -65,7 +66,9 @@ export const KontrolPutaran: React.FC<KontrolProps> = ({ borderColor, textColor,
       type="button"
       data-kontrol-putar
       onKeyDown={tekan}
+      onFocus={() => ambilFokus()}
       onBlur={() => lepasFokus()}
+
       aria-label={`Putar potret dengan panah keyboard, saat ini ${x} derajat menyamping dan ${y} derajat menunduk, batas ${BATAS_DERAJAT} derajat`}
       title="Fokus lalu putar dengan panah keyboard (padanan seret kartu)"
       className={`hidden lg:flex items-center gap-1 px-2.5 py-1.5 rounded-full border ${borderColor} ${chipBg} backdrop-blur-md transition-all duration-300 cursor-pointer text-[9px] font-mono tracking-wider`}

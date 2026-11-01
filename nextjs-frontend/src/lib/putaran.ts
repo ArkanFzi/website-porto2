@@ -101,7 +101,22 @@ export function lepasFokus() {
   tulisTarget(0, 0);
 }
 
+/** Reticle kartu DIPEGANG: selama seret berjalan, atau selama kontrol putar difokus.
+ *  Mesin kartu memakai keadaan ini untuk menahan titik cahaya di tempatnya di bidang
+ *  kartu — memutar kartu 12° sudah cukup untuk membuat cahaya meluncur keluar wajah,
+ *  dan gerakan kartu itu menang dari gerakan pointer. Fokus keyboard adalah padanan
+ *  dari "pointer sedang di atas kartu", jadi keduanya memegang reticle yang sama. */
+export const bacaFokusKartu = () => seret !== null || fokusAktif;
+
+/** Kontrol difokus: reticle langsung dipegang, supaya pengunjung keyboard melihat kartu
+ *  menyala begitu fokus tiba — padanan dari pointer yang masuk ke wilayah kartu — dan
+ *  bukan baru setelah tombol pertama ditekan. */
+export const ambilFokus = () => {
+  fokusAktif = true;
+};
+
 const onDown = (e: PointerEvent) => {
+
   if (e.isPrimary === false || e.button !== 0) return;
   // Sentuh tidak dipakai untuk memutar: gestur itu milik gulir halaman.
   if (e.pointerType === "touch") return;
