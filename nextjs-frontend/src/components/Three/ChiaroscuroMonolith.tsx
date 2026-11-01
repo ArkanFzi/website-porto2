@@ -53,13 +53,14 @@ const vertexShader = /* glsl */ `
 const fragmentShader = /* glsl */ `
   uniform sampler2D uTexture;
   uniform float uTime;
-  uniform vec2 uMouse;
   uniform float uVelocity;
   uniform float uPersona; // 0.0 = Engineer, 1.0 = Creator
   uniform float uScroll;  // 0.0 to 1.0
   uniform float uHover;
   uniform float uHoverIndex;
   uniform float uWireframe;
+  uniform float uReveal;
+  uniform vec2 uCursorUV;
 
   varying vec2 vUv;
   varying vec3 vNormal;
@@ -91,8 +92,12 @@ const fragmentShader = /* glsl */ `
     vec3 rossoRim = vec3(0.831, 0.117, 0.07) * rimLight * 0.26;
 
     // 2. Faint interactive cursor specular (warm reflection on suit, never flooding face)
-    vec2 cursorLightPos = (uMouse * 0.5 + 0.5);
-    float cursorDist = distance(uv, cursorLightPos);
+    // uCursorUV adalah posisi pointer yang sudah diproyeksikan ke UV plane di JS;
+    // memakai uMouse langsung (ndc*0.5+0.5) membuat "cahaya" tertinggal ~4x dari
+    // kursor karena uv plane hanya membentang selebar kartu.
+    vec2 cursorLightPos = uCursorUV;
+    vec2 cursorSelisih = (uv - cursorLightPos) * vec2(1.0, 1.64); // koreksi rasio plane 1 : 1.64
+    float cursorDist = length(cursorSelisih);
     float cursorGlow = smoothstep(0.45, 0.0, cursorDist);
     vec3 cursorSpecular = vec3(0.831, 0.117, 0.07) * cursorGlow * 0.14 * (1.0 - contrastLum);
 
@@ -107,6 +112,17 @@ const fragmentShader = /* glsl */ `
 
     // Smooth blend between personas
     vec3 finalColor = mix(engineerColor, creatorColor, uPersona);
+
+    // ── MOUSE REVEAL MASK ──
+    // Tekstur aslinya /FotoDiriFix.webp monokrom (saturasi rata terukur 0.003), jadi
+    // "menyingkap warna asli" tidak menampilkan apa pun; yang dibuka adalah lapisan
+    // rosso yang tetap mengikuti nada potret, bukan cakram warna datar.
+    // uReveal sengaja 0 sampai pointer benar-benar bergerak, jadi perangkat sentuh dan
+    // mode reduce-motion tidak melihat blob di tengah kartu.
+    float reveal = smoothstep(0.30, 0.0, cursorDist) * uReveal;
+    vec3 duotoneReveal = mix(vec3(0.16, 0.02, 0.015), vec3(0.72, 0.10, 0.06), contrastLum)
+      * (0.35 + 0.65 * contrastLum);
+    finalColor = mix(finalColor, duotoneReveal, reveal * 0.75);
 
     // ── CHAPTER 3 HOVER: PROJECT AURA ──
     if (uHover > 0.01) {
@@ -160,12 +176,20 @@ export const ChiaroscuroMonolith: React.FC<MonolithProps> = ({
   const meshRef = useRef<THREE.Mesh>(null);
   const materialRef = useRef<THREE.ShaderMaterial>(null);
   const { mode, wireframe } = usePortfolioMode();
-  const { viewport } = useThree();
+  const { viewport, camera } = useThree();
 
   // Load real portrait texture from /FotoDiriFix.webp (1200x2150)
   const texture = useTexture("/FotoDiriFix.webp");
 
-  const mouse = useRef({ x: 0, y: 0, targetX: 0, targetY: 0 });
+  const mouse = useRef({ x: 0, y: 0, targetX: 0, targetY: 0, aktif: false });
+  const proyeksi = useRef({
+    ray: new THREE.Raycaster(),
+    bidang: new THREE.Plane(),
+    normal: new THREE.Vector3(),
+    titik: new THREE.Vector3(),
+    pusat: new THREE.Vector3(),
+    ndc: new THREE.Vector2(),
+  });
   const prevMode = useRef(mode);
   const tiltImpulse = useRef(0);
 
@@ -173,6 +197,7 @@ export const ChiaroscuroMonolith: React.FC<MonolithProps> = ({
     const handleMouseMove = (e: MouseEvent) => {
       mouse.current.targetX = (e.clientX / window.innerWidth) * 2 - 1;
       mouse.current.targetY = -(e.clientY / window.innerHeight) * 2 + 1;
+      mouse.current.aktif = true;
     };
     window.addEventListener("mousemove", handleMouseMove, { passive: true });
     return () => window.removeEventListener("mousemove", handleMouseMove);
@@ -197,6 +222,8 @@ export const ChiaroscuroMonolith: React.FC<MonolithProps> = ({
       uHover: { value: 0 },
       uHoverIndex: { value: 0 },
       uWireframe: { value: 0.0 },
+      uReveal: { value: 0.0 },
+      uCursorUV: { value: new THREE.Vector2(0.5, 0.5) },
     }),
     [texture]
   );
@@ -208,6 +235,11 @@ export const ChiaroscuroMonolith: React.FC<MonolithProps> = ({
     // Smooth mouse interpolation
     mouse.current.x += (mouse.current.targetX - mouse.current.x) * 0.08;
     mouse.current.y += (mouse.current.targetY - mouse.current.y) * 0.08;
+    mat.uniforms.uReveal.value = THREE.MathUtils.lerp(
+      mat.uniforms.uReveal.value,
+      mouse.current.aktif ? 1 : 0,
+      0.08
+    );
 
     // Smooth decay of tilt impulse
     tiltImpulse.current = THREE.MathUtils.lerp(tiltImpulse.current, 0, 0.08);
@@ -301,6 +333,20 @@ export const ChiaroscuroMonolith: React.FC<MonolithProps> = ({
     meshRef.current.rotation.y = THREE.MathUtils.lerp(meshRef.current.rotation.y, targetRotY + impulseRotY, 0.08);
     meshRef.current.rotation.x = THREE.MathUtils.lerp(meshRef.current.rotation.x, -mouse.current.y * 0.08, 0.08);
     meshRef.current.rotation.z = THREE.MathUtils.lerp(meshRef.current.rotation.z, impulseRotZ, 0.1);
+
+    // Proyeksikan pointer ke bidang kartu SETELAH transform frame ini dipakai, supaya
+    // cahaya benar-benar jatuh di bawah kursor meski kartu bergeser/miring.
+    const mesh = meshRef.current;
+    const pr = proyeksi.current;
+    pr.ndc.set(mouse.current.x, mouse.current.y);
+    pr.ray.setFromCamera(pr.ndc, camera);
+    pr.normal.set(0, 0, 1).applyQuaternion(mesh.quaternion);
+    mesh.updateWorldMatrix(true, false);
+    pr.bidang.setFromNormalAndCoplanarPoint(pr.normal, mesh.getWorldPosition(pr.pusat));
+    if (pr.ray.ray.intersectPlane(pr.bidang, pr.titik)) {
+      mesh.worldToLocal(pr.titik);
+      mat.uniforms.uCursorUV.value.set(pr.titik.x + 0.5, pr.titik.y / 1.64 + 0.5);
+    }
   });
 
   return (
