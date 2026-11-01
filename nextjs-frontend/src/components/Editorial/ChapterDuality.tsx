@@ -7,6 +7,7 @@ import type { Perjalanan } from "@/lib/server/journey";
 import { Certificate, FALLBACK_CERTIFICATES } from "@/lib/server/certificates";
 import type { Experience } from "@/lib/server/experience";
 import { usePortfolioMode } from "@/context/PortfolioModeContext";
+import { DURASI, EASE } from "@/lib/motion";
 import MeshPortal from "./MeshPortal";
 
 interface CareerPhase {
@@ -200,7 +201,7 @@ export const ChapterDuality: React.FC<DualityProps> = ({
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -15 }}
-                transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                transition={{ duration: DURASI.ganti, ease: EASE.keluar }}
                 className="mb-14"
               >
                 <span className="font-mono text-[10px] tracking-[0.25em] uppercase text-[#D41E12] block mb-3">
@@ -234,7 +235,7 @@ export const ChapterDuality: React.FC<DualityProps> = ({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 0.3 }}
+                transition={{ duration: DURASI.cepat }}
                 className="w-full flex flex-col border-t border-[rgba(10,10,10,0.12)]"
               >
                 {currentPhases.map((item) => {
@@ -291,7 +292,7 @@ export const ChapterDuality: React.FC<DualityProps> = ({
                           id={`phase-panel-${item.id}`}
                           initial={{ opacity: 0, height: 0 }}
                           animate={{ opacity: 1, height: "auto" }}
-                          transition={{ duration: 0.3 }}
+                          transition={{ duration: DURASI.cepat }}
                           className="pt-4 mt-4 pl-8 sm:pl-12"
                         >
                           {item.summary && (

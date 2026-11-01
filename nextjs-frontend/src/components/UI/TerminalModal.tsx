@@ -6,6 +6,7 @@ import { usePortfolioMode } from "@/context/PortfolioModeContext";
 import { X, Terminal as TerminalIcon } from "lucide-react";
 import audioEngine from "@/lib/audioEngine";
 import { SITE_HOST } from "@/lib/site";
+import { PEGA } from "@/lib/motion";
 
 interface CommandOutput {
   command: string;
@@ -231,7 +232,7 @@ export const TerminalModal: React.FC = () => {
             initial={{ scale: 0.95, y: 20 }}
             animate={{ scale: 1, y: 0 }}
             exit={{ scale: 0.95, y: 20 }}
-            transition={{ type: "spring", damping: 26, stiffness: 320 }}
+            transition={PEGA.modal}
             role="dialog"
             aria-modal="true"
             aria-label="Shell terminal"

@@ -5,6 +5,7 @@ import { ArrowUpRight } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { RepoBerlian } from "@/lib/server/github";
 import { usePortfolioMode } from "@/context/PortfolioModeContext";
+import { DURASI, EASE } from "@/lib/motion";
 import { CaseStudyModal, CaseStudyData } from "@/components/UI/CaseStudyModal";
 import MeshPortal from "./MeshPortal";
 import audioEngine from "@/lib/audioEngine";
@@ -225,7 +226,7 @@ export const ChapterArchives: React.FC<ArchivesProps> = ({
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -15 }}
-              transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+              transition={{ duration: DURASI.ganti, ease: EASE.keluar }}
             >
               <span className="font-mono text-[10px] tracking-[0.25em] uppercase text-[#D41E12] block mb-3">
                 {mode === "engineer" ? "POWER UNIT & CODEBASES" : "ATELIER & VISUAL EXPERIMENTS"}

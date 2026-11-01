@@ -4,6 +4,7 @@ import React, { useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, ArrowUpRight, Database, Cpu } from "lucide-react";
 import audioEngine from "@/lib/audioEngine";
+import { PEGA } from "@/lib/motion";
 
 export interface CaseStudyData {
   index: string;
@@ -51,7 +52,7 @@ export const CaseStudyModal: React.FC<ModalProps> = ({ caseStudy, onClose }) => 
           initial={{ scale: 0.94, y: 30 }}
           animate={{ scale: 1, y: 0 }}
           exit={{ scale: 0.94, y: 30 }}
-          transition={{ type: "spring", damping: 25, stiffness: 320 }}
+          transition={PEGA.kartu}
           role="dialog"
           aria-modal="true"
           aria-label={caseStudy.title}

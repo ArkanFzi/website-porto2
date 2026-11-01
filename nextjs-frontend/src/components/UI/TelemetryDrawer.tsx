@@ -6,6 +6,7 @@ import { usePortfolioMode } from "@/context/PortfolioModeContext";
 import { X, Activity, Globe, Music, Server } from "lucide-react";
 import audioEngine from "@/lib/audioEngine";
 import { bacaCuplik, dengarCuplik, type CuplikanFrame } from "@/lib/perfStats";
+import { PEGA } from "@/lib/motion";
 
 // Kontrak /api/telemetry (lihat src/app/api/telemetry/route.ts). Field yang bisa null berarti
 // tidak ada pengukuran, dan yang tampil di panel adalah "—" — bukan angka pengganti.
@@ -291,7 +292,7 @@ export const TelemetryDrawer: React.FC = () => {
             initial={{ y: 50, scale: 0.96 }}
             animate={{ y: 0, scale: 1 }}
             exit={{ y: 50, scale: 0.96 }}
-            transition={{ type: "spring", damping: 26, stiffness: 300 }}
+            transition={PEGA.laci}
             className="w-full max-w-4xl bg-[#0C0B0A] border border-[#D41E12]/40 rounded-xl shadow-[0_0_40px_rgba(212,30,18,0.25)] overflow-hidden flex flex-col pointer-events-auto"
             onClick={(e) => e.stopPropagation()}
           >

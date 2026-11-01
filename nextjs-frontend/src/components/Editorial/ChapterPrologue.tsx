@@ -3,6 +3,7 @@
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { usePortfolioMode } from "@/context/PortfolioModeContext";
+import { DURASI, EASE } from "@/lib/motion";
 import { Cpu, Sparkles } from "lucide-react";
 import MeshPortal from "./MeshPortal";
 
@@ -80,7 +81,7 @@ export const ChapterPrologue: React.FC = () => {
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+              transition={{ duration: DURASI.cepat, ease: EASE.keluar }}
               className="flex flex-col items-center"
             >
               <div className="flex items-center gap-2 mb-1.5 font-mono text-[10px] font-bold tracking-[0.22em] uppercase text-[#D41E12]">
@@ -97,7 +98,7 @@ export const ChapterPrologue: React.FC = () => {
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+              transition={{ duration: DURASI.cepat, ease: EASE.keluar }}
               className="flex flex-col items-center"
             >
               <div className="flex items-center gap-2 mb-1.5 font-mono text-[10px] font-bold tracking-[0.22em] uppercase text-[#D41E12]">

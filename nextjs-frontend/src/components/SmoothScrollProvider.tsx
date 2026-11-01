@@ -11,6 +11,7 @@ import React, {
   useSyncExternalStore,
 } from "react";
 import Lenis from "lenis";
+import { DURASI } from "@/lib/motion";
 
 interface ScrollContextType {
   scrollProgressRef: React.RefObject<number>;
@@ -116,7 +117,7 @@ export const SmoothScrollProvider: React.FC<{ children: React.ReactNode }> = ({ 
     if (!target) return;
     const jalan = animasi && !bacaKurangiGerak();
     if (lenisRef.current) {
-      lenisRef.current.scrollTo(target, jalan ? { duration: 1.4 } : { immediate: true });
+      lenisRef.current.scrollTo(target, jalan ? { duration: DURASI.gulir } : { immediate: true });
       return;
     }
     target.scrollIntoView({ behavior: jalan ? "smooth" : "auto" });
@@ -143,7 +144,7 @@ export const SmoothScrollProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
 
     const lenisInstance = new Lenis({
-      duration: 1.2,
+      duration: DURASI.roda,
       easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
       orientation: "vertical",
       gestureOrientation: "vertical",

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { DURASI, EASE } from "@/lib/motion";
 
 export const EditorialPreloader: React.FC<{ onComplete?: () => void }> = ({ onComplete }) => {
   const [count, setCount] = useState(0);
@@ -32,18 +33,18 @@ export const EditorialPreloader: React.FC<{ onComplete?: () => void }> = ({ onCo
         <motion.div
           className="fixed inset-0 z-[99999] pointer-events-auto flex flex-col justify-between"
           initial={{ opacity: 1 }}
-          exit={{ opacity: 0, transition: { duration: 0.8, ease: [0.16, 1, 0.3, 1] } }}
+          exit={{ opacity: 0, transition: { duration: DURASI.lapang, ease: EASE.keluar } }}
         >
           {/* Top Curtain Half */}
           <motion.div
             className="absolute top-0 left-0 right-0 h-1/2 bg-[#0A0A0A] border-b border-white/5"
-            exit={{ y: "-100%", transition: { duration: 1.1, ease: [0.77, 0, 0.175, 1] } }}
+            exit={{ y: "-100%", transition: { duration: DURASI.tirai, ease: EASE.geser } }}
           />
 
           {/* Bottom Curtain Half */}
           <motion.div
             className="absolute bottom-0 left-0 right-0 h-1/2 bg-[#0A0A0A] border-t border-white/5"
-            exit={{ y: "100%", transition: { duration: 1.1, ease: [0.77, 0, 0.175, 1] } }}
+            exit={{ y: "100%", transition: { duration: DURASI.tirai, ease: EASE.geser } }}
           />
 
           {/* Centered Counter */}

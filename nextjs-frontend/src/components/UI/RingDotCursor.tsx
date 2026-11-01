@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { motion, useSpring, useMotionValue } from "framer-motion";
+import { DURASI, PEGA } from "@/lib/motion";
 
 export const RingDotCursor: React.FC = () => {
   const [isHovered, setIsHovered] = useState(false);
@@ -11,7 +12,7 @@ export const RingDotCursor: React.FC = () => {
   const mouseY = useMotionValue(-100);
 
   // High-response spring for smooth mechanical tracking
-  const springConfig = { damping: 28, stiffness: 350, mass: 0.5 };
+  const springConfig = PEGA.kursor;
   const smoothX = useSpring(mouseX, springConfig);
   const smoothY = useSpring(mouseY, springConfig);
 
@@ -70,7 +71,7 @@ export const RingDotCursor: React.FC = () => {
           borderColor: isHovered ? "#FF2800" : "#D41E12",
           backgroundColor: isHovered ? "rgba(212, 30, 18, 0.08)" : "transparent",
         }}
-        transition={{ duration: 0.25, ease: "easeOut" }}
+        transition={{ duration: DURASI.sentuh, ease: "easeOut" }}
         className="absolute top-0 left-0 rounded-full border border-[#D41E12] mix-blend-difference"
       />
 
@@ -85,7 +86,7 @@ export const RingDotCursor: React.FC = () => {
         animate={{
           scale: isHovered ? 0 : 1,
         }}
-        transition={{ duration: 0.15 }}
+        transition={{ duration: DURASI.ketik }}
         className="absolute top-0 left-0 w-1.5 h-1.5 rounded-full bg-[#D41E12] mix-blend-difference"
       />
     </div>
