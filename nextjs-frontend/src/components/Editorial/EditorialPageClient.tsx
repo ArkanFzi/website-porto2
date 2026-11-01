@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import dynamic from "next/dynamic";
+import { MotionConfig } from "framer-motion";
 import { SmoothScrollProvider, useScrollData } from "@/components/SmoothScrollProvider";
 import EditorialPreloader from "@/components/UI/EditorialPreloader";
 import RingDotCursor from "@/components/UI/RingDotCursor";
@@ -61,7 +62,7 @@ const EditorialInner: React.FC<PageClientProps> = ({
       <RingDotCursor />
 
       {/* ── 4 Streamlined Chapters (Swiss Grid Architecture) ── */}
-      <main className="relative z-10 w-full flex flex-col">
+      <main id="konten" tabIndex={-1} className="relative z-10 w-full flex flex-col">
         <ChapterPrologue />
         <ChapterDuality
           perjalanan={perjalanan}
@@ -81,12 +82,18 @@ const EditorialInner: React.FC<PageClientProps> = ({
 
 export const EditorialPageClient: React.FC<PageClientProps> = (props) => {
   return (
-    <>
+    <MotionConfig reducedMotion="user">
+      <a
+        href="#konten"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[10000] focus:rounded-full focus:bg-[#D41E12] focus:px-4 focus:py-2 focus:font-mono focus:text-[10px] focus:uppercase focus:tracking-[0.18em] focus:text-white"
+      >
+        Lompat ke konten
+      </a>
       <EditorialPreloader />
       <SmoothScrollProvider>
         <EditorialInner {...props} />
       </SmoothScrollProvider>
-    </>
+    </MotionConfig>
   );
 };
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState, createContext, useContext } from "react";
+import React, { useEffect, useRef, useState, useSyncExternalStore, createContext, useContext } from "react";
 import Lenis from "lenis";
 
 interface ScrollContextType {
@@ -19,13 +19,57 @@ const ScrollContext = createContext<ScrollContextType>({
 
 export const useScrollData = () => useContext(ScrollContext);
 
+const chapterDari = (progress: number) => {
+  if (progress < 0.25) return 1;
+  if (progress < 0.55) return 2;
+  if (progress < 0.85) return 3;
+  return 4;
+};
+
+// MediaQueryList dibuat sekali; dibaca lewat store supaya preferensi yang sudah
+// berubah saat render tidak perlu menunggu effect.
+let mqKurangiGerak: MediaQueryList | undefined;
+const mediaKurangiGerak = () =>
+  (mqKurangiGerak ??= window.matchMedia("(prefers-reduced-motion: reduce)"));
+const dengarKurangiGerak = (ubah: () => void) => {
+  const mq = mediaKurangiGerak();
+  mq.addEventListener("change", ubah);
+  return () => mq.removeEventListener("change", ubah);
+};
+const bacaKurangiGerak = () => mediaKurangiGerak().matches;
+const bacaKurangiGerakSaatSSR = () => false;
+
 export const SmoothScrollProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const scrollProgressRef = useRef(0);
   const scrollVelocityRef = useRef(0);
   const lenisRef = useRef<Lenis | null>(null);
   const [currentChapter, setCurrentChapter] = useState(1);
+  const reduceMotion = useSyncExternalStore(
+    dengarKurangiGerak,
+    bacaKurangiGerak,
+    bacaKurangiGerakSaatSSR
+  );
 
   useEffect(() => {
+    if (reduceMotion) {
+      // Lenis selalu menjalankan rAF sendiri dan menggulirkan halaman setelah
+      // event lewat; keduanya tidak boleh terjadi kalau pengunjung minta
+      // gerakan dikurangi, jadi scroll native yang dipakai.
+      const baca = () => {
+        const maks = document.documentElement.scrollHeight - window.innerHeight;
+        scrollProgressRef.current = maks > 0 ? Math.min(1, Math.max(0, window.scrollY / maks)) : 0;
+        scrollVelocityRef.current = 0;
+        setCurrentChapter(chapterDari(scrollProgressRef.current));
+      };
+      baca();
+      window.addEventListener("scroll", baca, { passive: true });
+      window.addEventListener("resize", baca);
+      return () => {
+        window.removeEventListener("scroll", baca);
+        window.removeEventListener("resize", baca);
+      };
+    }
+
     const lenisInstance = new Lenis({
       duration: 1.2,
       easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
@@ -45,17 +89,7 @@ export const SmoothScrollProvider: React.FC<{ children: React.ReactNode }> = ({ 
     const onScroll = (e: { progress: number; velocity: number }) => {
       scrollProgressRef.current = e.progress;
       scrollVelocityRef.current = e.velocity;
-
-      // Determine active chapter (1 to 4)
-      if (e.progress < 0.25) {
-        setCurrentChapter(1);
-      } else if (e.progress < 0.55) {
-        setCurrentChapter(2);
-      } else if (e.progress < 0.85) {
-        setCurrentChapter(3);
-      } else {
-        setCurrentChapter(4);
-      }
+      setCurrentChapter(chapterDari(e.progress));
     };
     lenisInstance.on("scroll", onScroll);
 
@@ -65,13 +99,16 @@ export const SmoothScrollProvider: React.FC<{ children: React.ReactNode }> = ({ 
       lenisInstance.destroy();
       lenisRef.current = null;
     };
-  }, []);
+  }, [reduceMotion]);
 
   const scrollToChapter = (ch: number) => {
     const target = document.getElementById(`chapter-0${ch}`);
-    if (target && lenisRef.current) {
-      lenisRef.current.scrollTo(target, { duration: 1.4 });
+    if (!target) return;
+    if (lenisRef.current) {
+      lenisRef.current.scrollTo(target, { duration: reduceMotion ? 0 : 1.4 });
+      return;
     }
+    target.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth" });
   };
 
   return (

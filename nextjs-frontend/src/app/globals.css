@@ -106,3 +106,20 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--rosso-corsa);
 }
+
+/* ── Keyboard Focus: sebelumnya tidak ada aturan :focus sama sekali di proyek ini ── */
+:focus-visible {
+  outline: 2px solid var(--rosso-corsa);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
