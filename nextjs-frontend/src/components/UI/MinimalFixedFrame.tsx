@@ -234,16 +234,30 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ currentChapter, onChap
       {/* ── BOTTOM BAR ── */}
       <div className="w-full flex items-end justify-between pointer-events-auto">
         
-        {/* Bottom-Left: Active Chapter Index */}
-        <div className="flex items-center gap-3">
-          <span className={`font-mono text-xs font-bold ${accentColor} tracking-wider`}>
-            CH. 0{currentChapter}
-          </span>
+        {/* Bottom-Left: Chapter Index — all four chapters reachable */}
+        <nav className="flex items-center gap-2.5" aria-label="Chapter index">
+          {CHAPTER_LABELS.map((label, i) => {
+            const ch = i + 1;
+            const isActive = currentChapter === ch;
+            return (
+              <button
+                key={label}
+                onClick={() => onChapterClick(ch)}
+                aria-current={isActive ? "true" : undefined}
+                title={label}
+                className={`font-mono text-[10px] tracking-[0.16em] uppercase transition-opacity cursor-pointer ${
+                  isActive ? `${accentColor} font-bold` : `${subColor} opacity-50 hover:opacity-100`
+                }`}
+              >
+                CH.0{ch}
+              </button>
+            );
+          })}
           <div className={`h-3 w-[1px] ${isRossoSection ? "bg-white/40" : "bg-[#D41E12]/40"}`} />
-          <span className={`font-mono text-[10px] uppercase tracking-[0.2em] ${subColor}`}>
+          <span className={`font-mono text-[10px] uppercase tracking-[0.2em] ${subColor} hidden sm:inline`}>
             {CHAPTER_LABELS[currentChapter - 1]}
           </span>
-        </div>
+        </nav>
 
         {/* Bottom-Center: Live F1 Pit-Wall Telemetry Bar (Clickable Trigger for Telemetry HUD) */}
         <button
