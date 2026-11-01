@@ -61,7 +61,7 @@ function entriDariSertifikat(baris: Certificate[]): EntriFeed[] {
   return baris.map((c) => ({
     id: `${SITE_URL}/certificate/${encodeURIComponent(c.id)}`,
     judul: c.title,
-    href: `${SITE_URL}/dossier/certificates`,
+    href: `${SITE_URL}/#chapter-02`,
     ringkas: `${c.issuer} (${c.date})`,
     diperbarui: tanggalAtom(c.date) ?? waktuBuild(),
   }));

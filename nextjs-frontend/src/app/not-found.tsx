@@ -2,7 +2,7 @@ import Link from "next/link";
 
 const links = [
   { label: "HOME", href: "/" },
-  { label: "DOSSIER", href: "/dossier" },
+  { label: "DOSSIER [PDF]", href: "/api/cv" },
   { label: "CONTACT", href: "/#chapter-04" },
 ];
 
