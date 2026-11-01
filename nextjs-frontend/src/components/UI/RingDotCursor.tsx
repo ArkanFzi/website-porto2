@@ -71,7 +71,7 @@ export const RingDotCursor: React.FC = () => {
           backgroundColor: isHovered ? "rgba(212, 30, 18, 0.08)" : "transparent",
         }}
         transition={{ duration: 0.25, ease: "easeOut" }}
-        className="rounded-full border border-[#D41E12] mix-blend-difference"
+        className="absolute top-0 left-0 rounded-full border border-[#D41E12] mix-blend-difference"
       />
 
       {/* Center Precision Dot */}
@@ -86,7 +86,7 @@ export const RingDotCursor: React.FC = () => {
           scale: isHovered ? 0 : 1,
         }}
         transition={{ duration: 0.15 }}
-        className="w-1.5 h-1.5 rounded-full bg-[#D41E12] mix-blend-difference"
+        className="absolute top-0 left-0 w-1.5 h-1.5 rounded-full bg-[#D41E12] mix-blend-difference"
       />
     </div>
   );
