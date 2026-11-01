@@ -5,6 +5,10 @@ import * as THREE from "three";
 
 export const RASIO_POTRET = 1.64;
 
+/** Panjang jejak pointer yang dipegang shader. Dua belas sampel = ±0,5 detik gerakan
+ *  terakhir pada 24fps; lebih dari itu hanya memperbesar loop fragment tanpa terbaca. */
+export const JUMLAH_JEJAK = 12;
+
 export const vertexShader = /* glsl */ `
   uniform float uTime;
   uniform vec2 uMouse;
@@ -55,6 +59,9 @@ export const fragmentShader = /* glsl */ `
   uniform float uWireframe;
   uniform float uReveal;
   uniform vec2 uCursorUV;
+  /** 12 sampel terakhir jejak pointer pada UV kartu: (u, v, umur). umur 1 = baru,
+   *  meluruh ke 0; slot yang belum pernah dipakai berisi umur 0. */
+  uniform vec3 uJejak[JUMLAH_JEJAK];
   uniform vec4 uMask;      // batas portal dalam NDC: kiri, kanan, bawah, atas
   uniform vec2 uNdcPerPx;  // lebar/satu tinggi layar dalam NDC, untuk tepi potong
 
@@ -116,7 +123,17 @@ export const fragmentShader = /* glsl */ `
     // rosso yang tetap mengikuti nada potret, bukan cakram warna datar.
     // uReveal sengaja 0 sampai pointer benar-benar bergerak, jadi perangkat sentuh dan
     // mode reduce-motion tidak melihat blob di tengah kartu.
-    float reveal = smoothstep(0.30, 0.0, cursorDist) * uReveal;
+    // Yang dibuka bukan hanya titik kursor: 12 sampel terakhir membentuk pita, jadi
+    // gerakan membaca sebagai gerakan. max() dipakai (bukan jumlah) supaya dua sampel
+    // yang berdekatan tidak saling menebal menjadi tambalan yang menutupi wajah.
+    float jejak = 0.0;
+    for (int i = 0; i < ${JUMLAH_JEJAK}; i++) {
+      vec3 s = uJejak[i];
+      if (s.z <= 0.002) continue;
+      float d = length((uv - s.xy) * vec2(1.0, 1.64));
+      jejak = max(jejak, smoothstep(0.30, 0.0, d) * s.z);
+    }
+    float reveal = max(jejak, smoothstep(0.30, 0.0, cursorDist)) * uReveal;
     vec3 duotoneReveal = mix(vec3(0.16, 0.02, 0.015), vec3(0.72, 0.10, 0.06), contrastLum)
       * (0.35 + 0.65 * contrastLum);
     finalColor = mix(finalColor, duotoneReveal, reveal * 0.75);
@@ -185,6 +202,7 @@ export interface UniformsPanggung {
   uWireframe: { value: number };
   uReveal: { value: number };
   uCursorUV: { value: THREE.Vector2 };
+  uJejak: { value: THREE.Vector3[] };
   uMask: { value: THREE.Vector4 };
   uNdcPerPx: { value: THREE.Vector2 };
 }
@@ -205,6 +223,9 @@ export const buatUniformPanggung = (
   uWireframe: { value: 0.0 },
   uReveal: { value: 0.0 },
   uCursorUV: { value: new THREE.Vector2(0.5, 0.5) },
+  // Umur 0 = slot kosong; shader melewati sampel itu, jadi kartu yang baru terpasang
+  // tidak menampilkan pita hantu di tengah.
+  uJejak: { value: Array.from({ length: JUMLAH_JEJAK }, () => new THREE.Vector3(0.5, 0.5, 0)) },
   // Terbuka penuh sampai portal pertama terukur, supaya frame sebelum effect
   // berjalan tidak memotong kartu seluruhnya.
   uMask: { value: new THREE.Vector4(-1, 1, -1, 1) },

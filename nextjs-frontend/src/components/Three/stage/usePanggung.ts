@@ -36,6 +36,8 @@ export interface PembacaanPanggung {
    *  [terpasangX, terpasangY, targetX, targetY] radian. Verifier interaksi membacanya
    *  karena rotY total juga mengandung parallax pointer. */
   putar: [number, number, number, number];
+  /** Jejak pointer: [jumlah sampel hidup, rentang terjauh antar sampel dalam UV]. */
+  jejak: [number, number];
 }
 
 const bundar = (n: number) => Math.round(n * 1e4) / 1e4;
@@ -46,7 +48,8 @@ const tulisPanggungDebug = (
   p: number,
   k: Sikap,
   kotak: PortalKotak,
-  putar: [number, number, number, number]
+  putar: [number, number, number, number],
+  jejak: [number, number]
 ) => {
   const jendela = window as unknown as { __panggung?: PembacaanPanggung };
   jendela.__panggung = {
@@ -64,6 +67,7 @@ const tulisPanggungDebug = (
     mask: [bundar(mask.x), bundar(mask.y), bundar(mask.z), bundar(mask.w)],
     portal: [bundar(kotak.kiri), bundar(kotak.atas), bundar(kotak.lebar), bundar(kotak.tinggi)],
     putar: putar.map(bundar) as [number, number, number, number],
+    jejak,
   };
 };
 
@@ -100,6 +104,8 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
    *  lerp di bawah membaca nilai terakhir mesh: bila offset putaran ikut tertinggal di
    *  mesh.rotation, ia terakumulasi lintas frame (terukur 12x dari perintahnya). */
   const dasar = useRef({ rotY: 0, rotX: 0 });
+  /** Cincin jejak pointer: indeks tulis + posisi terakhir yang memicu sampel baru. */
+  const jejakRef = useRef({ i: 0, u: 0.5, v: 0.5 });
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -236,15 +242,44 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
       mat.uniforms.uCursorUV.value.set(pr.titik.x + 0.5, pr.titik.y / RASIO_POTRET + 0.5);
     }
 
+    // Jejak pointer: 12 sampel terakhir pada UV kartu, dipakai shader sebagai pita reveal.
+    // Umurnya diluruhkan per detik (bukan per frame) supaya kecepatannya tidak berubah
+    // saat DPR turun atau mesin melambat, dan hanya diperbarui bila pointer benar-benar
+    // berpindah — pointer yang diam tidak boleh meninggalkan tambalan merah.
+    const pita = mat.uniforms.uJejak.value;
+    // Peluruhan eksponensial, bukan (1 - delta * k): pada k linear, satu frame yang lebih
+    // panjang dari 1/k menghapus SELURUH jejak (terukur pada perenderan perangkat lunak,
+    // delta 0,5s → faktor 0), jadi pita hilang justru di mesin yang paling lambat.
+    const luntur = Math.exp(-delta / 0.34);
+    for (const s of pita) s.z *= luntur;
+    const cv = mat.uniforms.uCursorUV.value;
+    const je = jejakRef.current;
+    if (Math.hypot(cv.x - je.u, cv.y - je.v) > 0.01) {
+      je.i = (je.i + 1) % pita.length;
+      pita[je.i].set(cv.x, cv.y, 1);
+      je.u = cv.x;
+      je.v = cv.y;
+    }
+
     // Salinan sikap kartu untuk verifier (docs/verify/panggung-probe.mjs). Hanya hidup
     // di development; produksi tidak menulis apa pun ke window.
     if (process.env.NODE_ENV !== "production") {
+      let hidup = 0;
+      let rentang = 0;
+      for (let a = 0; a < pita.length; a++) {
+        if (pita[a].z <= 0.05) continue;
+        hidup++;
+        for (let b = a + 1; b < pita.length; b++) {
+          if (pita[b].z <= 0.05) continue;
+          rentang = Math.max(rentang, Math.hypot(pita[a].x - pita[b].x, pita[a].y - pita[b].y));
+        }
+      }
       tulisPanggungDebug(mesh, mat.uniforms.uMask.value, p, k, kotak, [
         pusing.current.x,
         pusing.current.y,
         perintah.x,
         perintah.y,
-      ]);
+      ], [hidup, bundar(rentang)]);
     }
   });
 

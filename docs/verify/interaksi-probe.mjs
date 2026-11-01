@@ -57,7 +57,7 @@ const kisar = (nama, dapat, target, toleransi) =>
 const baca = () =>
   page.evaluate(() => {
     const p = window.__panggung;
-    return p ? { putar: p.putar, portal: p.portal } : null;
+    return p ? { putar: p.putar, portal: p.portal, jejak: p.jejak } : null;
   });
 const derajati = (b, i) => DERAJAT(b.putar[i]);
 
@@ -167,7 +167,30 @@ await foto('01-putar-diam');
   cek('seret di luar kartu tidak memutar', Math.abs(derajati(s.saat, 2) - derajati(s.sebelum, 2)) < 0.3, true);
 }
 
-// ── 4 · prefers-reduced-motion: rotasi mati, navigasi tetap hidup ──
+// ── 4 · jejak pointer: 12 sampel masuk reveal ──
+{
+  const p = await baca();
+  const [k, a, l, t] = p.portal;
+  const y = a + t / 2;
+  await page.mouse.move(k + 20, y);
+  await diamkan(900);
+  // Jeda panjang bukan kemalasan verifier: posisi jejak diambil dari pointer yang
+  // sudah dihaluskan mesin kartu (lerp 0.08 per frame), dan pada perenderan perangkat
+  // lunak 1 frame bisa 200ms — langkah 90ms hanya menempuh ~10% lintasannya.
+  for (let i = 1; i <= 8; i++) {
+    await page.mouse.move(k + 20 + i * Math.max(14, (l - 40) / 8), y + (i % 2 ? 18 : -18));
+    await diamkan(320);
+  }
+  const j = await baca();
+  cek('jejak menyimpan lebih dari separuh sampel', j.jejak[0] >= 6, true);
+  cek('jejak membentang di kartu, bukan menumpuk di satu titik', j.jejak[1] >= 0.12, true);
+  await foto('02-jejak-pointer');
+  await diamkan(1400);
+  const h = await baca();
+  cek('jejak meluruh sendiri saat pointer diam', h.jejak[0] <= 1, true);
+}
+
+// ── 5 · prefers-reduced-motion: rotasi mati, navigasi tetap hidup ──
 await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
 await diamkan(1200);
 const rd = await seret(300);
