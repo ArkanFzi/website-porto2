@@ -119,6 +119,13 @@ const klikMode = async (label) => {
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   }, label);
   if (!titik) throw new Error(`tombol MODE "${label}" tidak ditemukan`);
+  // Loop "demand" dibangunkan TERLEBIH DAHULU, baru klik. Kalau tidak, frame pertama
+  // sesudah klik adalah frame bangun itu sendiri — delta-nya sepanjang waktu sejak render
+  // terakhir, dan satu frame seperti itu bisa memakan separuh pertama putaran. Gerbang
+  // jendela wajah di bawah lalu melaporkan kodenya yang salah padahal yang terjadi mesin
+  // yang sedang tidur. Pengunjung nyata juga menggerakkan pointer sebelum menekan tombol.
+  await page.mouse.move(titik.x, titik.y);
+  await diamkan(500);
   const sebelum = await bacaMode();
   await page.mouse.click(titik.x, titik.y);
   const rekam = [];
@@ -468,6 +475,11 @@ await diamkan(800);
 {
   const flip = await klikMode('THE ENGINEER');
   const sap = sapuan(flip.sebelum, flip.rekam);
+  console.log(
+    'flip ENGINEER   sebelum persona:', flip.sebelum.persona.toFixed(4),
+    '| balik:', flip.rekam.map((r) => r.balik.toFixed(3)).join(' '),
+    '| persona:', flip.rekam.map((r) => r.persona.toFixed(3)).join(' ')
+  );
   // Batas bawah 150°, bukan 350°: flip berlangsung 0,8 detik dan pada perenderan
   // perangkat lunak hanya ~2-3 frame yang sempat merendernya (terukur 168,7°), jadi
   // menuntut sampel menyentuh plateau 360° akan menguji framerate, bukan kodenya. Yang
@@ -498,6 +510,15 @@ await diamkan(800);
   // creator — jadi gerbangnya dibandingkan ke nilai awal, bukan ke angka nol.
   const wajahAwal = flip.sebelum.persona;
   const separuhAwal = flip.rekam.filter((r) => r.balik >= 0.5);
+  // Dua hal yang dulu dicampur dalam satu gerbang: apakah rekaman sempat menangkap awal
+  // putaran, dan apakah wajah lama benar-benar dipegang selama separuh pertama itu.
+  // Digabung, mesin yang telat bangun melapor "kode rusak"; dipisah, yang merah adalah
+  // gerbang rekaman dan namanya menyebut mesin, bukan panggung.
+  cek(
+    'rekaman menangkap putaran sejak separuh pertamanya',
+    (flip.rekam[0]?.balik ?? 0) >= 0.5,
+    true
+  );
   cek(
     'setengah pertama putaran masih memegang wajah lama',
     separuhAwal.length > 0 &&
