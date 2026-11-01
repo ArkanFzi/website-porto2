@@ -116,9 +116,10 @@ export interface RepoBerlian {
     language: string | null;
 }
 
-// Objek GitHub penuh dipakai lagi oleh /api/github-repos (dossier membaca forks_count),
-// tapi tidak perlu ikut ter-serialisasi ke payload halaman depan yang cuma menampilkan
-// nama, bahasa, dan bintang.
+// Objek GitHub penuh tetap dikembalikan /api/github-repos karena rute itu endpoint publik
+// dan angkanya bisa ditelusuri sendiri; yang tidak lagi ada adalah pembaca di dalam repo
+// ini — halaman yang dulu membacanya sudah dipensiunkan. Payload halaman depan cuma perlu
+// nama, bahasa, dan bintang, jadi bentuk ringkasnya yang diserialisasi ke sana.
 export function ringkasRepos(repos: RepoGitHub[]): RepoBerlian[] {
     return repos.map((r) => ({
         id: r.id,

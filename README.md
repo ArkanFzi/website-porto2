@@ -42,13 +42,13 @@ Dua klaim lama di bawah sudah tidak berlaku dan itu yang perlu dibaca hati-hati:
 
 | Fitur | Status |
 |---|---|
-| Halaman utama, seksi About/Projects, animasi scroll, menu mobile | jalan |
+| Halaman utama editorial (bab 01–04), gulir halus Lenis, indeks bab | jalan |
 | Elemen 3D (`@react-three/fiber` + `drei`), partikel, latar video | jalan |
 | `GET /api/certificates`, `GET /api/experience` (di-proxy frontend ke backend) | jalan |
 | `GET /api/health` — cek koneksi ke Postgres | jalan |
 | `/api/cv` — PDF dari halaman `/cv-layout` lewat Puppeteer | jalan, tapi **tanpa daftar sertifikat** |
 | `/api/github-repos`, `/api/github-profile` | jalan |
-| Form kontak | **jalan penuh** — `Contact.tsx` mengirim ke `POST /api/contact` di Go, pesan masuk ke `contact_messages` dan dijawab `201 {id}`; stub lama `src/app/api/contact/route.ts` (menahan 1 s lalu menjawab `success: true` tanpa menulis apa pun) sudah dihapus. Notifikasi email **terbukti hidup di produksi**: POST 2026-10-06 00:51 UTC menjawab `201` dalam 28,75 ms dan 3,171 s kemudian mencetak `contact 4e8d174a-…: email terkirim ke muhammadarkanfauzi9@gmail.com`, pesannya sampai ke Gmail. Kalau kredensial hilang, #31 membuat jalurnya berhenti **sebelum** socket dibuka dan tercatat sebagai `email dilewati` — bukan disamarkan jadi kegagalan Gmail. **`Reply-To` sekarang dipasang** (#37, `29757ca`): tombol Balas membalas ke alamat pengunjung, dan nilai yang bukan alamat tidak pernah masuk header (gerbang `mail.ParseAddress` di dalam paket, dengan 6 input jahat sebagai test). Yang masih tersisa dari baris ini: `subject` dibakar di `Contact.tsx:24` sebagai `Visionary Project : <nama>` — bukan pilihan pengunjung, dan header `Reply-To` pada pesan yang benar-benar datang baru terbukti oleh satu POST produksi lagi |
+| Form kontak | **jalan penuh** — `ChapterPaddock.tsx` mengirim ke `POST /api/contact` di Go, pesan masuk ke `contact_messages` dan dijawab `201 {id}`; stub lama `src/app/api/contact/route.ts` (menahan 1 s lalu menjawab `success: true` tanpa menulis apa pun) sudah dihapus. Notifikasi email **terbukti hidup di produksi**: POST 2026-10-06 00:51 UTC menjawab `201` dalam 28,75 ms dan 3,171 s kemudian mencetak `contact 4e8d174a-…: email terkirim ke muhammadarkanfauzi9@gmail.com`, pesannya sampai ke Gmail. Kalau kredensial hilang, #31 membuat jalurnya berhenti **sebelum** socket dibuka dan tercatat sebagai `email dilewati` — bukan disamarkan jadi kegagalan Gmail. **`Reply-To` sekarang dipasang** (#37, `29757ca`): tombol Balas membalas ke alamat pengunjung, dan nilai yang bukan alamat tidak pernah masuk header (gerbang `mail.ParseAddress` di dalam paket, dengan 6 input jahat sebagai test). Yang masih tersisa dari baris ini: `subject` dibakar di `ChapterPaddock.tsx:49` sebagai `Editorial Telemetry Dispatch` — bukan pilihan pengunjung, dan header `Reply-To` pada pesan yang benar-benar datang baru terbukti oleh satu POST produksi lagi |
 | Halaman admin (`/admin`, `/admin/dashboard`, `/admin/login`) | **hidup bertiga** — `/admin` (`page.tsx`) menulis & menghapus sertifikat/pengalaman lewat `authFetch`, `/admin/dashboard` membaca & menghapus kotak masuk lewat `GET`/`DELETE /api/admin/contact`, `/admin/login` membuka sesi. `/admin/projects` **tidak ada** (lihat catatan rekonsiliasi di atas), dan `Sidebar` hanya menautkan `/admin/dashboard` — jadi CRUD di `/admin` reachable lewat URL, bukan lewat menu |
 | Login admin (`POST /api/auth/login` + JWT) | **dipakai** — `/admin/login` memanggilnya; `POST /api/login` yang lama masih terdaftar dan menunjuk handler yang sama, jadi keduanya menerbitkan sesi yang sama. Kredensialnya tidak lagi lewat body: `Set-Cookie: porto_sesi` (HttpOnly, SameSite=Lax, Secure saat `X-Forwarded-Proto: https`), `Authorization: Bearer` tetap diterima untuk sesi yang terbit sebelum #65, dan `POST /api/auth/logout` menghapus cookie-nya |
 
@@ -83,7 +83,6 @@ inbox admin menjawab **500** kalau DB gagal — sebelum PR #29 yang sama itu men
 - **@react-three/fiber 9 + @react-three/drei 10** — canvas 3D
 - **Lucide React** — ikon
 - **Puppeteer 24** — `/api/cv` merender `/cv-layout` menjadi PDF (Chromium dipasang di image-nya)
-- Toast/notifikasi buatan sendiri, bukan pustaka
 
 ### Backend (`go-backend/`)
 
@@ -132,13 +131,12 @@ inbox admin menjawab **500** kalau DB gagal — sebelum PR #29 yang sama itu men
 website-porto2/
 ├── go-backend/             # API Go (single binary, main.go + mailer/)
 ├── nextjs-frontend/
-│   ├── src/app/            # App Router: page.tsx, layout.tsx, globals.css
+│   ├── src/app/            # App Router: page.tsx, layout.tsx, globals.css, error.tsx,
+│   │   │                   # global-error.tsx, not-found.tsx, robots.ts, sitemap.ts
 │   │   ├── admin/          # Halaman admin (status: sebagian hidup — lihat tabel di atas)
-│   │   ├── api/            # Route handler: contact, cv, github-profile, github-repos
-│   │   ├── components/     # Seksi halaman: Hero, About, Projects, Contact, …
-│   │   ├── cv-layout/      # Halaman yang dirender Puppeteer jadi PDF
-│   │   └── dossier/        # Halaman kedua
-│   ├── src/components/     # Tiga/ (canvas 3D), UI/ (card, button, toast), Admin/, Dossier/
+│   │   ├── api/            # Route handler: cv, feed, github-profile, github-repos, telemetry
+│   │   └── cv-layout/      # Halaman yang dirender Puppeteer jadi PDF
+│   ├── src/components/     # Editorial/ (bab 01–04), Three/ (canvas 3D), UI/ (modal, HUD, drawer), Admin/
 │   ├── src/data/           # Konten statis
 │   ├── src/lib/            # Utilitas
 │   └── next.config.ts      # rewrite /api/* -> backend, dibaca BACKEND_URL
@@ -238,7 +236,7 @@ boot — kegagalan yang terdengar di deploy, bukan di request pengunjung.
 
 - [GitHub](https://github.com/ArkanFzi)
 - [LinkedIn](https://www.linkedin.com/in/muhamad-arkan-fauzi-5a6799380/) — sama dengan tautan yang
-  dipakai `src/app/components/Navigation.tsx:8`; `cv-layout/page.tsx:53` menulis versi teks tanpa
+  dipakai `src/components/Editorial/ChapterPaddock.tsx:9`; `cv-layout/page.tsx:62` menulis versi teks tanpa
   angka di ujung, jadi keduanya memang tidak identik di situs ini
 - Email: muhammadarkanfauzi9@gmail.com
 
