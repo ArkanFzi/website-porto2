@@ -14,6 +14,8 @@ import ChapterArchives from "./ChapterArchives";
 import ChapterPaddock from "./ChapterPaddock";
 import type { RepoBerlian } from "@/lib/server/github";
 import type { Perjalanan } from "@/lib/server/journey";
+import type { Certificate } from "@/lib/server/certificates";
+import type { Experience } from "@/lib/server/experience";
 
 const GlobalEditorialCanvas = dynamic(
   () => import("@/components/Three/GlobalEditorialCanvas"),
@@ -23,9 +25,16 @@ const GlobalEditorialCanvas = dynamic(
 interface PageClientProps {
   repos: RepoBerlian[];
   perjalanan: Perjalanan[];
+  certificates: Certificate[];
+  experiences: Experience[];
 }
 
-const EditorialInner: React.FC<PageClientProps> = ({ repos, perjalanan }) => {
+const EditorialInner: React.FC<PageClientProps> = ({
+  repos,
+  perjalanan,
+  certificates,
+  experiences,
+}) => {
   const { scrollProgress, scrollVelocity, currentChapter, scrollToChapter } = useScrollData();
   const [hoveredProject, setHoveredProject] = useState<number | null>(null);
 
@@ -54,7 +63,11 @@ const EditorialInner: React.FC<PageClientProps> = ({ repos, perjalanan }) => {
       {/* ── 4 Streamlined Chapters (Swiss Grid Architecture) ── */}
       <main className="relative z-10 w-full flex flex-col">
         <ChapterPrologue />
-        <ChapterDuality perjalanan={perjalanan} />
+        <ChapterDuality
+          perjalanan={perjalanan}
+          certificates={certificates}
+          experiences={experiences}
+        />
         <ChapterArchives
           repos={repos}
           hoveredProject={hoveredProject}

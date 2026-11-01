@@ -2,8 +2,10 @@
 
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ExternalLink } from "lucide-react";
+import { ChevronDown, ExternalLink, ShieldCheck, CheckCircle2 } from "lucide-react";
 import type { Perjalanan } from "@/lib/server/journey";
+import { Certificate, FALLBACK_CERTIFICATES } from "@/lib/server/certificates";
+import type { Experience } from "@/lib/server/experience";
 import { usePortfolioMode } from "@/context/PortfolioModeContext";
 
 interface CareerPhase {
@@ -103,9 +105,21 @@ const CREATOR_PHASES: CareerPhase[] = [
   },
 ];
 
-export const ChapterDuality: React.FC<{ perjalanan?: Perjalanan[] }> = ({ perjalanan }) => {
+interface DualityProps {
+  perjalanan?: Perjalanan[];
+  certificates?: Certificate[];
+  experiences?: Experience[];
+}
+
+export const ChapterDuality: React.FC<DualityProps> = ({
+  perjalanan,
+  certificates,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  experiences,
+}) => {
   const { mode } = usePortfolioMode();
   const [activePhase, setActivePhase] = useState<string>("03");
+  const certList = certificates && certificates.length > 0 ? certificates : FALLBACK_CERTIFICATES;
 
   // Blend backend dynamic journey records if populated in database
   const hasDynamicDb = perjalanan && perjalanan.length >= 3;
@@ -157,7 +171,7 @@ export const ChapterDuality: React.FC<{ perjalanan?: Perjalanan[] }> = ({ perjal
           <div className="hidden md:block md:col-span-5 min-h-[400px] lg:min-h-[550px] pointer-events-none" />
 
           {/* Right Column: Editorial Headline & Swiss Line List */}
-          <div className="col-span-1 md:col-span-7 flex flex-col">
+          <div className="col-span-1 md:col-span-7 flex flex-col md:pl-10 lg:pl-16">
             
             {/* Elegant Editorial Headline with Persona Motion */}
             <AnimatePresence mode="wait">
@@ -288,6 +302,71 @@ export const ChapterDuality: React.FC<{ perjalanan?: Perjalanan[] }> = ({ perjal
                 })}
               </motion.div>
             </AnimatePresence>
+
+          </div>
+
+        </div>
+
+        {/* ── PART 2: VALIDATED CREDENTIALS & CERTIFICATIONS (POSTGRESQL SYNCED) ── */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-12 lg:gap-16 items-start mt-24 pt-16 border-t border-[rgba(10,10,10,0.12)]">
+          
+          {/* Left Column: Reserved clean space for 3D Monolith (NO TEXT OVERLAP) */}
+          <div className="hidden md:block md:col-span-5 pointer-events-none" />
+
+          {/* Right Column: Editorial Heading & Certificates List */}
+          <div className="col-span-1 md:col-span-7 flex flex-col md:pl-10 lg:pl-16">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="w-2 h-2 rounded-full bg-[#D41E12]" />
+              <span className="font-mono text-[10px] tracking-[0.25em] uppercase text-[#D41E12] font-bold">
+                VALIDATION // POSTGRESQL CRUD CONTRACT
+              </span>
+            </div>
+            
+            <h2 className="font-serif text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-[#0A0A0A] mb-3">
+              OFFICIAL CERTIFICATIONS &amp; CREDENTIALS.
+            </h2>
+            
+            <p className="font-sans text-sm text-[#6E6A64] leading-relaxed mb-6">
+              Verified certifications, institutional accreditations, and engineering honors recorded in the PostgreSQL relational schema and managed via Go backend CRUD endpoints.
+            </p>
+
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/5 border border-black/10 font-mono text-[9px] text-[#0A0A0A] w-fit mb-8">
+              <ShieldCheck className="w-3.5 h-3.5 text-[#D41E12]" />
+              <span>DYNAMIC TABLE: certificates ({certList.length} RECORDS)</span>
+            </div>
+
+            {/* High-Craft Certificates List */}
+            <div className="w-full flex flex-col divide-y divide-[rgba(10,10,10,0.1)] border-t border-[rgba(10,10,10,0.12)]">
+              {certList.map((cert, idx) => (
+                <div
+                  key={cert.id || idx}
+                  className="py-5 sm:py-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 group hover:pl-2 transition-all duration-300"
+                >
+                  <div className="flex items-start gap-4">
+                    <span className="font-mono text-xs font-bold text-[#D41E12] pt-1">
+                      0{idx + 1}
+                    </span>
+                    <div>
+                      <h3 className="font-serif text-lg sm:text-xl font-bold text-[#0A0A0A] group-hover:text-[#D41E12] transition-colors">
+                        {cert.title}
+                      </h3>
+                      <span className="font-mono text-[10px] tracking-wider uppercase text-[#6E6A64] block mt-0.5">
+                        {cert.issuer}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-4 self-end sm:self-center shrink-0">
+                    <span className="font-mono text-xs font-semibold text-[#0A0A0A]/70">
+                      {cert.date}
+                    </span>
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 font-mono text-[9px] font-bold">
+                      <CheckCircle2 className="w-2.5 h-2.5" /> VERIFIED
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
 
           </div>
 

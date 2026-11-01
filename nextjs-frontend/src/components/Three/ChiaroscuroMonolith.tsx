@@ -235,14 +235,14 @@ export const ChiaroscuroMonolith: React.FC<MonolithProps> = ({
       mat.uniforms.uHoverIndex.value = hoveredProject;
     }
 
-    // ── CALIBRATED SIZING (1200x2150 Aspect Ratio = 1.792) ──
-    const baseW = Math.min(viewport.width * 0.26, 2.3);
+    // ── CALIBRATED SIZING (893x1464 Aspect Ratio = 1.64) ──
+    const baseW = Math.min(viewport.width * 0.23, 2.15);
     meshRef.current.scale.set(baseW, baseW, 1);
 
     // ── PRECISION CHOREOGRAPHED SCROLL POSITIONS ──
     const p = Math.max(0, Math.min(1, scrollProgress));
     const isNarrow = viewport.width < 8.5;
-    const colLeftX = isNarrow ? -viewport.width * 0.18 : -Math.min(viewport.width * 0.25, 2.3);
+    const colLeftX = isNarrow ? -viewport.width * 0.22 : -Math.min(viewport.width * 0.30, 2.95);
     const colRightX = isNarrow ? viewport.width * 0.18 : Math.min(viewport.width * 0.25, 2.2);
 
     let targetX = 0;
@@ -305,8 +305,8 @@ export const ChiaroscuroMonolith: React.FC<MonolithProps> = ({
 
   return (
     <mesh ref={meshRef} position={[0, 0, 0]}>
-      {/* 1 : 1.792 aspect ratio matching FotoDiriFix.webp (1200x2150) */}
-      <planeGeometry args={[1, 1.792, 96, 96]} />
+      {/* 1 : 1.64 aspect ratio matching clean FotoDiriFix.webp (893x1464) */}
+      <planeGeometry args={[1, 1.64, 96, 96]} />
       <shaderMaterial
         ref={materialRef}
         vertexShader={vertexShader}

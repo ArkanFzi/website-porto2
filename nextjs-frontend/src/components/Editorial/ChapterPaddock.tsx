@@ -196,21 +196,31 @@ export const ChapterPaddock: React.FC = () => {
           </span>
         </div>
 
-        {/* Right: Minimalist Social Channels */}
-        <nav className="flex flex-wrap items-center justify-center gap-6 sm:gap-8" aria-label="Social Links">
-          {SOCIAL_CHANNELS.map((ch) => (
-            <a
-              key={ch.name}
-              href={ch.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-mono text-[10px] font-bold tracking-[0.2em] uppercase text-white hover:text-[#0A0A0A] transition-colors"
-              data-magnetic
-            >
-              {ch.name}
-            </a>
-          ))}
-        </nav>
+        {/* Right: Minimalist Social Channels & Admin Portal Link */}
+        <div className="flex flex-col sm:flex-row items-center gap-6">
+          <nav className="flex flex-wrap items-center justify-center gap-6 sm:gap-8" aria-label="Social Links">
+            {SOCIAL_CHANNELS.map((ch) => (
+              <a
+                key={ch.name}
+                href={ch.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-mono text-[10px] font-bold tracking-[0.2em] uppercase text-white hover:text-[#0A0A0A] transition-colors"
+                data-magnetic
+              >
+                {ch.name}
+              </a>
+            ))}
+          </nav>
+
+          <a
+            href="/admin"
+            className="px-2.5 py-1 rounded border border-white/20 hover:border-white text-[9px] font-mono tracking-widest text-white/70 hover:text-white uppercase transition-colors"
+            title="Manage Certificates, Experiences, and Journey in PostgreSQL"
+          >
+            ADMIN [CRUD]
+          </a>
+        </div>
 
       </div>
     </section>
