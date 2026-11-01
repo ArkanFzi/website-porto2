@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { usePortfolioMode } from "@/context/PortfolioModeContext";
 import { useBabAktif } from "@/components/SmoothScrollProvider";
+import KontrolPutaran from "@/components/UI/KontrolPutaran";
 import { ArrowUpRight, Cpu, Sparkles, FileText, Activity, Volume2, VolumeX, Terminal, Layers } from "lucide-react";
 
 interface FrameProps {
@@ -145,6 +146,10 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ onChapterClick }) => {
 
         {/* Top-Right: Action Group (Controls, Curated Dossier PDF + Initiate Contact) */}
         <div className="flex items-center gap-1.5 sm:gap-2.5">
+          {/* Padanan keyboard untuk seret-putar kartu: kontrolnya di DOM, sudutnya di
+              modul yang sama dengan gesture pointer. */}
+          <KontrolPutaran borderColor={borderColor} textColor={textColor} chipBg={chipBg} />
+
           {/* Shell / CLI Modal Trigger (Cmd+K) */}
           <button
             onClick={() => setTerminalOpen(!terminalOpen)}

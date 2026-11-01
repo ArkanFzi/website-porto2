@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import audioEngine from "@/lib/audioEngine";
+import { bacaTarget, laporKotakKartu } from "@/lib/putaran";
 import type { PortfolioMode } from "@/context/PortfolioModeContext";
 import { buatUniformPanggung, RASIO_POTRET } from "./chiaroscuroMaterial";
 import { sikap, type Sikap } from "./koreografi";
@@ -31,6 +32,10 @@ export interface PembacaanPanggung {
   skala: number;
   mask: [number, number, number, number];
   portal: [number, number, number, number];
+  /** Rotasi yang DIPERINTAHKAN pengunjung, terpisah dari sikap koreografi:
+   *  [terpasangX, terpasangY, targetX, targetY] radian. Verifier interaksi membacanya
+   *  karena rotY total juga mengandung parallax pointer. */
+  putar: [number, number, number, number];
 }
 
 const bundar = (n: number) => Math.round(n * 1e4) / 1e4;
@@ -40,7 +45,8 @@ const tulisPanggungDebug = (
   mask: THREE.Vector4,
   p: number,
   k: Sikap,
-  kotak: PortalKotak
+  kotak: PortalKotak,
+  putar: [number, number, number, number]
 ) => {
   const jendela = window as unknown as { __panggung?: PembacaanPanggung };
   jendela.__panggung = {
@@ -57,6 +63,7 @@ const tulisPanggungDebug = (
     skala: bundar(mesh.scale.x),
     mask: [bundar(mask.x), bundar(mask.y), bundar(mask.z), bundar(mask.w)],
     portal: [bundar(kotak.kiri), bundar(kotak.atas), bundar(kotak.lebar), bundar(kotak.tinggi)],
+    putar: putar.map(bundar) as [number, number, number, number],
   };
 };
 
@@ -72,7 +79,7 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
   const { scrollProgressRef, scrollVelocityRef, hoveredProject, mode, wireframe } = props;
   const meshRef = useRef<THREE.Mesh>(null);
   const materialRef = useRef<THREE.ShaderMaterial>(null);
-  const { viewport, size, camera } = useThree();
+  const { viewport, size, camera, invalidate } = useThree();
   const portal = usePortalRegistry();
   const uniforms = useMemo(() => buatUniformPanggung(texture), [texture]);
 
@@ -87,6 +94,12 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
   });
   const prevMode = useRef(mode);
   const tiltImpulse = useRef(0);
+  /** Rotasi hasil easing menuju sudut yang diperintahkan pengunjung (seret/panah). */
+  const pusing = useRef({ x: 0, y: 0 });
+  /** Sikap yaw/pitch hasil koreografi SEBELUM rotasi pengunjung. Ditulis terpisah karena
+   *  lerp di bawah membaca nilai terakhir mesh: bila offset putaran ikut tertinggal di
+   *  mesh.rotation, ia terakumulasi lintas frame (terukur 12x dari perintahnya). */
+  const dasar = useRef({ rotY: 0, rotX: 0 });
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -185,9 +198,29 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
     meshRef.current.position.x = THREE.MathUtils.lerp(meshRef.current.position.x, targetX, 0.08);
     meshRef.current.position.y = THREE.MathUtils.lerp(meshRef.current.position.y, targetY, 0.08);
     meshRef.current.position.z = THREE.MathUtils.lerp(meshRef.current.position.z, targetZ, 0.08);
-    meshRef.current.rotation.y = THREE.MathUtils.lerp(meshRef.current.rotation.y, targetRotY + impulseRotY, 0.08);
-    meshRef.current.rotation.x = THREE.MathUtils.lerp(meshRef.current.rotation.x, -mouse.current.y * 0.08, 0.08);
+    dasar.current.rotY = THREE.MathUtils.lerp(dasar.current.rotY, targetRotY + impulseRotY, 0.08);
+    dasar.current.rotX = THREE.MathUtils.lerp(dasar.current.rotX, -mouse.current.y * 0.08, 0.08);
     meshRef.current.rotation.z = THREE.MathUtils.lerp(meshRef.current.rotation.z, impulseRotZ, 0.1);
+
+    // Rotasi perintah pengunjung (seret pointer atau panah keyboard) DITUMPUK di atas
+    // koreografi bab, bukan menggantikannya: target nol berarti kartu pulang ke sikap
+    // portal bab itu, dan nilai berapa pun hanya boleh sampai ±12°.
+    const perintah = bacaTarget();
+    pusing.current.x += (perintah.x - pusing.current.x) * 0.15;
+    pusing.current.y += (perintah.y - pusing.current.y) * 0.15;
+    meshRef.current.rotation.y = dasar.current.rotY + pusing.current.x;
+    meshRef.current.rotation.x = dasar.current.rotX + pusing.current.y;
+    // Loop "demand" mati 4 detik setelah halaman diam. Tanpa meminta frame berikut
+    // sendiri, pegas kembali dan langkah panah berhenti di tengah jalan.
+    if (
+      Math.abs(perintah.x - pusing.current.x) > 1e-4 ||
+      Math.abs(perintah.y - pusing.current.y) > 1e-4
+    )
+      invalidate();
+
+    // Mesin kartu yang tahu di mana kartu duduk, jadi modul seret tidak perlu menebak
+    // tata letak: seret hanya diterima di atas kartu dan tepi 40px-nya.
+    laporKotakKartu(kotak);
 
     // Proyeksikan pointer ke bidang kartu SETELAH transform frame ini dipakai, supaya
     // cahaya benar-benar jatuh di bawah kursor meski kartu bergeser/miring.
@@ -206,7 +239,12 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
     // Salinan sikap kartu untuk verifier (docs/verify/panggung-probe.mjs). Hanya hidup
     // di development; produksi tidak menulis apa pun ke window.
     if (process.env.NODE_ENV !== "production") {
-      tulisPanggungDebug(mesh, mat.uniforms.uMask.value, p, k, kotak);
+      tulisPanggungDebug(mesh, mat.uniforms.uMask.value, p, k, kotak, [
+        pusing.current.x,
+        pusing.current.y,
+        perintah.x,
+        perintah.y,
+      ]);
     }
   });
 
