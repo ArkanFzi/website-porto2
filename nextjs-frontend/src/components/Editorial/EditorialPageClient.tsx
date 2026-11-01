@@ -6,6 +6,8 @@ import { SmoothScrollProvider, useScrollData } from "@/components/SmoothScrollPr
 import EditorialPreloader from "@/components/UI/EditorialPreloader";
 import RingDotCursor from "@/components/UI/RingDotCursor";
 import MinimalFixedFrame from "@/components/UI/MinimalFixedFrame";
+import TelemetryDrawer from "@/components/UI/TelemetryDrawer";
+import TerminalModal from "@/components/UI/TerminalModal";
 import ChapterPrologue from "./ChapterPrologue";
 import ChapterDuality from "./ChapterDuality";
 import ChapterArchives from "./ChapterArchives";
@@ -41,6 +43,10 @@ const EditorialInner: React.FC<PageClientProps> = ({ repos, perjalanan }) => {
         currentChapter={currentChapter}
         onChapterClick={scrollToChapter}
       />
+
+      {/* ── Pit-Wall Telemetry HUD Drawer & Interactive CLI Shell ── */}
+      <TelemetryDrawer />
+      <TerminalModal />
 
       {/* ── Ring-and-Dot Magnetic Cursor ── */}
       <RingDotCursor />

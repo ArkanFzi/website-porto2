@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { usePortfolioMode } from "@/context/PortfolioModeContext";
-import { ArrowUpRight, Cpu, Sparkles, FileText, Activity } from "lucide-react";
+import { ArrowUpRight, Cpu, Sparkles, FileText, Activity, Volume2, VolumeX, Terminal, Layers } from "lucide-react";
 
 interface FrameProps {
   currentChapter: number; // 1 to 4
@@ -26,7 +26,18 @@ const CHAPTER_LABELS = [
 ];
 
 export const MinimalFixedFrame: React.FC<FrameProps> = ({ currentChapter, onChapterClick }) => {
-  const { mode, setMode } = usePortfolioMode();
+  const {
+    mode,
+    setMode,
+    wireframe,
+    toggleWireframe,
+    telemetryOpen,
+    setTelemetryOpen,
+    terminalOpen,
+    setTerminalOpen,
+    audioMuted,
+    toggleAudio,
+  } = usePortfolioMode();
   const [telemetry, setTelemetry] = useState<TelemetryData | null>(null);
 
   useEffect(() => {
@@ -133,14 +144,58 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ currentChapter, onChap
           </button>
         </div>
 
-        {/* Top-Right: Action Group (Curated Dossier PDF + Initiate Contact) */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        {/* Top-Right: Action Group (Controls, Curated Dossier PDF + Initiate Contact) */}
+        <div className="flex items-center gap-1.5 sm:gap-2.5">
+          {/* Shell / CLI Modal Trigger (Cmd+K) */}
+          <button
+            onClick={() => setTerminalOpen(!terminalOpen)}
+            className={`hidden lg:flex items-center gap-1 px-2.5 py-1.5 rounded-full border ${borderColor} backdrop-blur-md ${
+              terminalOpen ? activePillBg : isRossoSection ? "bg-black/20 text-white" : "bg-white/5 hover:border-[#D41E12]"
+            } transition-all duration-300 cursor-pointer text-[9px] font-mono tracking-wider`}
+            data-magnetic
+            title="Open Interactive Engineer CLI (Press Cmd+K or ~)"
+          >
+            <Terminal className="w-3 h-3 text-[#D41E12]" />
+            <span className={textColor}>CLI</span>
+            <kbd className="px-1 py-0.2 bg-black/20 rounded text-[8px] text-[#6E6A64]">⌘K</kbd>
+          </button>
+
+          {/* 3D Wireframe / Shader Inspector Toggle */}
+          <button
+            onClick={toggleWireframe}
+            className={`hidden md:flex items-center gap-1 px-2.5 py-1.5 rounded-full border ${borderColor} backdrop-blur-md ${
+              wireframe ? activePillBg : isRossoSection ? "bg-black/20 text-white" : "bg-white/5 hover:border-[#D41E12]"
+            } transition-all duration-300 cursor-pointer text-[9px] font-mono tracking-wider`}
+            data-magnetic
+            title="Toggle 3D Monolith GPU Wireframe Overlay"
+          >
+            <Layers className="w-3 h-3 text-[#D41E12]" />
+            <span className={textColor}>{wireframe ? "MESH: WIRE" : "MESH: SOLID"}</span>
+          </button>
+
+          {/* Procedural Web Audio Engine Toggle */}
+          <button
+            onClick={toggleAudio}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full border ${borderColor} backdrop-blur-md ${
+              !audioMuted ? activePillBg : isRossoSection ? "bg-black/20 text-white" : "bg-white/5 hover:border-[#D41E12]"
+            } transition-all duration-300 cursor-pointer text-[9px] font-mono tracking-wider`}
+            data-magnetic
+            title={audioMuted ? "Activate Procedural F1 Web Audio Synthesizer" : "Mute Audio Engine"}
+          >
+            {!audioMuted ? (
+              <Volume2 className="w-3 h-3 text-[#D41E12] animate-pulse" />
+            ) : (
+              <VolumeX className="w-3 h-3 text-[#6E6A64]" />
+            )}
+            <span className={textColor}>{!audioMuted ? "SFX: ON" : "SFX: OFF"}</span>
+          </button>
+
           {/* Dossier PDF Trigger via /api/cv */}
           <a
             href="/api/cv"
             target="_blank"
             rel="noopener noreferrer"
-            className={`hidden md:flex items-center gap-1.5 px-3.5 py-2 rounded-full border ${borderColor} backdrop-blur-md ${
+            className={`hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full border ${borderColor} backdrop-blur-md ${
               isRossoSection
                 ? "bg-black/20 hover:bg-white hover:text-[#D41E12]"
                 : "bg-white/5 hover:border-[#D41E12]"
@@ -152,14 +207,14 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ currentChapter, onChap
             <span className={`font-mono text-[9px] font-bold tracking-[0.18em] uppercase ${textColor} ${
               isRossoSection ? "group-hover:text-[#D41E12]" : "group-hover:text-[#D41E12]"
             } transition-colors`}>
-              DOSSIER SPEC [PDF]
+              DOSSIER [PDF]
             </span>
           </a>
 
           {/* Magnetic Button "INITIATE CONTACT" */}
           <button
             onClick={() => onChapterClick(4)}
-            className={`group flex items-center gap-2 px-4 py-2 rounded-full border ${borderColor} backdrop-blur-md ${
+            className={`group flex items-center gap-2 px-3.5 py-1.5 rounded-full border ${borderColor} backdrop-blur-md ${
               isRossoSection
                 ? "bg-black/20 hover:bg-white hover:text-[#D41E12]"
                 : "bg-white/5 hover:border-[#D41E12]"
@@ -169,7 +224,7 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ currentChapter, onChap
             <span className={`font-mono text-[10px] font-bold tracking-[0.2em] uppercase ${textColor} ${
               isRossoSection ? "group-hover:text-[#D41E12]" : "group-hover:text-[#D41E12]"
             } transition-colors`}>
-              INITIATE CONTACT
+              CONTACT
             </span>
             <ArrowUpRight className={`w-3.5 h-3.5 ${accentColor} group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform`} />
           </button>
@@ -190,22 +245,33 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ currentChapter, onChap
           </span>
         </div>
 
-        {/* Bottom-Center: Live F1 Pit-Wall Telemetry Bar */}
-        <div className={`hidden lg:flex items-center gap-2 px-3 py-1 rounded-full border ${
-          isRossoSection ? "border-white/20 bg-black/20" : "border-current/10 bg-white/[0.02]"
-        } backdrop-blur-md`}>
+        {/* Bottom-Center: Live F1 Pit-Wall Telemetry Bar (Clickable Trigger for Telemetry HUD) */}
+        <button
+          onClick={() => setTelemetryOpen(!telemetryOpen)}
+          className={`hidden lg:flex items-center gap-2 px-3 py-1 rounded-full border ${
+            telemetryOpen
+              ? activePillBg
+              : isRossoSection
+              ? "border-white/20 bg-black/20 hover:border-white"
+              : "border-current/10 bg-white/[0.02] hover:border-[#D41E12]"
+          } backdrop-blur-md transition-all duration-300 cursor-pointer`}
+          data-magnetic
+          title="Click to open Pit-Wall Telemetry HUD"
+        >
           <Activity className={`w-3 h-3 ${accentColor} animate-pulse`} />
           {mode === "engineer" ? (
             <span className={`font-mono text-[9px] tracking-[0.18em] uppercase ${subColor}`}>
               <span className={`${accentColor} font-bold`}>● LIVE TELEMETRY:</span>{" "}
-              {telemetry ? `${telemetry.edgeNode} • ${telemetry.latencyMs}ms • ${telemetry.heapMb}MB HEAP • ${telemetry.sla}` : "MONACO-01 • <15ms • 99.98% SLA"}
+              {telemetry ? `${telemetry.edgeNode} • ${telemetry.latencyMs}ms • ${telemetry.heapMb}MB HEAP • ${telemetry.sla}` : "MONACO-01 • <15ms • 99.98% SLA"}{" "}
+              <span className="text-[#D41E12] font-mono text-[8px] ml-1">[HUD ⇡]</span>
             </span>
           ) : (
             <span className={`font-mono text-[9px] tracking-[0.18em] uppercase ${subColor}`}>
-              <span className={`${accentColor} font-bold`}>✦ SPATIAL CRAFT:</span> GLSL LUMINANCE DISPLACEMENT • 60FPS ATELIER
+              <span className={`${accentColor} font-bold`}>✦ SPATIAL CRAFT:</span> GLSL LUMINANCE DISPLACEMENT • 60FPS ATELIER{" "}
+              <span className="text-[#D41E12] font-mono text-[8px] ml-1">[HUD ⇡]</span>
             </span>
           )}
-        </div>
+        </button>
 
         {/* Bottom-Right: Geographic & Telemetry Metadata */}
         <div className="hidden sm:flex flex-col items-end">

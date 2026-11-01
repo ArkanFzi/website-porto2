@@ -5,6 +5,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useTexture } from "@react-three/drei";
 import * as THREE from "three";
 import { usePortfolioMode } from "@/context/PortfolioModeContext";
+import audioEngine from "@/lib/audioEngine";
 
 interface MonolithProps {
   scrollProgress: number; // 0 to 1 from Lenis
@@ -58,6 +59,7 @@ const fragmentShader = /* glsl */ `
   uniform float uScroll;  // 0.0 to 1.0
   uniform float uHover;
   uniform float uHoverIndex;
+  uniform float uWireframe;
 
   varying vec2 vUv;
   varying vec3 vNormal;
@@ -122,6 +124,17 @@ const fragmentShader = /* glsl */ `
       finalColor = mix(finalColor, duotone * 1.1, ch4Factor * 0.85);
     }
 
+    // ── GPU WIREFRAME INSPECTOR OVERLAY ──
+    if (uWireframe > 0.001) {
+      vec2 grid = abs(fract(uv * 42.0 - 0.5) - 0.5) / (fwidth(uv * 42.0) + 0.0001);
+      float line = min(grid.x, grid.y);
+      float wire = 1.0 - min(line, 1.0);
+      vec3 wireColor = vec3(0.831, 0.117, 0.07);
+      vec3 chassisBacking = vec3(0.04, 0.04, 0.05);
+      vec3 wireRender = mix(chassisBacking, wireColor * 1.6, wire);
+      finalColor = mix(finalColor, wireRender, uWireframe * 0.92);
+    }
+
     // ── CLEAN RECTANGULAR MONOLITH FRAMING (RESTRAINED & NATURAL) ──
     vec2 cardUv = abs(uv - 0.5) * 2.0; // from 0.0 (center) to 1.0 (border)
     vec2 cornerDist = max(cardUv - vec2(0.91, 0.95), 0.0);
@@ -146,7 +159,7 @@ export const ChiaroscuroMonolith: React.FC<MonolithProps> = ({
 }) => {
   const meshRef = useRef<THREE.Mesh>(null);
   const materialRef = useRef<THREE.ShaderMaterial>(null);
-  const { mode } = usePortfolioMode();
+  const { mode, wireframe } = usePortfolioMode();
   const { viewport } = useThree();
 
   // Load real portrait texture from /FotoDiriFix.webp (1200x2150)
@@ -183,6 +196,7 @@ export const ChiaroscuroMonolith: React.FC<MonolithProps> = ({
       uScroll: { value: 0.0 },
       uHover: { value: 0 },
       uHoverIndex: { value: 0 },
+      uWireframe: { value: 0.0 },
     }),
     [texture]
   );
@@ -206,6 +220,13 @@ export const ChiaroscuroMonolith: React.FC<MonolithProps> = ({
     // Smooth lerp for uPersona (0.0 for engineer, 1.0 for creator)
     const targetPersona = mode === "engineer" ? 0.0 : 1.0;
     mat.uniforms.uPersona.value = THREE.MathUtils.lerp(mat.uniforms.uPersona.value, targetPersona, 0.08);
+
+    // Smooth lerp for uWireframe
+    const targetWireframe = wireframe ? 1.0 : 0.0;
+    mat.uniforms.uWireframe.value = THREE.MathUtils.lerp(mat.uniforms.uWireframe.value, targetWireframe, 0.12);
+
+    // Audio Engine scroll velocity rev
+    audioEngine.updateScrollVelocity(scrollVelocity);
 
     // Hover state interpolation
     const targetHover = hoveredProject !== null ? 1.0 : 0.0;

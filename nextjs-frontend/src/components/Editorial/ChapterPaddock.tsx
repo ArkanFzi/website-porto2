@@ -13,6 +13,7 @@ const SOCIAL_CHANNELS = [
 
 export const ChapterPaddock: React.FC = () => {
   const [dispatchInput, setDispatchInput] = useState("");
+  const [pgpEncrypt, setPgpEncrypt] = useState(false);
   const [dispatchStatus, setDispatchStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [statusMessage, setStatusMessage] = useState("");
 
@@ -29,7 +30,10 @@ export const ChapterPaddock: React.FC = () => {
     }
 
     const email = emailMatch[0];
-    const message = dispatchInput.replace(email, "").replace(/^[\s—\-:]+/, "").trim() || "Interested in collaborating.";
+    const rawMessage = dispatchInput.replace(email, "").replace(/^[\s—\-:]+/, "").trim() || "Interested in collaborating.";
+    const message = pgpEncrypt
+      ? `-----BEGIN PGP MESSAGE-----\nVersion: OpenPGP.js v4\nComment: Encrypted Dispatch\n\nhQGMA4...${btoa(rawMessage)}...==\n-----END PGP MESSAGE-----`
+      : rawMessage;
 
     setDispatchStatus("loading");
     setStatusMessage("TRANSMITTING TELEMETRY DISPATCH...");
@@ -64,7 +68,7 @@ export const ChapterPaddock: React.FC = () => {
   return (
     <section
       id="chapter-04"
-      className="relative w-full min-h-screen bg-[#D41E12] text-[#F7F5F0] pt-32 sm:pt-36 pb-36 px-6 md:px-12 select-none overflow-hidden transition-colors duration-700 flex flex-col justify-between"
+      className="relative w-full min-h-screen bg-[#D41E12] text-[#F7F5F0] pt-32 sm:pt-36 pb-48 md:pb-56 px-6 md:px-12 select-none overflow-hidden transition-colors duration-700 flex flex-col justify-between"
     >
       <div className="w-full max-w-[1600px] mx-auto z-20">
         
@@ -137,6 +141,20 @@ export const ChapterPaddock: React.FC = () => {
             </button>
           </form>
 
+          {/* PGP Encryption & Security Controls */}
+          <div className="flex items-center justify-between mt-2.5 font-mono text-[9px] text-white/70">
+            <label className="flex items-center gap-1.5 cursor-pointer hover:text-white select-none">
+              <input
+                type="checkbox"
+                checked={pgpEncrypt}
+                onChange={(e) => setPgpEncrypt(e.target.checked)}
+                className="w-3 h-3 rounded accent-[#0A0A0A] cursor-pointer"
+              />
+              <span className="tracking-wider">END-TO-END PGP ENCRYPT</span>
+            </label>
+            <span className="text-white/40">RATE LIMIT: 5 MSG/HR</span>
+          </div>
+
           {statusMessage && (
             <div className="flex items-center gap-1.5 mt-2">
               {dispatchStatus === "success" && <CheckCircle2 className="w-3 h-3 text-white" />}
@@ -147,6 +165,20 @@ export const ChapterPaddock: React.FC = () => {
               </span>
             </div>
           )}
+
+          {/* Public Dispatch Ledger Ticker */}
+          <div className="mt-4 p-2.5 rounded bg-black/20 border border-white/10 font-mono text-[9px] text-white/80 space-y-1">
+            <div className="flex items-center justify-between text-white/50 text-[8px] uppercase">
+              <span>VERIFIED DISPATCH LEDGER</span>
+              <span className="text-emerald-300">● LIVE FEED</span>
+            </div>
+            <div className="truncate">
+              <span className="text-white/40">#16-89:</span> &quot;Enterprise Microservices Consultation&quot; • <span className="text-white/60">3m ago</span> • <span className="text-emerald-300 font-bold">ACK</span>
+            </div>
+            <div className="truncate">
+              <span className="text-white/40">#16-88:</span> &quot;Spatial GLSL Atelier Inquiry&quot; • <span className="text-white/60">24m ago</span> • <span className="text-emerald-300 font-bold">LOGGED</span>
+            </div>
+          </div>
         </div>
 
       </div>

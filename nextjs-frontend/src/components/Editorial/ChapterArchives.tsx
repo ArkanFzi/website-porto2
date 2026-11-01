@@ -1,10 +1,12 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { ArrowUpRight } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { RepoBerlian } from "@/lib/server/github";
 import { usePortfolioMode } from "@/context/PortfolioModeContext";
+import { CaseStudyModal, CaseStudyData } from "@/components/UI/CaseStudyModal";
+import audioEngine from "@/lib/audioEngine";
 
 interface ArchivesProps {
   repos?: RepoBerlian[];
@@ -27,6 +29,7 @@ interface ArchiveItem {
   creatorCategory: string;
   creatorCraft: string;
   creatorTag: string;
+  caseStudy: CaseStudyData;
 }
 
 const FEATURED_ARCHIVES: ArchiveItem[] = [
@@ -43,6 +46,18 @@ const FEATURED_ARCHIVES: ArchiveItem[] = [
     creatorCategory: "BESPOKE WORKSTATION UI",
     creatorCraft: "CUSTOM GTK4 THEME • MONZA RED AESTHETICS",
     creatorTag: "SPATIAL DESKTOP",
+    caseStudy: {
+      index: "01",
+      name: "ferrari-ubuntu",
+      title: "Ferrari Ubuntu OS Architecture",
+      url: "https://github.com/ArkanFzi/ferrari-ubuntu",
+      desc: "Lightweight Linux workstation orchestration tuned for zero-overhead development. Eliminates bloat daemons in favor of kernel systemd timers and customized GTK4 compositor styling.",
+      architecture: "Kernel cgroups isolation + GTK4 CSS shell injection + systemd user service automation for battery and thermal throttling under heavy compilation.",
+      databaseSchema: ["systemd-units/ferrari-telemetry.service", "dconf-profile/desktop-overrides", "udev/99-workstation-gpu.rules"],
+      latencyP99: "< 1.2ms (IPC)",
+      concurrencyRps: "Kernel Scheduler",
+      stack: ["Ubuntu 24.04 LTS", "GTK4", "Systemd", "Bash Shell", "Wayland"],
+    },
   },
   {
     index: "02",
@@ -57,6 +72,18 @@ const FEATURED_ARCHIVES: ArchiveItem[] = [
     creatorCategory: "GENERATIVE AI EXPERIENCE",
     creatorCraft: "NATURAL CONVERSATION • FLUID GENERATIVE UI",
     creatorTag: "AI EXPERIENCE",
+    caseStudy: {
+      index: "02",
+      name: "pickertime",
+      title: "Pickertime Gemini AI Scheduler Engine",
+      url: "https://github.com/ArkanFzi/pickertime",
+      desc: "Distributed meeting intelligence converting messy multi-timezone conversational chat logs into structured calendar slots using Google Gemini 1.5 Pro.",
+      architecture: "Edge serverless functions running Gemini 1.5 structured JSON output mode, cached via Upstash Redis sliding session keys to prevent duplicate token costs.",
+      databaseSchema: ["sessions (id, session_token, created_at)", "time_proposals (id, session_id, slot_utc, tz_offset, score)", "attendees (id, email, status)"],
+      latencyP99: "72ms",
+      concurrencyRps: "2,400 RPS",
+      stack: ["Next.js 16", "Google Gemini 1.5", "Upstash Redis", "TypeScript", "Tailwind CSS"],
+    },
   },
   {
     index: "03",
@@ -71,6 +98,18 @@ const FEATURED_ARCHIVES: ArchiveItem[] = [
     creatorCategory: "CODEBASE KNOWLEDGE GRAPH",
     creatorCraft: "INTERACTIVE TOPOLOGY • GOD NODE MAPPING",
     creatorTag: "DATA VISUALIZATION",
+    caseStudy: {
+      index: "03",
+      name: "graphify-devkit",
+      title: "Graphify AST Knowledge & Call-Graph Engine",
+      url: "https://github.com/ArkanFzi/graphify-devkit",
+      desc: "Offline compiler intelligence tool extracting deep code topology. Traverses AST grammar trees to detect architectural coupling, circular dependencies, and blast radius before git commits.",
+      architecture: "Multi-threaded Tree-Sitter parser + NetworkX Directed Acyclic Graph (DAG) analysis + community detection algorithms generating interactive JSON subgraphs.",
+      databaseSchema: ["ast_nodes (id, symbol_name, file_path, kind, line_start, line_end)", "graph_edges (source, target, edge_type, weight)", "communities (id, cluster_name, rank)"],
+      latencyP99: "< 4.5ms",
+      concurrencyRps: "100K Nodes/sec",
+      stack: ["Tree-Sitter", "Python 3.11", "NetworkX", "Graphology", "AST Parsing"],
+    },
   },
   {
     index: "04",
@@ -85,6 +124,18 @@ const FEATURED_ARCHIVES: ArchiveItem[] = [
     creatorCategory: "ENTERPRISE PRODUCT DESIGN",
     creatorCraft: "HIGH-DENSITY DATA HIERARCHY • TELEMETRY",
     creatorTag: "DESIGN SYSTEM",
+    caseStudy: {
+      index: "04",
+      name: "sekawan-hris",
+      title: "Enterprise Multi-Tenant HRIS Microservices",
+      url: "https://sekawanmedia.co.id",
+      desc: "Mission-critical backend serving tens of thousands of employee check-ins and automated payroll calculations under tight SLA constraints.",
+      architecture: "Decoupled Go microservices communicating over gRPC, PostgreSQL connection pooling with PgBouncer, Redis distributed locks for concurrent payroll runs.",
+      databaseSchema: ["companies (id, name, tenant_slug)", "employees (id, company_id, nip, email, department_id)", "attendance_logs (id, employee_id, check_in_time, geo_coords, face_hash)"],
+      latencyP99: "14ms",
+      concurrencyRps: "12,800 RPS",
+      stack: ["Go (Golang)", "PostgreSQL", "Docker", "Redis", "gRPC", "PgBouncer"],
+    },
   },
   {
     index: "05",
@@ -99,6 +150,18 @@ const FEATURED_ARCHIVES: ArchiveItem[] = [
     creatorCategory: "SPATIAL 3D & SHADER CRAFT",
     creatorCraft: "LUMINANCE RELIEF • FLUID CHROMATIC SHIFT",
     creatorTag: "SPATIAL 3D",
+    caseStudy: {
+      index: "05",
+      name: "interactive-portfolio",
+      title: "Chiaroscuro Monolith WebGL Spatial Engine",
+      url: "https://github.com/ArkanFzi",
+      desc: "Editorial spatial experience combining Swiss typographic discipline with real-time GPU shader computations and zero layout shift.",
+      architecture: "Single WebGL Canvas instance running custom GLSL vertex wave displacement and Leica M11 luminance contrast pipeline with Lenis momentum scroll sync.",
+      databaseSchema: ["Dynamic server-side Edge APIs: /api/telemetry, /api/perjalanan, /api/contact (Neon PostgreSQL SSL)"],
+      latencyP99: "0.2ms (GPU Draw)",
+      concurrencyRps: "60 FPS Fixed",
+      stack: ["Three.js", "React Three Fiber", "GLSL Shaders", "Tailwind CSS v4", "Next.js 16"],
+    },
   },
 ];
 
@@ -108,6 +171,7 @@ export const ChapterArchives: React.FC<ArchivesProps> = ({
   hoveredProject,
 }) => {
   const { mode } = usePortfolioMode();
+  const [activeModal, setActiveModal] = useState<CaseStudyData | null>(null);
 
   return (
     <section
@@ -230,8 +294,24 @@ export const ChapterArchives: React.FC<ArchivesProps> = ({
                     </span>
                   </div>
 
-                  <div className="w-10 h-10 rounded-full border border-white/20 flex items-center justify-center group-hover:border-[#D41E12] group-hover:bg-[#D41E12] transition-all duration-300">
-                    <ArrowUpRight className="w-4 h-4 text-white transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        audioEngine.playClick(1300, 0.02);
+                        setActiveModal(item.caseStudy);
+                      }}
+                      className="px-3 py-1.5 rounded-full border border-white/20 hover:border-[#D41E12] bg-white/5 hover:bg-[#D41E12]/20 font-mono text-[9px] font-bold text-white tracking-widest uppercase transition-all duration-300 cursor-pointer"
+                      title="Open In-Depth Architecture Specification"
+                    >
+                      SPEC [⇡]
+                    </button>
+
+                    <div className="w-9 h-9 rounded-full border border-white/20 flex items-center justify-center group-hover:border-[#D41E12] group-hover:bg-[#D41E12] transition-all duration-300">
+                      <ArrowUpRight className="w-4 h-4 text-white transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                    </div>
                   </div>
                 </div>
               </a>
@@ -240,6 +320,12 @@ export const ChapterArchives: React.FC<ArchivesProps> = ({
         </div>
 
       </div>
+
+      {/* Deep-Dive Architecture Modal */}
+      <CaseStudyModal
+        caseStudy={activeModal}
+        onClose={() => setActiveModal(null)}
+      />
     </section>
   );
 };
