@@ -99,8 +99,8 @@ const CREATOR_PHASES: CareerPhase[] = [
     title: "Ferrari Ubuntu & Workstation Craft",
     org: "GITHUB OPEN SOURCE",
     year: "2026",
-    summary: "Conceived and engineered ferrari-ubuntu: an aerodynamic desktop environment with custom GTK4 styling, Rosso Corsa accents, and tactile spatial window management for focused craft.",
-    specs: ["GTK4 / WAYLAND", "MONZA RED AESTHETICS", "SPATIAL INTERACTION", "DARK LUXURY"],
+    summary: "Conceived and engineered ferrari-ubuntu: six GNOME Shell 46 extensions plus shell CSS, dconf and GDM overrides that restyle the Ubuntu desktop in Rosso Corsa — rev-light cluster, telemetry island and a start-light login gantry.",
+    specs: ["GJS / GNOME SHELL 46", "MONZA RED AESTHETICS", "SPATIAL INTERACTION", "DARK LUXURY"],
     link: "https://github.com/ArkanFzi",
   },
 ];
