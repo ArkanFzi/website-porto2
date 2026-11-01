@@ -76,45 +76,41 @@ const fragmentShader = /* glsl */ `
     float b = texture2D(uTexture, uv - dir * aberration).b;
     vec3 baseColor = vec3(r, g, b);
 
-    // Precision Leica Monochrom luminance calculation
+    // Precision Leica Monochrom luminance calculation (Clean, natural black-and-white base)
     float lum = dot(baseColor, vec3(0.299, 0.587, 0.114));
-    float contrastLum = smoothstep(0.03, 0.95, lum);
+    float contrastLum = smoothstep(0.04, 0.94, lum);
     vec3 monoBase = vec3(contrastLum);
 
-    // ── SCUDERIA ROSSO ACCENTS (MERAH SCUDERIA) ──
-    // 1. Precision Red contour bands tracing chiaroscuro relief
-    float contourBand = abs(fract(lum * 13.0 - uTime * 0.04) - 0.5);
-    float laserContour = smoothstep(0.09, 0.02, contourBand);
-    vec3 rossoLaser = vec3(0.831, 0.117, 0.07) * laserContour * (1.1 - contrastLum * 0.5);
+    // ── NATURAL SCUDERIA RED ACCENTS (HALUS, ELEGAN, TIDAK MENOR) ──
+    // 1. Subtle studio rim backlight on the outer silhouette/shoulders only
+    float distCenter = length(uv - vec2(0.5));
+    float rimLight = pow(distCenter * 1.4, 2.8);
+    // Soft red rim accent only on outer edge (intensity 0.26)
+    vec3 rossoRim = vec3(0.831, 0.117, 0.07) * rimLight * 0.26;
 
-    // 2. Interactive Cursor Reactive Red Lighting
+    // 2. Faint interactive cursor specular (warm reflection on suit, never flooding face)
     vec2 cursorLightPos = (uMouse * 0.5 + 0.5);
     float cursorDist = distance(uv, cursorLightPos);
-    float cursorGlow = smoothstep(0.65, 0.0, cursorDist);
-    vec3 cursorRed = vec3(1.0, 0.157, 0.0) * cursorGlow * (0.35 + (1.0 - contrastLum) * 0.65);
-
-    // 3. Silhouette Rosso Rim Specular
-    float distCenter = length(uv - vec2(0.5));
-    float rimLight = pow(distCenter * 1.45, 2.2);
-    vec3 rossoRim = vec3(1.0, 0.157, 0.0) * rimLight * 0.55;
+    float cursorGlow = smoothstep(0.45, 0.0, cursorDist);
+    vec3 cursorSpecular = vec3(0.831, 0.117, 0.07) * cursorGlow * 0.14 * (1.0 - contrastLum);
 
     // ── PERSONA 1: THE ENGINEER (uPersona = 0.0) ──
-    // High-contrast monochrome with sharp, vivid Scuderia Rosso laser telemetry
-    vec3 engineerColor = monoBase + rossoLaser * 0.95 + cursorRed * 0.55 + rossoRim * 0.45;
+    // Pristine high-contrast Leica monochrome with refined silhouette rim light
+    vec3 engineerColor = monoBase + rossoRim + cursorSpecular;
 
     // ── PERSONA 2: THE CREATOR (uPersona = 1.0) ──
-    // Warm cinematic halation & expressive Rosso Corsa silk glow
-    vec3 halation = vec3(0.98, 0.16, 0.06) * pow(contrastLum, 2.2) * 0.6;
-    vec3 creatorColor = monoBase + rossoLaser * 0.5 + halation + cursorRed * 0.75 + rossoRim * 0.5;
+    // Natural warmth with subtle silk halation
+    vec3 halation = vec3(0.831, 0.117, 0.07) * pow(contrastLum, 3.0) * 0.18;
+    vec3 creatorColor = monoBase + rossoRim * 1.2 + halation + cursorSpecular * 1.3;
 
     // Smooth blend between personas
     vec3 finalColor = mix(engineerColor, creatorColor, uPersona);
 
     // ── CHAPTER 3 HOVER: PROJECT AURA ──
     if (uHover > 0.01) {
-      float pulse = sin(uTime * 3.0) * 0.5 + 0.5;
-      vec3 projectAura = vec3(0.831, 0.117, 0.07) * pulse * 0.6;
-      finalColor = mix(finalColor, finalColor * vec3(1.15, 0.4, 0.3) + projectAura, uHover * 0.7);
+      float pulse = sin(uTime * 2.5) * 0.5 + 0.5;
+      vec3 projectAura = vec3(0.831, 0.117, 0.07) * pulse * 0.35;
+      finalColor = mix(finalColor, finalColor * vec3(1.08, 0.7, 0.6) + projectAura, uHover * 0.5);
     }
 
     // ── CHAPTER 4 FINALE: SCUDERIA DUOTONE SHIFT ──
@@ -123,18 +119,18 @@ const fragmentShader = /* glsl */ `
       vec3 deepCrimson = vec3(0.48, 0.04, 0.02);
       vec3 brightRosso = vec3(0.90, 0.15, 0.08);
       vec3 duotone = mix(deepCrimson, brightRosso, contrastLum);
-      finalColor = mix(finalColor, duotone * 1.2, ch4Factor * 0.9);
+      finalColor = mix(finalColor, duotone * 1.1, ch4Factor * 0.85);
     }
 
-    // ── CLEAN RECTANGULAR MONOLITH FRAMING (BEBAS BLOB BULAT) ──
+    // ── CLEAN RECTANGULAR MONOLITH FRAMING (RESTRAINED & NATURAL) ──
     vec2 cardUv = abs(uv - 0.5) * 2.0; // from 0.0 (center) to 1.0 (border)
-    vec2 cornerDist = max(cardUv - vec2(0.90, 0.94), 0.0);
+    vec2 cornerDist = max(cardUv - vec2(0.91, 0.95), 0.0);
     float cornerRadius = length(cornerDist);
-    float cardAlpha = 1.0 - smoothstep(0.04, 0.09, cornerRadius);
+    float cardAlpha = 1.0 - smoothstep(0.03, 0.08, cornerRadius);
 
-    // Subtle Scuderia Rosso hairline border glow around monolith card
-    float hairline = smoothstep(0.09, 0.05, cornerRadius) - smoothstep(0.05, 0.02, cornerRadius);
-    finalColor += vec3(0.831, 0.117, 0.07) * hairline * 1.6;
+    // Delicate restrained hairline edge (subtle dark titanium with faint red gleam)
+    float hairline = smoothstep(0.08, 0.05, cornerRadius) - smoothstep(0.05, 0.02, cornerRadius);
+    finalColor += vec3(0.831, 0.117, 0.07) * hairline * 0.35;
 
     // Fade out in Chapter 4
     float alpha = cardAlpha * (1.0 - ch4Factor * 0.85);
