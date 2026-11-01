@@ -229,6 +229,9 @@ export const TerminalModal: React.FC = () => {
             animate={{ scale: 1, y: 0 }}
             exit={{ scale: 0.95, y: 20 }}
             transition={{ type: "spring", damping: 26, stiffness: 320 }}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Shell terminal"
             className="w-full max-w-3xl h-[480px] bg-[#0A0A09] border border-[#D41E12]/40 rounded-xl shadow-[0_0_50px_rgba(212,30,18,0.3)] overflow-hidden flex flex-col font-mono pointer-events-auto"
             onClick={(e) => e.stopPropagation()}
           >

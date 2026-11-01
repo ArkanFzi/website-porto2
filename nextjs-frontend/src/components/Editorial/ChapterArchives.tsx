@@ -157,7 +157,7 @@ const FEATURED_ARCHIVES: ArchiveItem[] = [
       url: "https://github.com/ArkanFzi",
       desc: "Editorial spatial experience combining Swiss typographic discipline with real-time GPU shader computations and zero layout shift.",
       architecture: "Single WebGL Canvas instance running custom GLSL vertex wave displacement and Leica M11 luminance contrast pipeline with Lenis momentum scroll sync.",
-      databaseSchema: ["Dynamic server-side Edge APIs: /api/telemetry, /api/perjalanan, /api/contact (Neon PostgreSQL SSL)"],
+      databaseSchema: ["Dynamic server-side Edge APIs: /api/telemetry, /api/journey, /api/contact (Neon PostgreSQL SSL)"],
       latencyP99: "0.2ms (GPU Draw)",
       concurrencyRps: "60 FPS Fixed",
       stack: ["Three.js", "React Three Fiber", "GLSL Shaders", "Tailwind CSS v4", "Next.js 16"],
@@ -241,13 +241,12 @@ export const ChapterArchives: React.FC<ArchivesProps> = ({
               : item.starsFallback;
 
             return (
-              <a
+              <div
                 key={item.index}
-                href={item.url}
-                target="_blank"
-                rel="noopener noreferrer"
                 onMouseEnter={() => onHoverProject(idx)}
                 onMouseLeave={() => onHoverProject(null)}
+                onFocusCapture={() => onHoverProject(idx)}
+                onBlurCapture={() => onHoverProject(null)}
                 className={`group relative w-full py-8 sm:py-10 border-b border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-6 transition-all duration-300 ${
                   isHovered ? "bg-white/[0.03] pl-4 sm:pl-6" : "pl-0"
                 }`}
@@ -267,7 +266,12 @@ export const ChapterArchives: React.FC<ArchivesProps> = ({
                     /{item.index}
                   </span>
 
-                  <div>
+                  <a
+                    href={item.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block"
+                  >
                     <span className="font-mono text-[9px] tracking-[0.22em] uppercase text-[#6E6A64] block mb-1">
                       {mode === "engineer" ? item.engineerCategory : item.creatorCategory}
                     </span>
@@ -278,7 +282,7 @@ export const ChapterArchives: React.FC<ArchivesProps> = ({
                     >
                       {item.title}
                     </h3>
-                  </div>
+                  </a>
                 </div>
 
                 {/* Right: Mode-driven specs + Live GitHub Data */}
@@ -309,12 +313,18 @@ export const ChapterArchives: React.FC<ArchivesProps> = ({
                       SPEC [⇡]
                     </button>
 
-                    <div className="w-9 h-9 rounded-full border border-white/20 flex items-center justify-center group-hover:border-[#D41E12] group-hover:bg-[#D41E12] transition-all duration-300">
-                      <ArrowUpRight className="w-4 h-4 text-white transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-                    </div>
+                    <a
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={`Open ${item.title} on GitHub`}
+                      className="w-9 h-9 rounded-full border border-white/20 flex items-center justify-center group-hover:border-[#D41E12] group-hover:bg-[#D41E12] transition-all duration-300"
+                    >
+                      <ArrowUpRight aria-hidden="true" className="w-4 h-4 text-white transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                    </a>
                   </div>
                 </div>
-              </a>
+              </div>
             );
           })}
         </div>

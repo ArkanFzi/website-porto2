@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, ArrowUpRight, Database, Cpu } from "lucide-react";
 import audioEngine from "@/lib/audioEngine";
@@ -24,6 +24,15 @@ interface ModalProps {
 }
 
 export const CaseStudyModal: React.FC<ModalProps> = ({ caseStudy, onClose }) => {
+  useEffect(() => {
+    if (!caseStudy) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [caseStudy, onClose]);
+
   if (!caseStudy) return null;
 
   return (
@@ -43,6 +52,9 @@ export const CaseStudyModal: React.FC<ModalProps> = ({ caseStudy, onClose }) => 
           animate={{ scale: 1, y: 0 }}
           exit={{ scale: 0.94, y: 30 }}
           transition={{ type: "spring", damping: 25, stiffness: 320 }}
+          role="dialog"
+          aria-modal="true"
+          aria-label={caseStudy.title}
           className="w-full max-w-3xl bg-[#0B0B0A] border border-[#D41E12]/50 rounded-xl shadow-[0_0_50px_rgba(212,30,18,0.3)] overflow-hidden flex flex-col pointer-events-auto"
           onClick={(e) => e.stopPropagation()}
         >
@@ -55,6 +67,7 @@ export const CaseStudyModal: React.FC<ModalProps> = ({ caseStudy, onClose }) => 
               </span>
             </div>
             <button
+              aria-label="Close specification"
               onClick={() => {
                 audioEngine.playClick(900, 0.02);
                 onClose();
