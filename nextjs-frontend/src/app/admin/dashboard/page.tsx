@@ -77,7 +77,7 @@ export default function DashboardPage() {
     return (
         <div className="space-y-6 max-w-5xl">
             <div className="flex items-center gap-3 border-b border-red-900/30 pb-4">
-                <Mail className="text-accent-primary" size={28} />
+                <Mail className="text-rosso" size={28} />
                 <h1 className="text-3xl font-bold text-white">Inbox</h1>
             </div>
 
@@ -100,12 +100,12 @@ export default function DashboardPage() {
                     {messages.map((msg) => (
                         <div
                             key={msg.id}
-                            className="bg-[#0f0505] border border-red-900/20 rounded-xl p-6 hover:border-accent-primary/50 transition-colors"
+                            className="bg-[#0f0505] border border-red-900/20 rounded-xl p-6 hover:border-rosso/50 transition-colors"
                         >
                             <div className="flex justify-between items-start mb-4">
                                 <div>
                                     <h3 className="text-lg font-bold text-gray-200">{msg.name}</h3>
-                                    <a href={`mailto:${msg.email}`} className="text-accent-primary text-sm hover:underline">
+                                    <a href={`mailto:${msg.email}`} className="text-rosso text-sm hover:underline">
                                         {msg.email}
                                     </a>
                                 </div>

@@ -14,7 +14,7 @@ import SuperCTA from "@/components/Dossier/SuperCTA";
 
 export default function DossierPage() {
     return (
-        <main className="w-full bg-[#111111] min-h-screen text-white font-sans selection:bg-accent-primary/30 overflow-x-hidden">
+        <main className="w-full bg-[#111111] min-h-screen text-white font-sans selection:bg-rosso/30 overflow-x-hidden">
             <div className="fixed top-0 z-[1000] w-full">
                 <Navigation />
             </div>
@@ -62,19 +62,19 @@ export default function DossierPage() {
                     className="relative z-10 grid grid-cols-2 md:grid-cols-4 gap-8 w-full border-t border-white/10 pt-8 mt-16"
                 >
                     <div>
-                        <span className="text-accent-secondary font-mono text-xs block mb-2">/ 01</span>
+                        <span className="text-rosso-rim font-mono text-xs block mb-2">/ 01</span>
                         <h4 className="text-sm font-medium text-white/80">Software Architecture</h4>
                     </div>
                     <div>
-                        <span className="text-accent-secondary font-mono text-xs block mb-2">/ 02</span>
+                        <span className="text-rosso-rim font-mono text-xs block mb-2">/ 02</span>
                         <h4 className="text-sm font-medium text-white/80">Interface Engineering</h4>
                     </div>
                     <div>
-                        <span className="text-accent-secondary font-mono text-xs block mb-2">/ 03</span>
+                        <span className="text-rosso-rim font-mono text-xs block mb-2">/ 03</span>
                         <h4 className="text-sm font-medium text-white/80">Backend System Integration</h4>
                     </div>
                     <div>
-                        <span className="text-accent-secondary font-mono text-xs block mb-2">/ 04</span>
+                        <span className="text-rosso-rim font-mono text-xs block mb-2">/ 04</span>
                         <h4 className="text-sm font-medium text-white/80">Experimental UI/UX</h4>
                     </div>
                 </motion.div>
@@ -124,7 +124,7 @@ export default function DossierPage() {
                         transition={{ duration: 0.8, ease: "easeOut" }}
                         className="max-w-2xl"
                     >
-                        <span className="text-accent-secondary font-bold text-lg mb-6 block">Code Philosophy</span>
+                        <span className="text-rosso-rim font-bold text-lg mb-6 block">Code Philosophy</span>
                         <h2 className="text-title font-bold leading-tight tracking-tight">
                             Shaping Digital Experiences That Mean Something
                         </h2>
@@ -141,7 +141,7 @@ export default function DossierPage() {
                         </p>
                         <div className="flex items-center gap-4">
                             <span className="text-sm text-white/50">Ready to build<br />something together?</span>
-                            <a href="mailto:muhammadarkanfauzi9@gmail.com" className="bg-accent-secondary text-white px-8 py-3 rounded-full text-sm font-bold hover:bg-white hover:text-accent-secondary transition-colors flex items-center gap-2">
+                            <a href="mailto:muhammadarkanfauzi9@gmail.com" className="bg-rosso-rim text-white px-8 py-3 rounded-full text-sm font-bold hover:bg-white hover:text-rosso-rim transition-colors flex items-center gap-2">
                                 Get in Touch <span className="text-xl font-normal leading-none mb-1">→</span>
                             </a>
                         </div>

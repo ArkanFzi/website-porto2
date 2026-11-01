@@ -39,7 +39,7 @@ export default function AdminLayout({
     if (status !== SESI_ADA) {
         return (
             <div className="min-h-screen bg-[#050000] flex items-center justify-center">
-                <div className="w-8 h-8 border-4 border-accent-primary border-t-transparent rounded-full animate-spin"></div>
+                <div className="w-8 h-8 border-4 border-rosso border-t-transparent rounded-full animate-spin"></div>
             </div>
         );
     }

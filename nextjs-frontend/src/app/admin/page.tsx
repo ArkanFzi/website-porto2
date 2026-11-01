@@ -257,7 +257,7 @@ export default function AdminDashboard() {
     if (authLoading) {
         return (
             <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-accent-primary"></div>
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-rosso"></div>
             </div>
         );
     }
@@ -267,7 +267,7 @@ export default function AdminDashboard() {
             <div className="min-h-screen bg-[#0a0a0a] text-white flex items-center justify-center p-6 relative overflow-hidden font-sans">
                 {/* Background embellishments */}
                 <div className="absolute top-0 left-0 w-full h-full pointer-events-none">
-                    <div className="absolute top-[20%] left-[10%] w-[500px] h-[500px] bg-accent-primary/5 rounded-full blur-[120px]"></div>
+                    <div className="absolute top-[20%] left-[10%] w-[500px] h-[500px] bg-rosso/5 rounded-full blur-[120px]"></div>
                     <div className="absolute bottom-[10%] right-[10%] w-[400px] h-[400px] bg-[#2a8a6a]/5 rounded-full blur-[100px]"></div>
                 </div>
 
@@ -277,7 +277,7 @@ export default function AdminDashboard() {
                     className="w-full max-w-md bg-[#111] border border-white/10 rounded-2xl p-8 relative z-10 shadow-2xl backdrop-blur-xl"
                 >
                     <div className="text-center mb-8">
-                        <ShieldCheck className="w-12 h-12 text-accent-primary mx-auto mb-4" />
+                        <ShieldCheck className="w-12 h-12 text-rosso mx-auto mb-4" />
                         <h1 className="text-2xl font-bold tracking-tight">Admin Authorization</h1>
                         <p className="text-white/50 text-sm mt-2">Enter your credentials to access the portfolio dossier controls.</p>
                     </div>
@@ -295,7 +295,7 @@ export default function AdminDashboard() {
                                 type="text"
                                 value={loginForm.username}
                                 onChange={e => setLoginForm({ ...loginForm, username: e.target.value })}
-                                className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-accent-primary transition-colors"
+                                className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-rosso transition-colors"
                                 placeholder="Identifcation"
                             />
                         </div>
@@ -306,11 +306,11 @@ export default function AdminDashboard() {
                                 type="password"
                                 value={loginForm.password}
                                 onChange={e => setLoginForm({ ...loginForm, password: e.target.value })}
-                                className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-accent-primary transition-colors"
+                                className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-rosso transition-colors"
                                 placeholder="Passcode"
                             />
                         </div>
-                        <button type="submit" className="mt-4 bg-accent-primary text-black font-bold py-3.5 rounded-lg hover:bg-white transition-colors flex justify-center items-center gap-2">
+                        <button type="submit" className="mt-4 bg-rosso text-black font-bold py-3.5 rounded-lg hover:bg-white transition-colors flex justify-center items-center gap-2">
                             <Lock className="w-4 h-4" /> Authenticate
                         </button>
 
@@ -336,13 +336,13 @@ export default function AdminDashboard() {
                 <nav className="flex-1 p-4 flex flex-col gap-2">
                     <button
                         onClick={() => setActiveTab("certificates")}
-                        className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium text-sm ${activeTab === "certificates" ? "bg-accent-primary/10 text-accent-primary" : "text-white/50 hover:bg-white/5 hover:text-white"}`}
+                        className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium text-sm ${activeTab === "certificates" ? "bg-rosso/10 text-rosso" : "text-white/50 hover:bg-white/5 hover:text-white"}`}
                     >
                         <Award className="w-4 h-4" /> Certificates
                     </button>
                     <button
                         onClick={() => setActiveTab("experiences")}
-                        className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium text-sm ${activeTab === "experiences" ? "bg-accent-secondary/10 text-accent-secondary" : "text-white/50 hover:bg-white/5 hover:text-white"}`}
+                        className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium text-sm ${activeTab === "experiences" ? "bg-rosso-rim/10 text-rosso-rim" : "text-white/50 hover:bg-white/5 hover:text-white"}`}
                     >
                         <Briefcase className="w-4 h-4" /> Experience
                     </button>
@@ -392,17 +392,17 @@ export default function AdminDashboard() {
                                 <form onSubmit={handleAddCert} className="flex flex-col gap-4">
                                     <div>
                                         <label className="text-xs font-medium text-white/50 mb-1 block">Title</label>
-                                        <input required maxLength={200} value={certForm.title} onChange={e => setCertForm({ ...certForm, title: e.target.value })} type="text" className="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent-primary transition-colors" placeholder="e.g. AWS Certified" />
+                                        <input required maxLength={200} value={certForm.title} onChange={e => setCertForm({ ...certForm, title: e.target.value })} type="text" className="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-rosso transition-colors" placeholder="e.g. AWS Certified" />
                                     </div>
                                     <div>
                                         <label className="text-xs font-medium text-white/50 mb-1 block">Issuer</label>
-                                        <input required maxLength={200} value={certForm.issuer} onChange={e => setCertForm({ ...certForm, issuer: e.target.value })} type="text" className="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent-primary transition-colors" placeholder="e.g. Amazon Web Services" />
+                                        <input required maxLength={200} value={certForm.issuer} onChange={e => setCertForm({ ...certForm, issuer: e.target.value })} type="text" className="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-rosso transition-colors" placeholder="e.g. Amazon Web Services" />
                                     </div>
                                     <div>
                                         <label className="text-xs font-medium text-white/50 mb-1 block">Year/Date</label>
-                                        <input required maxLength={100} value={certForm.date} onChange={e => setCertForm({ ...certForm, date: e.target.value })} type="text" className="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent-primary transition-colors" placeholder="e.g. 2024" />
+                                        <input required maxLength={100} value={certForm.date} onChange={e => setCertForm({ ...certForm, date: e.target.value })} type="text" className="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-rosso transition-colors" placeholder="e.g. 2024" />
                                     </div>
-                                    <button type="submit" className="mt-2 bg-accent-primary text-black font-bold py-3 rounded-lg hover:bg-white transition-colors">Save Certificate</button>
+                                    <button type="submit" className="mt-2 bg-rosso text-black font-bold py-3 rounded-lg hover:bg-white transition-colors">Save Certificate</button>
                                 </form>
                             )}
 
@@ -410,17 +410,17 @@ export default function AdminDashboard() {
                                 <form onSubmit={handleAddExp} className="flex flex-col gap-4">
                                     <div>
                                         <label className="text-xs font-medium text-white/50 mb-1 block">Role</label>
-                                        <input required maxLength={200} value={expForm.role} onChange={e => setExpForm({ ...expForm, role: e.target.value })} type="text" className="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent-secondary transition-colors" placeholder="e.g. Senior Developer" />
+                                        <input required maxLength={200} value={expForm.role} onChange={e => setExpForm({ ...expForm, role: e.target.value })} type="text" className="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-rosso-rim transition-colors" placeholder="e.g. Senior Developer" />
                                     </div>
                                     <div>
                                         <label className="text-xs font-medium text-white/50 mb-1 block">Company</label>
-                                        <input required maxLength={200} value={expForm.company} onChange={e => setExpForm({ ...expForm, company: e.target.value })} type="text" className="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent-secondary transition-colors" placeholder="e.g. Google" />
+                                        <input required maxLength={200} value={expForm.company} onChange={e => setExpForm({ ...expForm, company: e.target.value })} type="text" className="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-rosso-rim transition-colors" placeholder="e.g. Google" />
                                     </div>
                                     <div>
                                         <label className="text-xs font-medium text-white/50 mb-1 block">Period</label>
-                                        <input required maxLength={100} value={expForm.period} onChange={e => setExpForm({ ...expForm, period: e.target.value })} type="text" className="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent-secondary transition-colors" placeholder="e.g. 2021 - Present" />
+                                        <input required maxLength={100} value={expForm.period} onChange={e => setExpForm({ ...expForm, period: e.target.value })} type="text" className="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-rosso-rim transition-colors" placeholder="e.g. 2021 - Present" />
                                     </div>
-                                    <button type="submit" className="mt-2 bg-accent-secondary text-white font-bold py-3 rounded-lg hover:bg-white hover:text-black transition-colors">Save Experience</button>
+                                    <button type="submit" className="mt-2 bg-rosso-rim text-white font-bold py-3 rounded-lg hover:bg-white hover:text-black transition-colors">Save Experience</button>
                                 </form>
                             )}
 
@@ -450,7 +450,7 @@ export default function AdminDashboard() {
                                         <label className="text-xs font-medium text-white/50 mb-1 block">Order</label>
                                         <input value={journeyForm.sortOrder} onChange={e => setJourneyForm({ ...journeyForm, sortOrder: e.target.value })} type="number" step="1" className="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-white transition-colors" />
                                     </div>
-                                    <button type="submit" className="mt-2 bg-white text-black font-bold py-3 rounded-lg hover:bg-accent-primary transition-colors">Save Entry</button>
+                                    <button type="submit" className="mt-2 bg-white text-black font-bold py-3 rounded-lg hover:bg-rosso transition-colors">Save Entry</button>
                                 </form>
                             )}
                         </div>
@@ -514,7 +514,7 @@ export default function AdminDashboard() {
                                                 <td className="px-6 py-4 hidden md:table-cell text-white/60">
                                                     <div className="font-mono text-xs">{j.sortOrder}</div>
                                                     {j.linkHref ? (
-                                                        <a href={j.linkHref} target="_blank" rel="noopener noreferrer" className="block max-w-[240px] truncate text-accent-primary hover:underline">
+                                                        <a href={j.linkHref} target="_blank" rel="noopener noreferrer" className="block max-w-[240px] truncate text-rosso hover:underline">
                                                             {j.linkLabel}
                                                         </a>
                                                     ) : (
