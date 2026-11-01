@@ -16,6 +16,13 @@ interface TelemetryPayload {
   heapMb: number | null;
   backend: { reachable: boolean; db: "ok" | "error" | null; rttMs: number | null };
   runtime: { node: string | null; next: string | null };
+  watch: {
+    hijau: number;
+    total: number;
+    jendelaRun: number;
+    tautan: string;
+    terakhir: { nomor: number; kesimpulan: string; selesaiPada: string } | null;
+  } | null;
   clientFrames: {
     laporan: number;
     frame: number;
@@ -456,9 +463,36 @@ export const TelemetryDrawer: React.FC = () => {
                         : DASH}
                     </span>
                   </div>
-                  <div className="text-white/30 pt-1">
+                  <div className="text-white/30 pt-1 pb-1">
                     Diukur hanya selama tab terlihat; jendela agregat = sejak instance ini
                     hidup{telemetry?.clientFrames ? ` (${telemetry.clientFrames.sejak.slice(0, 16).replace("T", " ")})` : ""}.
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-white/40">PROBE HARIAN (WATCH):</span>
+                    <span>
+                      {telemetry?.watch ? (
+                        <a
+                          href={telemetry.watch.tautan}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[#D41E12] hover:underline"
+                          title={`Dibaca dari ${telemetry.watch.jendelaRun} run terakhir di GitHub Actions`}
+                        >
+                          {telemetry.watch.hijau}/{telemetry.watch.total} hijau · run #
+                          {telemetry.watch.terakhir?.nomor ?? "?"}
+                          {telemetry.watch.terakhir?.selesaiPada
+                            ? ` · ${telemetry.watch.terakhir.selesaiPada.slice(0, 10)}`
+                            : ""}
+                        </a>
+                      ) : (
+                        DASH
+                      )}
+                    </span>
+                  </div>
+                  <div className="text-white/30 pt-1">
+                    {telemetry?.watch
+                      ? `Hanya run terjadwal yang sudah selesai dari ${telemetry.watch.jendelaRun} run terakhir di workflow Watch.`
+                      : "Belum ada bacaan workflow pada instance ini."}
                   </div>
                 </div>
               </div>

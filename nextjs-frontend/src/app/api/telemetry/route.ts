@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { bacaStatusWatch } from "@/lib/server/statusWatch";
 
 // Semua angka di respons ini adalah hasil pengukuran pada request itu juga. Tidak ada konstanta
 // hiasan: kalau sesuatu tidak bisa diukur, field-nya null dan yang menampilkannya wajib menulis "—".
@@ -184,6 +185,7 @@ export async function GET() {
       backend: { reachable: probe.reachable, db: probe.db, rttMs: probe.rttMs },
       runtime: { node: process.versions.node ?? null, next: next ? next : null },
       clientFrames: agregatFrame(),
+      watch: bacaStatusWatch(),
       gitCommit: commit ? commit : null,
       timestamp: new Date().toISOString(),
     },

@@ -17,6 +17,12 @@ interface TelemetryData {
   latencyMs: number;
   heapMb: number | null;
   backend: { reachable: boolean; db: string | null; rttMs: number | null };
+  watch: {
+    hijau: number;
+    total: number;
+    tautan: string;
+    terakhir: { nomor: number; kesimpulan: string } | null;
+  } | null;
 }
 
 const DASH = "—";
@@ -319,6 +325,15 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ onChapterClick }) => {
                   }`
                 : DASH}
               <KinerjaKanvas />{" "}
+              {telemetry?.watch ? (
+                <span
+                  title={`Run terjadwal terakhir #${telemetry.watch.terakhir?.nomor ?? "?"} — ${
+                    telemetry.watch.terakhir?.kesimpulan ?? "?"
+                  }`}
+                >
+                  • PROBE {telemetry.watch.hijau}/{telemetry.watch.total}{" "}
+                </span>
+              ) : null}
               <span className="text-[#D41E12] font-mono text-[8px] ml-1">[HUD ⇡]</span>
             </span>
           ) : (
