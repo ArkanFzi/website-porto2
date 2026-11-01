@@ -161,7 +161,13 @@ export const ChapterDuality: React.FC<DualityProps> = ({
       id="chapter-02"
       className="relative w-full min-h-screen pt-36 sm:pt-44 pb-48 px-6 md:px-12 select-none"
     >
-      <MeshPortal bab={2} className="left-[16.5vw] top-[20vh] h-[60vh] w-[23vw]" />
+      <MeshPortal
+        bab={2}
+        className="left-[16.5vw] top-[20vh] h-[60vh] w-[23vw]"
+        miring={0.22}
+        geyang={0.12}
+        rotGeyang={0.06}
+      />
       <div className="w-full max-w-[1600px] mx-auto">
         
         {/* ── Top Header Tags ── */}

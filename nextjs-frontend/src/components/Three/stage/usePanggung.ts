@@ -9,8 +9,56 @@ import * as THREE from "three";
 import audioEngine from "@/lib/audioEngine";
 import type { PortfolioMode } from "@/context/PortfolioModeContext";
 import { buatUniformPanggung, RASIO_POTRET } from "./chiaroscuroMaterial";
-import { koreografi } from "./koreografi";
-import { usePortalRegistry, type PortalRect } from "./usePortalRegistry";
+import { sikap, type Sikap } from "./koreografi";
+import { usePortalRegistry, type PortalKotak } from "./usePortalRegistry";
+
+/** Lebar kartu agar mengisi portal: dibatasi lebar portal, kecuali portalnya lebih
+ *  tinggi daripada rasio potret. */
+const muat = (kotak: PortalKotak) => Math.min(kotak.lebar, kotak.tinggi / RASIO_POTRET);
+
+/** Bentuk window.__panggung — dibaca verifier, tidak pernah dipakai kode produksi. */
+export interface PembacaanPanggung {
+  p: number;
+  babDari: number;
+  babKe: number;
+  t: number;
+  x: number;
+  y: number;
+  z: number;
+  rotX: number;
+  rotY: number;
+  rotZ: number;
+  skala: number;
+  mask: [number, number, number, number];
+  portal: [number, number, number, number];
+}
+
+const bundar = (n: number) => Math.round(n * 1e4) / 1e4;
+
+const tulisPanggungDebug = (
+  mesh: THREE.Mesh,
+  mask: THREE.Vector4,
+  p: number,
+  k: Sikap,
+  kotak: PortalKotak
+) => {
+  const jendela = window as unknown as { __panggung?: PembacaanPanggung };
+  jendela.__panggung = {
+    p: bundar(p),
+    babDari: k.babDari,
+    babKe: k.babKe,
+    t: bundar(k.t),
+    x: bundar(mesh.position.x),
+    y: bundar(mesh.position.y),
+    z: bundar(mesh.position.z),
+    rotX: bundar(mesh.rotation.x),
+    rotY: bundar(mesh.rotation.y),
+    rotZ: bundar(mesh.rotation.z),
+    skala: bundar(mesh.scale.x),
+    mask: [bundar(mask.x), bundar(mask.y), bundar(mask.z), bundar(mask.w)],
+    portal: [bundar(kotak.kiri), bundar(kotak.atas), bundar(kotak.lebar), bundar(kotak.tinggi)],
+  };
+};
 
 export interface PanggungProps {
   scrollProgressRef: React.RefObject<number>; // 0 to 1 from Lenis
@@ -101,38 +149,22 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
     }
 
     // ── KOREOGRAFI PORTAL ──
-    // Ambang gulir, kemiringan, dan parallax tetap seperti koreografi lama. Kotak
-    // kartu dihitung dari rect portal bab (usePortalRegistry), dan tepi kotak itu
-    // sekaligus menjadi batas potong lewat uMask.
+    // Sikap kartu datang dari marker DOM bab (usePortalRegistry -> sikap()), bukan dari
+    // tabel ambang gulir. Kotak portal sekaligus menjadi batas potong lewat uMask.
     const p = Math.max(0, Math.min(1, scrollProgressRef.current));
-    const k = koreografi(p);
-
-    const awal = portal.current.get(k.babDari);
-    if (!awal) return;
-    const akhir = portal.current.get(k.babKe) ?? awal;
+    const k = sikap(p, portal.current);
+    if (!k) return;
 
     const layarX = size.width;
     const layarY = size.height;
     const dpp = viewport.width / layarX; // world per pixel pada bidang z = 0
     const pxPerWorld = (z: number) => (1 / dpp) * (camera.position.z / (camera.position.z - z));
-    const campur = (a: number, b: number) => a + (b - a) * k.t;
+    const kotak = k.kotak;
 
-    const kotak: PortalRect = {
-      kiri: campur(awal.kiri, akhir.kiri),
-      atas: campur(awal.atas, akhir.atas),
-      lebar: campur(awal.lebar, akhir.lebar),
-      tinggi: campur(awal.tinggi, akhir.tinggi),
-    };
-
-    const targetZ = campur(k.zDari, k.zKe);
-    // Ukuran dihitung agar kartu pas di portal pada kedalaman zIsi. Untuk bab 04,
-    // zKe jauh lebih dalam dari zIsi sehingga kartu tetap mengecil saat mundur.
-    const zIsi = campur(k.zDari, Math.max(k.zKe, k.zDari));
-    const pas = Math.min(kotak.lebar, kotak.tinggi / RASIO_POTRET);
-
-    const targetX = (kotak.kiri + kotak.lebar / 2 - layarX / 2) / pxPerWorld(targetZ) + mouse.current.x * k.geyang;
-    const targetY = -(kotak.atas + kotak.tinggi / 2 - layarY / 2) / pxPerWorld(targetZ) + mouse.current.y * k.geyang;
-    const targetRotY = campur(k.rotDari, k.rotKe) + mouse.current.x * k.rotGeyang;
+    const targetX = (kotak.kiri + kotak.lebar / 2 - layarX / 2) / pxPerWorld(k.z) + mouse.current.x * k.geyang;
+    const targetY = -(kotak.atas + kotak.tinggi / 2 - layarY / 2) / pxPerWorld(k.z) + mouse.current.y * k.geyang;
+    const targetRotY = k.rot + mouse.current.x * k.rotGeyang;
+    const targetZ = k.z;
 
     const m = mat.uniforms.uMask.value;
     m.set(
@@ -147,7 +179,7 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
     const impulseRotZ = Math.sin(mat.uniforms.uTime.value * 12.0) * tiltImpulse.current;
     const impulseRotY = tiltImpulse.current * (mode === "engineer" ? -0.12 : 0.12);
 
-    const skala = pas / pxPerWorld(zIsi);
+    const skala = muat(kotak) / pxPerWorld(k.pas);
     meshRef.current.scale.set(skala, skala, 1);
 
     meshRef.current.position.x = THREE.MathUtils.lerp(meshRef.current.position.x, targetX, 0.08);
@@ -169,6 +201,12 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
     if (pr.ray.ray.intersectPlane(pr.bidang, pr.titik)) {
       mesh.worldToLocal(pr.titik);
       mat.uniforms.uCursorUV.value.set(pr.titik.x + 0.5, pr.titik.y / RASIO_POTRET + 0.5);
+    }
+
+    // Salinan sikap kartu untuk verifier (docs/verify/panggung-probe.mjs). Hanya hidup
+    // di development; produksi tidak menulis apa pun ke window.
+    if (process.env.NODE_ENV !== "production") {
+      tulisPanggungDebug(mesh, mat.uniforms.uMask.value, p, k, kotak);
     }
   });
 

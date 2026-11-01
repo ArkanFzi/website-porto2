@@ -75,7 +75,18 @@ export const ChapterPaddock: React.FC = () => {
          Warnanya sekarang di LatarPaddock, satu lapis di bawah kanvas. */
       className="relative w-full min-h-screen text-[#F7F5F0] pt-32 sm:pt-36 pb-48 md:pb-56 px-6 md:px-12 select-none overflow-hidden flex flex-col justify-between"
     >
-      <MeshPortal bab={4} className="left-1/2 top-[28vh] h-[60vh] w-[23vw] -translate-x-1/2" />
+      {/* Kartu mundur jauh di bab penutup: `z` tempat ia berhenti, `pas` kedalaman saat
+          ia masih mengisi portal — selisih keduanya yang membuat ia mengecil. */}
+      <MeshPortal
+        bab={4}
+        className="left-1/2 top-[28vh] h-[60vh] w-[23vw] -translate-x-1/2"
+        z={-2.5}
+        pas={-0.4}
+        miring={-0.18}
+        geyang={0.1}
+        rotGeyang={0.06}
+        pita={0.16}
+      />
       <div className="w-full max-w-[1600px] mx-auto z-20">
         
         {/* ── Top Header Tags ── */}

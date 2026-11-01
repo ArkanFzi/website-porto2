@@ -15,7 +15,12 @@ export const ChapterPrologue: React.FC = () => {
       id="chapter-01"
       className="relative w-full min-h-screen flex flex-col justify-between pt-24 sm:pt-28 pb-20 px-6 md:px-12 select-none overflow-hidden"
     >
-      <MeshPortal bab={1} className="left-1/2 top-[18.7vh] h-[60vh] w-[23vw] -translate-x-1/2" />
+      <MeshPortal
+        bab={1}
+        className="left-1/2 top-[18.7vh] h-[60vh] w-[23vw] -translate-x-1/2"
+        geyang={0.15}
+        rotGeyang={0.1}
+      />
       {/* ── Top Header Tags (z-20) ── */}
       <div className="w-full max-w-[1600px] mx-auto flex items-center justify-between pb-6 swiss-border-b z-20">
         <div className="flex items-center gap-2">

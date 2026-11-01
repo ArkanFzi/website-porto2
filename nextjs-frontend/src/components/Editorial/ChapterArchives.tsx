@@ -191,6 +191,9 @@ export const ChapterArchives: React.FC<ArchivesProps> = ({
       <MeshPortal
         bab={3}
         className="left-[56vw] top-[20vh] h-[60vh] w-[23vw] xl:left-[calc(3rem+1000px+3rem)] xl:right-6 xl:w-auto"
+        miring={-0.18}
+        geyang={0.14}
+        rotGeyang={0.06}
       />
       {/* ── Top Header Tags ── */}
       {/* Header dan daftar wajib berbagi kotak isi yang sama: tanpa pr-8 tepi kanan
