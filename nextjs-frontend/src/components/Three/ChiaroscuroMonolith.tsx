@@ -176,7 +176,7 @@ export const ChiaroscuroMonolith: React.FC<MonolithProps> = ({
   const meshRef = useRef<THREE.Mesh>(null);
   const materialRef = useRef<THREE.ShaderMaterial>(null);
   const { mode, wireframe } = usePortfolioMode();
-  const { viewport, camera } = useThree();
+  const { viewport, size, camera, invalidate } = useThree();
 
   // Load real portrait texture from /FotoDiriFix.webp (1200x2150)
   const texture = useTexture("/FotoDiriFix.webp");
@@ -210,6 +210,25 @@ export const ChiaroscuroMonolith: React.FC<MonolithProps> = ({
       prevMode.current = mode;
     }
   }, [mode]);
+
+  // Papan daftar bab 03 = sumber kebenaran posisi gutter. Diukur dari DOM, bukan
+  // angka yang disalin, supaya lebar daftar berubah pun kartu tetap tidak menutupi teks.
+  const papan = useRef({ kananPx: 0, ada: false });
+  useEffect(() => {
+    const el = document.getElementById("ch03-papan");
+    if (!el) return;
+    const baca = () => {
+      const r = el.getBoundingClientRect();
+      papan.current.ada = r.width > 0;
+      papan.current.kananPx = r.right;
+      // Loop demand (TIER 1) tidak menggambar sendiri saat DOM berubah.
+      invalidate();
+    };
+    baca();
+    const pengamat = new ResizeObserver(baca);
+    pengamat.observe(el);
+    return () => pengamat.disconnect();
+  }, [invalidate]);
 
   const uniforms = useMemo(
     () => ({
@@ -249,8 +268,11 @@ export const ChiaroscuroMonolith: React.FC<MonolithProps> = ({
     mat.uniforms.uVelocity.value = THREE.MathUtils.lerp(mat.uniforms.uVelocity.value, scrollVelocityRef.current, 0.1);
     mat.uniforms.uScroll.value = scrollProgressRef.current;
 
-    // Smooth lerp for uPersona (0.0 for engineer, 1.0 for creator)
-    const targetPersona = mode === "engineer" ? 0.0 : 1.0;
+    // Persona: mode jadi basis, hover kartu arsip menyilangkan potret ke sisi
+    // sebaliknya (engineer <-> creator) sehingga hover membaca perubahan wajah,
+    // bukan hanya aura merah.
+    const basisPersona = mode === "engineer" ? 0.0 : 1.0;
+    const targetPersona = hoveredProject !== null ? 1 - basisPersona : basisPersona;
     mat.uniforms.uPersona.value = THREE.MathUtils.lerp(mat.uniforms.uPersona.value, targetPersona, 0.08);
 
     // Smooth lerp for uWireframe
@@ -269,18 +291,27 @@ export const ChiaroscuroMonolith: React.FC<MonolithProps> = ({
 
     // ── CALIBRATED SIZING (893x1464 Aspect Ratio = 1.64) ──
     const baseW = Math.min(viewport.width * 0.23, 2.15);
-    meshRef.current.scale.set(baseW, baseW, 1);
 
     // ── PRECISION CHOREOGRAPHED SCROLL POSITIONS ──
     const p = Math.max(0, Math.min(1, scrollProgressRef.current));
     const isNarrow = viewport.width < 8.5;
     const colLeftX = isNarrow ? -viewport.width * 0.22 : -Math.min(viewport.width * 0.30, 2.95);
-    const colRightX = isNarrow ? viewport.width * 0.18 : Math.min(viewport.width * 0.25, 2.2);
+    let colRightX = isNarrow ? viewport.width * 0.18 : Math.min(viewport.width * 0.25, 2.2);
+    let faktorGutter = 1;
+    if (papan.current.ada) {
+      // Gutter kanan bab 03: kartu duduk di antara tepi papan daftar dan tepi kanan jendela,
+      // dipusatkan dari rect DOM yang sama sehingga tidak pernah menutupi teks.
+      const dpp = viewport.width / size.width;
+      const gutterPx = Math.max(0, size.width - papan.current.kananPx);
+      colRightX = (papan.current.kananPx / 2) * dpp;
+      faktorGutter = Math.min(1, (gutterPx * 0.88 * dpp) / baseW);
+    }
 
     let targetX = 0;
     let targetY = 0;
     let targetZ = 0;
     let targetRotY = 0;
+    let bobotKanan = 0;
 
     if (p < 0.12) {
       // ── CHAPTER 01 (HERO): Center [0, 0.05, 0] ──
@@ -308,12 +339,14 @@ export const ChiaroscuroMonolith: React.FC<MonolithProps> = ({
       targetY = mouse.current.y * 0.14;
       targetZ = THREE.MathUtils.lerp(0, -0.4, t);
       targetRotY = THREE.MathUtils.lerp(0.22, -0.18, t);
+      bobotKanan = t;
     } else if (p < 0.84) {
-      // ── CHAPTER 03 (WORKS): Locked in Right Column ──
+      // ── CHAPTER 03 (WORKS): Locked in Right Gutter ──
       targetX = colRightX + mouse.current.x * 0.14;
       targetY = mouse.current.y * 0.14;
       targetZ = -0.4;
       targetRotY = -0.18 + mouse.current.x * 0.06;
+      bobotKanan = 1;
     } else {
       // ── CHAPTER 04 (FINALE): Recedes into distance ──
       const t = (p - 0.84) / 0.16;
@@ -321,11 +354,15 @@ export const ChiaroscuroMonolith: React.FC<MonolithProps> = ({
       targetY = -0.3;
       targetZ = THREE.MathUtils.lerp(-0.4, -2.5, t);
       targetRotY = THREE.MathUtils.lerp(-0.18, 0, t);
+      bobotKanan = 1 - t;
     }
 
     // Apply quick tilt impulse when persona changes
     const impulseRotZ = Math.sin(mat.uniforms.uTime.value * 12.0) * tiltImpulse.current;
     const impulseRotY = tiltImpulse.current * (mode === "engineer" ? -0.12 : 0.12);
+
+    const skala = baseW * THREE.MathUtils.lerp(1, faktorGutter, bobotKanan);
+    meshRef.current.scale.set(skala, skala, 1);
 
     meshRef.current.position.x = THREE.MathUtils.lerp(meshRef.current.position.x, targetX, 0.08);
     meshRef.current.position.y = THREE.MathUtils.lerp(meshRef.current.position.y, targetY, 0.08);

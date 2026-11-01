@@ -176,8 +176,18 @@ export const ChapterArchives: React.FC<ArchivesProps> = ({
   return (
     <section
       id="chapter-03"
-      className="relative w-full min-h-screen bg-[#0A0A0A] text-[#F7F5F0] pt-36 pb-36 px-6 md:px-12 select-none overflow-hidden transition-colors duration-700"
+      className="relative w-full min-h-screen bg-[#0A0A0A] xl:bg-transparent text-[#F7F5F0] pt-36 pb-36 px-6 md:px-12 select-none overflow-hidden transition-colors duration-700"
     >
+      {/*
+        Papan gelap = batas kiri daftar sekaligus penanda posisi kartu WebGL:
+        ChiaroscuroMonolith mengukur rect elemen ini lewat ResizeObserver, jadi
+        gutter tempat kartu duduk tidak pernah lepas dari lebar daftar yang sebenarnya.
+      */}
+      <div
+        id="ch03-papan"
+        aria-hidden="true"
+        className="hidden xl:block absolute inset-y-0 left-0 -z-10 w-[calc(3rem+1000px)] bg-[#0A0A0A]"
+      />
       {/* ── Top Header Tags ── */}
       <div className="w-full max-w-[1600px] mx-auto flex items-center justify-between pb-6 border-b border-white/10 mb-16">
         <div className="flex items-center gap-2">
@@ -200,7 +210,7 @@ export const ChapterArchives: React.FC<ArchivesProps> = ({
         </div>
       </div>
 
-      <div className="w-full max-w-[1600px] mx-auto">
+      <div className="w-full max-w-[1600px] mx-auto xl:max-w-[1000px] xl:mx-0">
         
         {/* Section Heading with Motion Transition */}
         <div className="mb-16 max-w-2xl">

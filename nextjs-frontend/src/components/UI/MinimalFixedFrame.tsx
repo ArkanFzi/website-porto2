@@ -89,6 +89,14 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ onChapterClick }) => {
     ? "bg-white text-[#D41E12] shadow-[0_0_14px_rgba(255,255,255,0.4)]"
     : "bg-[#D41E12] text-white shadow-[0_0_12px_rgba(212,30,18,0.4)]";
 
+  // Bab 03 punya gutter kertas di kanan: pil HUD harus terbaca di atas kertas maupun
+  // di atas papan gelap daftar, jadi chip-nya ikut gelap, bukan transparan.
+  const atasKertas = isDarkSection && !isRossoSection;
+  const chipBg = atasKertas
+    ? "bg-[#0A0A0A] hover:bg-[#1A1A1A] hover:border-[#D41E12]"
+    : "bg-white/5 hover:border-[#D41E12]";
+  const chipPlate = atasKertas ? "bg-[#0A0A0A] px-2 py-1 rounded-md" : "";
+
   const accentColor = isRossoSection ? "text-white" : "text-[#D41E12]";
 
   return (
@@ -153,7 +161,7 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ onChapterClick }) => {
           <button
             onClick={() => setTerminalOpen(!terminalOpen)}
             className={`hidden lg:flex items-center gap-1 px-2.5 py-1.5 rounded-full border ${borderColor} backdrop-blur-md ${
-              terminalOpen ? activePillBg : isRossoSection ? "bg-black/20 text-white" : "bg-white/5 hover:border-[#D41E12]"
+              terminalOpen ? activePillBg : isRossoSection ? "bg-black/20 text-white" : chipBg
             } transition-all duration-300 cursor-pointer text-[9px] font-mono tracking-wider`}
             data-magnetic
             title="Open Interactive Engineer CLI (Press Cmd+K or ~)"
@@ -167,7 +175,7 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ onChapterClick }) => {
           <button
             onClick={toggleWireframe}
             className={`hidden md:flex items-center gap-1 px-2.5 py-1.5 rounded-full border ${borderColor} backdrop-blur-md ${
-              wireframe ? activePillBg : isRossoSection ? "bg-black/20 text-white" : "bg-white/5 hover:border-[#D41E12]"
+              wireframe ? activePillBg : isRossoSection ? "bg-black/20 text-white" : chipBg
             } transition-all duration-300 cursor-pointer text-[9px] font-mono tracking-wider`}
             data-magnetic
             title="Toggle 3D Monolith GPU Wireframe Overlay"
@@ -180,7 +188,7 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ onChapterClick }) => {
           <button
             onClick={toggleAudio}
             className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full border ${borderColor} backdrop-blur-md ${
-              !audioMuted ? activePillBg : isRossoSection ? "bg-black/20 text-white" : "bg-white/5 hover:border-[#D41E12]"
+              !audioMuted ? activePillBg : isRossoSection ? "bg-black/20 text-white" : chipBg
             } transition-all duration-300 cursor-pointer text-[9px] font-mono tracking-wider`}
             data-magnetic
             title={audioMuted ? "Activate Procedural F1 Web Audio Synthesizer" : "Mute Audio Engine"}
@@ -201,7 +209,7 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ onChapterClick }) => {
             className={`hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full border ${borderColor} backdrop-blur-md ${
               isRossoSection
                 ? "bg-black/20 hover:bg-white hover:text-[#D41E12]"
-                : "bg-white/5 hover:border-[#D41E12]"
+                : chipBg
             } transition-all duration-300 cursor-pointer group`}
             data-magnetic
             title="Download Headless Chromium Generated Dossier PDF"
@@ -220,7 +228,7 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ onChapterClick }) => {
             className={`group flex items-center gap-2 px-3.5 py-1.5 rounded-full border ${borderColor} backdrop-blur-md ${
               isRossoSection
                 ? "bg-black/20 hover:bg-white hover:text-[#D41E12]"
-                : "bg-white/5 hover:border-[#D41E12]"
+                : chipBg
             } transition-all duration-300 cursor-pointer`}
             data-magnetic
           >
@@ -303,7 +311,7 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ onChapterClick }) => {
         </button>
 
         {/* Bottom-Right: Geographic & Telemetry Metadata */}
-        <div className="hidden sm:flex flex-col items-end">
+        <div className={`hidden sm:flex flex-col items-end ${chipPlate}`}>
           <span className={`font-mono text-[9px] tracking-[0.2em] uppercase ${subColor}`}>
             COORDINATES // MALANG, ID
           </span>
