@@ -26,6 +26,24 @@ const browser = await puppeteer.launch({
   headless: 'new',
   args: ['--no-sandbox', '--disable-dev-shm-usage', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
 });
+
+// Bilah butuh angka: "tidak ada bentuk tanpa angka" berarti tanpa laporan deretan memang tidak
+// ada, dan gate kehadiran akan gagal karena alasan yang benar. Jadi satu laporan dibuang ke
+// server lebih dulu — body persis yang dikirim perfStats dari browser pengunjung — supaya
+// deretan punya satu menit untuk dilukis. HANYA boleh ke localhost: angka uji tidak boleh
+// masuk ke jendela agregat yang dilihat pengunjung sungguhan.
+const SEED = { fps: 58.2, medianMs: 16.7, p95Ms: 21.4, over33ms: 3, frames: 300, dpr: 1, lebar: 1440, tinggi: 900 };
+const bolehSeed = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(FE);
+let seedOk = false;
+if (bolehSeed) {
+  const res = await fetch(`${FE}/api/telemetry`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(SEED),
+  }).catch(() => null);
+  seedOk = !!res && res.ok;
+  console.log('seed     ', bolehSeed ? `POST /api/telemetry → ${res?.status ?? 'no-response'}` : 'FE bukan localhost: tidak di-seed');
+}
 const page = await browser.newPage();
 await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
 const galat = [];
@@ -99,8 +117,8 @@ await parkir(0.05);
 const diam = await serap(300);
 await foto('01-bab1-diam');
 console.log('diam     ', JSON.stringify(diam.puncak), JSON.stringify(diam.nama), 't=' + diam.terakhir?.t);
-cek('bilah ada saat diam', ada(diam.nama, 'bilah'), true);
-for (const n of ['benang', 'debu', 'kompas', 'sangkar'])
+cek('laporan uji masuk ke jendela server', seedOk, true);
+cek('bilah ada saat diam', ada(diam.nama, 'bilah'), true);for (const n of ['benang', 'debu', 'kompas', 'sangkar'])
   cek(`${n} tidak ada saat diam`, ada(diam.nama, n), false);
 
 // ── 2. Benang rosso: di tengah perpindahan bab 1 ke bab 2 ──
@@ -304,6 +322,96 @@ for (const [nama, s] of [
   const t = s.terakhir;
   cek(`calls = jumlah objek pada frame yang sama (${nama})`, t ? t.calls === t.objek.length : null, true);
 }
+
+// ── 7. Satu angka, dua lukisan (ide 17): bilah DOM di laci dan bilah instans di panggung ──
+// Hukum tinggi ditulis ULANG di sini, independen dari lib/buketMenit, supaya gerbang ini
+// membuktikan "yang dilukis = yang diukur" dan bukan mengulang kode yang sama. Konstantanya
+// adalah kontrak yang didokumentasikan di modul itu: ambang 33 ms, overshoot dipadatkan 0,35,
+// langit-langit 2,2 — dan satu-satunya hal yang boleh membuat bilah tinggi adalah angka.
+const BATAS = 33;
+const MAMPAT = 0.35;
+const LANGIT = 2.2;
+const hukumTinggi = (r) =>
+  Number.isFinite(r) && r > 0 ? Math.min(r <= 1 ? r : 1 + (r - 1) * MAMPAT, LANGIT) : 0;
+
+let getTelemetri = 0;
+page.on('request', (req) => {
+  if (req.method() === 'GET' && /\/api\/telemetry(\?|$)/.test(req.url())) getTelemetri += 1;
+});
+
+await parkir(0.375);
+await page.click('button[aria-label="Pit-Wall Telemetry HUD"]');
+const getSebelum = getTelemetri;
+await new Promise((r) => setTimeout(r, 4000));
+const getLaci = getTelemetri - getSebelum;
+
+const lukisan = await page.evaluate(() => {
+  const wadah = document.querySelector('[data-bilah-dom]');
+  const b = window.__bilah;
+  return {
+    wadah: wadah ? wadah.getBoundingClientRect().height : 0,
+    dom: [...document.querySelectorAll('[data-bilah-menit]')].map((el) => ({
+      slot: Number(el.dataset.bilahMenit),
+      tinggi: el.getBoundingClientRect().height,
+    })),
+    panggung: b ? { menit: b.menit, rasio: b.rasio, tinggiPx: b.tinggiPx, markaPx: b.markaPx } : null,
+  };
+});
+const api = await fetch(`${FE}/api/telemetry`)
+  .then((r) => r.json())
+  .catch(() => null);
+const perMenit = new Map((api?.clientFrames?.buket ?? []).map((m) => [m.menit, m]));
+
+const domPerSlot = new Map(lukisan.dom.map((d) => [d.slot, d.tinggi]));
+const terisi = lukisan.panggung
+  ? lukisan.panggung.menit.map((m, j) => ({ m, j })).filter((s) => s.m !== '')
+  : [];
+console.log(
+  'lukisan  ',
+  `get/4s=${getLaci}`,
+  'dom:',
+  JSON.stringify(lukisan.dom),
+  'panggung:',
+  JSON.stringify(lukisan.panggung),
+  'menit uji:',
+  JSON.stringify([...perMenit.keys()])
+);
+
+cek('laci terpasang tidak mempoll telemetri', getLaci <= 2, true);
+cek('satu bacaan menghasilkan bilah DOM', lukisan.dom.length > 0 && lukisan.wadah > 0, true);
+cek('panggung sudah melukis deretan yang sama', !!lukisan.panggung && terisi.length > 0, true);
+
+let hampa = 0;
+let bengkok = 0;
+let bedaSisi = 0;
+let angkaAsing = 0;
+for (let j = 0; j < (lukisan.panggung?.menit.length ?? 0); j++) {
+  const m = lukisan.panggung.menit[j];
+  if (m === '') {
+    // Slot tanpa laporan: tidak boleh ada elemen DOM dan tidak boleh ada tinggi di panggung.
+    if (domPerSlot.has(j) || lukisan.panggung.tinggiPx[j] !== 0) hampa += 1;
+    continue;
+  }
+  const harus = hukumTinggi(lukisan.panggung.rasio[j]);
+  const dapatPanggung = lukisan.panggung.markaPx
+    ? lukisan.panggung.tinggiPx[j] / lukisan.panggung.markaPx
+    : -1;
+  const dapatDom = domPerSlot.has(j) ? (domPerSlot.get(j) / lukisan.wadah) * LANGIT : -1;
+  if (Math.abs(dapatPanggung - harus) > 0.02) bengkok += 1;
+  if (Math.abs(dapatDom - harus) > 0.02) bengkok += 1;
+  if (Math.abs(dapatDom - dapatPanggung) > 0.02) bedaSisi += 1;
+  // Dan angkanya memang datang dari API, bukan dari konstanta yang disisipkan komponen.
+  const lap = perMenit.get(m);
+  const rasioApi = lap ? lap.p95RerataMs / BATAS : -1;
+  if (!lap || Math.abs(rasioApi - lukisan.panggung.rasio[j]) > 0.05) angkaAsing += 1;
+}
+cek('menit tanpa laporan tidak berbentuk di kedua sisi', hampa, 0);
+cek('tinggi kedua lukisan sama dengan hukum angkanya', bengkok, 0);
+cek('DOM dan panggung melukis tinggi yang sama', bedaSisi, 0);
+cek('rasio bilah berasal dari angka API', angkaAsing, 0);
+
+await foto('08-laci-bilah-dom');
+await page.click('button[aria-label="Pit-Wall Telemetry HUD"]');
 
 await browser.close();
 if (galat.length) console.log('pageerror:', galat.slice(0, 5));

@@ -11,6 +11,7 @@ import { KompasGulir } from "./stage/ekstra/KompasGulir";
 import { RollCage } from "./stage/ekstra/RollCage";
 import { PengukurRender } from "./stage/PengukurRender";
 import { mulai, mulaiLapor, setDprKanvas } from "@/lib/perfStats";
+import { mulaiBacaTelemetri } from "@/lib/bacaTelemetri";
 import {
   bacaKurangiGerak,
   bacaKurangiGerakSaatSSR,
@@ -96,9 +97,13 @@ export const GlobalEditorialCanvas: React.FC<CanvasProps> = ({
 
   // Pengukur ritme frame halaman + pelapor ke /api/telemetry, sekali per mount.
   // Loop-nya berhenti sendiri saat tab tersembunyi (lihat lib/perfStats.ts).
+  // Pembaca store telemetri ikut dimulai di sini, bukan di panel: bilah panggung butuh
+  // gumpalan per menit meski panel tidak pernah dibuka, dan dua-duanya harus melihat
+  // respons dari satu request yang sama.
   useEffect(() => {
     mulai();
     mulaiLapor();
+    mulaiBacaTelemetri();
   }, []);
 
   useEffect(() => {

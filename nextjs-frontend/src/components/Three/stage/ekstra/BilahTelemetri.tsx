@@ -1,34 +1,37 @@
 "use client";
 
-/** Bilah telemetri panggung: dua belas bilah hasil ukur ritme frame pengunjung
- *  (lib/perfStats) dilukis sebagai SATU instancedMesh di dalam portal bab aktif.
+/** Bilah telemetri panggung: enam bilah gumpalan ritme frame per menit (GET
+ *  /api/telemetry → clientFrames.buket) dilukis sebagai SATU instancedMesh di dalam portal
+ *  bab aktif.
  *
- *  Satu draw call dan nol frame tambahan: cuplikan baru terbit ±1 detik sekali dan itu
- *  hanya menandai ring kotor; instans ditulis pada frame yang memang sedang jalan
- *  (gulir/pointer). useFrame tidak berjalan saat halaman diam, jadi bilah ikut diam.
+ *  Bilah ini dan bilah DOM di panel telemetri menggambar angka yang sama, dari store yang
+ *  sama (lib/bacaTelemetri), lewat fungsi tinggi yang sama (lib/buketMenit). Kalau salah
+ *  satu sisi menyisipkan konstantanya sendiri, tingginya berhenti cocok dengan angkanya.
  *
- *  Urutan bilah kronologis: kiri paling tua, kanan paling baru, tanpa interpolasi di
- *  antara sampel. Slot yang belum punya sampel ber-scale nol, bukan bilah dekoratif. */
+ *  Satu draw call dan nol frame tambahan: bacaan baru terbit ±20 detik sekali dan itu hanya
+ *  menandai ring kotor; instans ditulis pada frame yang memang sedang jalan (gulir/pointer).
+ *  useFrame tidak berjalan saat halaman diam, jadi bilah ikut diam.
+ *
+ *  Urutan bilah kronologis: kiri paling tua, kanan menit ini. Menit tanpa laporan ber-scale
+ *  nol, bukan bilah dekoratif — aturan "tidak ada bentuk tanpa angka" ditegakkan di
+ *  lib/buketMenit, tempat `tinggiBilah()` mengembalikan 0 untuk rasio tanpa angka. */
 import React, { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
-import { bacaCuplik, dengarCuplik, type CuplikanFrame } from "@/lib/perfStats";
+import { JUMLAH_BUKET, isiSlot, rasioAmbang, tinggiBilah } from "@/lib/buketMenit";
+import {
+  bacaTelemetri,
+  dengarTelemetri,
+  type PayloadTelemetri,
+} from "@/lib/bacaTelemetri";
 import type { AktorProps } from "../AktorPotret";
 import { sikap, type Kunci, type Sikap } from "../koreografi";
 import { usePortalRegistry } from "../usePortalRegistry";
 
-const JUMLAH_BILAH = 12;
+const JUMLAH_BILAH = JUMLAH_BUKET;
 /** Marka ambang ikut sebagai instans terakhir supaya tetap satu draw call: dia bukan
  *  bilah data, tapi garis acuan di ketinggian r = 1. */
 const JUMLAH_INSTANS = JUMLAH_BILAH + 1;
-/** Ambang 33 ms dipakai karena perfStats sudah menghitung `over33ms` pada angka yang sama
- *  (satu frame > 33 ms = di bawah ~30 fps), jadi tinggi bilah terbaca sebagai "sejauh mana
- *  p95 melewati batas 30 fps", bukan sebagai milidetik yang ditafsirkan ulang. */
-const BATAS_MS = 33;
-/** Kelebihan di atas ambang tetap digambar, hanya dipadatkan, supaya overshoot terbaca
- *  sebagai kelebihan dan tidak diam-diam diratakan ke puncak. */
-const MAMPAT_KELEBIHAN = 0.35;
-const TINGGI_MAKS_RASIO = 2.2;
 const TINGGI_DASAR_RASIO = 0.42;
 const JARAK_PX = 4;
 const LEBAR_MAKS_PX = 16;
@@ -50,24 +53,26 @@ const dengarKurangiGerak = (ubah: () => void) => {
 const bacaKurangiGerak = () => mediaKurangiGerak().matches;
 const bacaKurangiGerakSaatSSR = () => false;
 
-/** Snapshot berupa boolean, bukan objek: React hanya me-render ulang saat cuplikan pertama
- *  tiba, bukan setiap detik. */
-const bacaAdaCuplik = () => {
-  const c = bacaCuplik();
-  return c !== null && c.frames > 0;
+/** Snapshot berupa boolean, bukan objek: React hanya me-render ulang saat gumpalan pertama
+ *  tiba, bukan setiap bacaan. Menit tanpa laporan belum dihitung sebagai bentuk. */
+const bacaAdaBuket = () => {
+  const b = bacaTelemetri()?.clientFrames?.buket;
+  return !!b && b.some((m) => m.laporan > 0);
 };
 const tidakAdaSaatSSR = () => false;
 
 /** Quaternion identitas dipakai bersama: `compose()` hanya membacanya. */
 const PUTARAN_NOL = new THREE.Quaternion();
 
-/** Ring 12 sampel + alat tulis matriks. Semuanya hidup di dalam `useRef` yang sama supaya
+/** Ring 6 slot + alat tulis matriks. Semuanya hidup di dalam `useRef` yang sama supaya
  *  tidak ada alokasi saat menulis ulang instans, dan tidak ada state React yang ikut naik. */
 interface AlatTulis {
-  /** p95Ms yang benar-benar sudah terbit; slot yang belum terisi tidak dianggap. */
-  nilai: Float32Array;
-  kepala: number;
-  isi: number;
+  /** Rasio p95 tiap slot menit terhadap ambang 33 ms; 0 = menit itu tidak punya angka. */
+  rasio: Float32Array;
+  /** Kunci menit tiap slot, "" kalau slotnya kosong — dipakai verifikasi dua lukisan. */
+  menit: string[];
+  /** Tinggi yang benar-benar tergambar, dalam pixel CSS (satuan lokal mesh). */
+  tinggi: Float32Array;
   matriks: THREE.Matrix4;
   posisi: THREE.Vector3;
   skala: THREE.Vector3;
@@ -75,27 +80,54 @@ interface AlatTulis {
 }
 
 const buatAlatTulis = (): AlatTulis => ({
-  nilai: new Float32Array(JUMLAH_BILAH),
-  kepala: 0,
-  isi: 0,
+  rasio: new Float32Array(JUMLAH_BILAH),
+  menit: new Array(JUMLAH_BILAH).fill(""),
+  tinggi: new Float32Array(JUMLAH_BILAH),
   matriks: new THREE.Matrix4(),
   posisi: new THREE.Vector3(),
   skala: new THREE.Vector3(),
   warna: new THREE.Color(),
 });
 
-/** Satu sampel terbit = satu entri baru; yang paling tua keluar. Tidak ada interpolasi
- *  di antara entri dan ring tidak pernah tumbuh, jadi nol alokasi per peristiwa. */
-const dorongSampel = (p95Ms: number, a: AlatTulis) => {
-  a.nilai[a.kepala] = p95Ms;
-  a.kepala = (a.kepala + 1) % JUMLAH_BILAH;
-  if (a.isi < JUMLAH_BILAH) a.isi += 1;
+/** Bentuk window.__bilah — dibaca verifier, tidak pernah dipakai kode produksi. */
+const tulisBilahDebug = (a: AlatTulis, tinggiDasarPx: number) => {
+  const jendela = window as unknown as {
+    __bilah?: { menit: string[]; rasio: number[]; tinggiPx: number[]; markaPx: number };
+  };
+  jendela.__bilah = {
+    menit: [...a.menit],
+    rasio: [...a.rasio],
+    tinggiPx: [...a.tinggi],
+    markaPx: tinggiDasarPx,
+  };
+};
+
+/** Salin enam slot menit dari bacaan ke ring, kronologis. Mengembalikan true hanya kalau
+ *  angkanya benar-benar berubah, jadi bacaan yang sama tidak menandai bilah kotor. `kini`
+ *  diambil dari cap waktu server karena kunci menit juga dibuat oleh server. */
+const isiDariBacaan = (a: AlatTulis, p: PayloadTelemetri | null): boolean => {
+  const b = p?.clientFrames?.buket;
+  const slot = b ? isiSlot(b, p.timestamp) : [];
+  let ubah = false;
+  for (let j = 0; j < JUMLAH_BILAH; j++) {
+    const baru = rasioAmbang(slot[j]?.p95RerataMs ?? 0);
+    if (baru !== a.rasio[j]) {
+      a.rasio[j] = baru;
+      ubah = true;
+    }
+    const kunciBaru = slot[j]?.menit ?? "";
+    if (kunciBaru !== a.menit[j]) {
+      a.menit[j] = kunciBaru;
+      ubah = true;
+    }
+  }
+  return ubah;
 };
 
 /** Semua bahan lewat argumen: fungsi ini tidak menyentuh state React, jadi tidak ada
  *  yang perlu (atau boleh) di-memo — dipanggil hanya pada peristiwa, bukan tiap frame. */
 const pasangBilah = (im: THREE.InstancedMesh, kunci: Kunci[], a: AlatTulis) => {
-  if (!kunci.length || a.isi === 0) return;
+  if (!kunci.length) return;
 
   // Anggaran diambil dari portal TERSEMPIT: kotak yang dipakai saat perpindahan adalah
   // hasil campur antar portal, jadi portal aktif saja tidak menjamin baris muat.
@@ -114,9 +146,9 @@ const pasangBilah = (im: THREE.InstancedMesh, kunci: Kunci[], a: AlatTulis) => {
   const { matriks, posisi, skala, warna } = a;
 
   for (let j = 0; j < JUMLAH_BILAH; j++) {
-    const r = j < a.isi ? a.nilai[(a.kepala + j) % JUMLAH_BILAH] / BATAS_MS : 0;
-    const t = Math.min(r <= 1 ? r : 1 + (r - 1) * MAMPAT_KELEBIHAN, TINGGI_MAKS_RASIO);
-    const tinggi = tinggiDasar * t;
+    const r = a.rasio[j];
+    const tinggi = tinggiDasar * tinggiBilah(r);
+    a.tinggi[j] = tinggi;
     posisi.set(j * (lebar + jarak) + lebar / 2, tinggi / 2, 0);
     skala.set(lebar, tinggi, 1);
     matriks.compose(posisi, PUTARAN_NOL, skala);
@@ -137,6 +169,7 @@ const pasangBilah = (im: THREE.InstancedMesh, kunci: Kunci[], a: AlatTulis) => {
 
   im.instanceMatrix.needsUpdate = true;
   if (im.instanceColor) im.instanceColor.needsUpdate = true;
+  tulisBilahDebug(a, tinggiDasar);
 };
 
 export const BilahTelemetri: React.FC<AktorProps> = ({ scrollProgressRef }) => {
@@ -145,7 +178,7 @@ export const BilahTelemetri: React.FC<AktorProps> = ({ scrollProgressRef }) => {
     bacaKurangiGerak,
     bacaKurangiGerakSaatSSR
   );
-  const adaCuplik = useSyncExternalStore(dengarCuplik, bacaAdaCuplik, tidakAdaSaatSSR);
+  const adaBuket = useSyncExternalStore(dengarTelemetri, bacaAdaBuket, tidakAdaSaatSSR);
 
   const { size, viewport, camera } = useThree();
   const portal = usePortalRegistry();
@@ -160,48 +193,37 @@ export const BilahTelemetri: React.FC<AktorProps> = ({ scrollProgressRef }) => {
   const geometri = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
   const material = useMemo(() => new THREE.MeshBasicMaterial({ color: KERTAS }), []);
 
-  // Ring 12 sampel + scratch matriks/warna: satu wadah useRef, tidak ada alokasi saat
-  // menulis ulang instans, dan tidak ada state React yang ikut naik tiap sampel.
+  // Ring 6 slot + scratch matriks/warna: satu wadah useRef, tidak ada alokasi saat
+  // menulis ulang instans, dan tidak ada state React yang ikut naik tiap bacaan.
   const alat = useRef<AlatTulis>(buatAlatTulis());
   const kotor = useRef(true);
   const kunciTerpakai = useRef<Kunci[]>([]);
-  const cuplikTerakhir = useRef<CuplikanFrame | null>(null);
   const cacheSikap = useRef<{ p: number; kunci: Kunci[]; s: Sikap | undefined }>({
     p: -1,
     kunci: [],
     s: undefined,
   });
 
-  /** Sampel baru atau kotak portal dibaca ulang -> tandai kotor; penulisan instans
-   *  terjadi di frame berikutnya, tidak pernah dibungkus sebagai callback React. */
+  /** Slot baru atau kotak portal dibaca ulang -> tandai kotor; penulisan instans terjadi
+   *  di frame berikutnya, tidak pernah dibungkus sebagai callback React. */
   useEffect(() => {
     // Pengunjung yang minta gerakan dikurangi tidak boleh dibangunkan frame: tanpa mount,
     // tidak ada subscription sama sekali.
-    if (reduceMotion || !adaCuplik) return;
+    if (reduceMotion || !adaBuket) return;
     const im = meshRef.current;
     if (!im) return;
     im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
-    const terima = () => {
-      const c = bacaCuplik();
-      // Referensi objek yang sama = cuplikan yang sudah masuk ring; ini terjadi saat effect
-      // dipasang ulang, bukan sampel baru.
-      if (!c || c.frames === 0 || c === cuplikTerakhir.current) return false;
-      cuplikTerakhir.current = c;
-      dorongSampel(c.p95Ms, alat.current);
-      return true;
-    };
-
-    terima();
+    isiDariBacaan(alat.current, bacaTelemetri());
     kotor.current = true;
-    // Cuplikan terbit ±1 detik sekali. Menggambar langsung + invalidate() akan
-    // membangunkan kanvas setiap detik bahkan saat pengunjung diam, dan itu menghapus
-    // nol-frame-saat-diam yang dijaga GlobalEditorialCanvas. Jadi peristiwa ini hanya
-    // menandai ring kotor; frame yang kebetulan jalan yang menggambar.
-    return dengarCuplik(() => {
-      if (terima()) kotor.current = true;
+    // Bacaan terbit ±20 detik sekali. Menggambar langsung + invalidate() akan membangunkan
+    // kanvas terus-menerus bahkan saat pengunjung diam, dan itu menghapus nol-frame-saat-diam
+    // yang dijaga GlobalEditorialCanvas. Jadi peristiwa ini hanya menandai ring kotor; frame
+    // yang kebetulan jalan yang menggambar.
+    return dengarTelemetri(() => {
+      if (isiDariBacaan(alat.current, bacaTelemetri())) kotor.current = true;
     });
-  }, [adaCuplik, kotor, reduceMotion]);
+  }, [adaBuket, kotor, reduceMotion]);
 
   useEffect(
     () => () => {
@@ -244,7 +266,7 @@ export const BilahTelemetri: React.FC<AktorProps> = ({ scrollProgressRef }) => {
     im.scale.setScalar(1 / pxw);
   });
 
-  if (reduceMotion || !adaCuplik) return null;
+  if (reduceMotion || !adaBuket) return null;
 
   return (
     <instancedMesh

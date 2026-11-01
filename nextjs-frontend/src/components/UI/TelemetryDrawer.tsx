@@ -6,37 +6,18 @@ import { usePortfolioMode } from "@/context/PortfolioModeContext";
 import { X, Activity, Globe, Music, Server } from "lucide-react";
 import audioEngine from "@/lib/audioEngine";
 import { bacaCuplik, dengarCuplik, type CuplikanFrame } from "@/lib/perfStats";
+import {
+  bacaTelemetri,
+  bacaTelemetriSaatSSR,
+  dengarTelemetri,
+} from "@/lib/bacaTelemetri";
+import {
+  isiSlot,
+  pecahanTinggi,
+  rasioAmbang,
+  type BuketMenit,
+} from "@/lib/buketMenit";
 import { PEGA } from "@/lib/motion";
-
-// Kontrak /api/telemetry (lihat src/app/api/telemetry/route.ts). Field yang bisa null berarti
-// tidak ada pengukuran, dan yang tampil di panel adalah "—" — bukan angka pengganti.
-interface TelemetryPayload {
-  status: string;
-  latencyMs: number;
-  latencySamples: number[];
-  heapMb: number | null;
-  backend: { reachable: boolean; db: "ok" | "error" | null; rttMs: number | null };
-  runtime: { node: string | null; next: string | null };
-  watch: {
-    hijau: number;
-    total: number;
-    jendelaRun: number;
-    tautan: string;
-    terakhir: { nomor: number; kesimpulan: string; selesaiPada: string } | null;
-  } | null;
-  clientFrames: {
-    laporan: number;
-    frame: number;
-    medianMs: number;
-    p95Ms: number;
-    fpsTerendah: number;
-    shareLambatPct: number;
-    resolusiTeratas: { resolusi: string; laporan: number }[];
-    sejak: string;
-  } | null;
-  gitCommit: string | null;
-  timestamp: string;
-}
 
 // Kontrak GET /api/visits di go-backend: {"total":int,"today":int,"uniqueLast24h":int}.
 interface VisitsPayload {
@@ -78,9 +59,36 @@ function koordinatSparkline(samples: number[]) {
   }));
 }
 
+/** Enam bilah gumpalan per menit, sisi DOM dari angka yang sama dengan bilah instancedMesh
+ *  di panggung WebGL. Aturan "tidak ada bentuk tanpa angka" ditegakkan di sini: slot tanpa
+ *  laporan tidak menghasilkan elemen apa pun, dan tinggi yang ada hanya boleh datang dari
+ *  `pecahanTinggi()` — tidak ada kelas atau angka tinggi yang di-hardcode di file ini,
+ *  karena konstanta yang disisipkan satu sisi membuat dua lukisan berhenti cocok. */
+const DeretBuketMenit: React.FC<{ buket: BuketMenit[]; kini: string }> = ({ buket, kini }) => (
+  <div data-bilah-dom="" className="flex items-end gap-[3px] h-8">
+    {isiSlot(buket, kini).map((b, i) => (
+      <div key={b?.menit ?? `slot-${i}`} className="flex-1 h-full flex items-end">
+        {b ? (
+          <div
+            data-bilah-menit={i}
+            className={`w-full ${
+              rasioAmbang(b.p95RerataMs) > 1 ? "bg-[#D41E12]" : "bg-white/60"
+            }`}
+            style={{ height: `${pecahanTinggi(rasioAmbang(b.p95RerataMs)) * 100}%` }}
+            title={`${b.menit} · p95 rerata ${b.p95RerataMs} ms · ${b.laporan} laporan · fps terendah ${b.fpsTerendah}`}
+          />
+        ) : null}
+      </div>
+    ))}
+  </div>
+);
+
 export const TelemetryDrawer: React.FC = () => {
   const { telemetryOpen, setTelemetryOpen, audioMuted } = usePortfolioMode();
-  const [telemetry, setTelemetry] = useState<TelemetryPayload | null>(null);
+  // Panel tidak lagi memanggil /api/telemetry sendiri: satu-satunya pembaca rute itu adalah
+  // store lib/bacaTelemetri, yang juga menyuapi bilah 3D di panggung. Jadi bilah DOM di bawah
+  // dan bilah instans di kanvas pasti menggambar angka yang sama pada saat yang sama.
+  const telemetry = useSyncExternalStore(dengarTelemetri, bacaTelemetri, bacaTelemetriSaatSSR);
   const [visits, setVisits] = useState<VisitsPayload | null>(null);
   const globeCanvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -125,33 +133,15 @@ export const TelemetryDrawer: React.FC = () => {
       });
   }, []);
 
-  // Polling hanya selama drawer terbuka. Ditutup = interval dibersihkan dan request yang masih
-  // berjalan dibatalkan lewat AbortController, jadi tidak ada fetch yang masih menulis state panel
-  // yang sedang tidak dilihat siapa pun.
+  // Penghitung kunjungan di-poll hanya selama drawer terbuka. Ditutup = interval dibersihkan dan
+  // request yang masih berjalan dibatalkan lewat AbortController, jadi tidak ada fetch yang masih
+  // menulis state panel yang sedang tidak dilihat siapa pun. Telemetri tidak lagi ikut di sini:
+  // ritmenya sudah diatur store global, dan panel yang tertutup pun tetap butuh bacaannya.
   useEffect(() => {
     if (!telemetryOpen) return;
 
     const controller = new AbortController();
     let aktif = true;
-
-    const ambilTelemetry = async () => {
-      try {
-        const res = await fetch("/api/telemetry", {
-          signal: controller.signal,
-          cache: "no-store",
-        });
-        if (!res.ok) {
-          if (aktif) setTelemetry(null);
-          return;
-        }
-        const data = (await res.json()) as TelemetryPayload;
-        if (aktif) setTelemetry(data);
-      } catch {
-        // Jaringan gagal atau diabort: state dikosongkan supaya panel tidak terus menampilkan
-        // angka lama yang terlihat seperti pengukuran terbaru.
-        if (aktif) setTelemetry(null);
-      }
-    };
 
     const ambilVisits = async () => {
       try {
@@ -170,12 +160,8 @@ export const TelemetryDrawer: React.FC = () => {
       }
     };
 
-    void ambilTelemetry();
     void ambilVisits();
-    const interval = setInterval(() => {
-      void ambilTelemetry();
-      void ambilVisits();
-    }, POLL_MS);
+    const interval = setInterval(() => void ambilVisits(), POLL_MS);
 
     return () => {
       aktif = false;
@@ -274,6 +260,13 @@ export const TelemetryDrawer: React.FC = () => {
         : DASH;
   const commit = telemetry?.gitCommit ? telemetry.gitCommit.slice(0, 7) : DASH;
   const jam = telemetry?.timestamp ? telemetry.timestamp.slice(11, 19) : DASH;
+  // Gumpalan menit dibaca dari bacaan store yang sama; `kini` ikut cap waktu server supaya
+  // deret tidak bergeser saat jam pengunjung melenceng.
+  const buket = telemetry?.clientFrames?.buket ?? [];
+  const slotBuket = telemetry ? isiSlot(buket, telemetry.timestamp) : [];
+  // Menit ini biasanya masih kosong (laporan baru mendarat di tengah menit), jadi label yang
+  // dipakai adalah slot TERAKHIR YANG BERISI — bukan slot paling kanan.
+  const menitTerbaru = [...slotBuket].reverse().find((s) => s !== null) ?? null;
 
   return (
     <AnimatePresence>
@@ -468,6 +461,24 @@ export const TelemetryDrawer: React.FC = () => {
                     Diukur hanya selama tab terlihat; jendela agregat = sejak instance ini
                     hidup{telemetry?.clientFrames ? ` (${telemetry.clientFrames.sejak.slice(0, 16).replace("T", " ")})` : ""}.
                   </div>
+                  {/* Satu angka, dua lukisan: baris di bawah dan bilah instancedMesh di panggung
+                      WebGL sama-sama mengambil gumpalan menit dari store dan sama-sama memanggil
+                      fungsi tinggi di lib/buketMenit. Menit tanpa laporan tidak berbentuk di
+                      kedua sisi. */}
+                  {telemetry && menitTerbaru ? (
+                    <div className="pt-1">
+                      <div className="flex justify-between text-white/40">
+                        <span>ENAM MENIT TERAKHIR · p95 RERATA:</span>
+                        <span>{menitTerbaru.menit}</span>
+                      </div>
+                      <DeretBuketMenit buket={buket} kini={telemetry.timestamp} />
+                    </div>
+                  ) : (
+                    <div className="flex justify-between pt-1">
+                      <span className="text-white/40">ENAM MENIT TERAKHIR · p95 RERATA:</span>
+                      <span>{DASH}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between">
                     <span className="text-white/40">PROBE HARIAN (WATCH):</span>
                     <span>

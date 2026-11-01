@@ -1,5 +1,13 @@
 import { NextResponse } from "next/server";
 import { bacaStatusWatch } from "@/lib/server/statusWatch";
+import {
+  JUMLAH_BUKET,
+  jadiBuket,
+  kunciMenit,
+  tambahLaporan,
+  tambunBaru,
+  type Tambun,
+} from "@/lib/buketMenit";
 
 // Semua angka di respons ini adalah hasil pengukuran pada request itu juga. Tidak ada konstanta
 // hiasan: kalau sesuatu tidak bisa diukur, field-nya null dan yang menampilkannya wajib menulis "—".
@@ -64,6 +72,11 @@ const BUKET_MAKS = 6;
 const BUKET_JEDA_MS = 60_000;
 
 const laporanFrame: LaporanFrame[] = [];
+/** Tumpukan per menit, kunci "2026-11-02T07:03Z". Ini yang dirender dua kali (bilah DOM dan
+ *  bilah panggung), jadi hanya JUMLAH_BUKET menit terakhir yang ditahan — laporan mentahnya
+ *  sendiri sudah ada di `laporanFrame`. Menit yang sedang berjalan ikut tercatat sejak
+ *  laporan pertama, sehingga bilah pertama muncul tanpa menunggu menitnya selesai. */
+const tambunMenit = new Map<string, Tambun>();
 const buket = new Map<string, { sisa: number; reset: number }>();
 const sejakProses = new Date().toISOString();
 
@@ -97,6 +110,10 @@ function agregatFrame() {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 3)
       .map(([resolusi, laporan]) => ({ resolusi, laporan })),
+    // Kronologis, dan kunci ISO bisa disortir sebagai teks: "2026-11-02T07:03" <
+    // "2026-11-02T07:04" tanpa perlu diparsing. Menit yang belum selesai ikut, dengan
+    // `laporan` sebanyak yang sudah masuk — itu sebabnya penampil menyebut jumlah laporannya.
+    buket: [...tambunMenit.values()].sort((a, b) => (a.menit < b.menit ? -1 : 1)).map(jadiBuket),
     sejak: sejakProses,
   };
 }
@@ -131,17 +148,34 @@ export async function POST(req: Request) {
     return NextResponse.json({ disimpan: false, alasan: "field-di-luar-isi-mungkin" }, { status: 400 });
   }
 
-  laporanFrame.push({
+  const ritme = {
     fps: body.fps,
     medianMs: body.medianMs,
     p95Ms: body.p95Ms,
     over33ms: Math.round(body.over33ms),
     frames: Math.round(body.frames),
+  };
+  laporanFrame.push({
+    ...ritme,
     dpr: body.dpr,
     lebar: Math.round(body.lebar),
     tinggi: Math.round(body.tinggi),
   });
   if (laporanFrame.length > MAKS_LAPORAN) laporanFrame.shift();
+
+  const menit = kunciMenit(sekarang);
+  let tambun = tambunMenit.get(menit);
+  if (!tambun) {
+    tambun = tambunBaru(menit);
+    tambunMenit.set(menit, tambun);
+  }
+  tambahLaporan(tambun, ritme);
+  // Yang dibuang adalah menit yang paling tua, bukan yang paling besar angkanya: enam
+  // slot yang dibaca penampil harus selalu menit enam terakhir secara berurutan.
+  if (tambunMenit.size > JUMLAH_BUKET) {
+    const tua = [...tambunMenit.keys()].sort().slice(0, tambunMenit.size - JUMLAH_BUKET);
+    for (const k of tua) tambunMenit.delete(k);
+  }
 
   return NextResponse.json(
     { disimpan: true, jendela: laporanFrame.length },
