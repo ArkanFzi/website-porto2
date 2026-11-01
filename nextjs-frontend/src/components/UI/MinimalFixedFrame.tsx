@@ -2,10 +2,10 @@
 
 import React, { useEffect, useState } from "react";
 import { usePortfolioMode } from "@/context/PortfolioModeContext";
+import { useBabAktif } from "@/components/SmoothScrollProvider";
 import { ArrowUpRight, Cpu, Sparkles, FileText, Activity, Volume2, VolumeX, Terminal, Layers } from "lucide-react";
 
 interface FrameProps {
-  currentChapter: number; // 1 to 4
   onChapterClick: (ch: number) => void;
 }
 
@@ -27,7 +27,8 @@ const CHAPTER_LABELS = [
   "THE PADDOCK & DISPATCH",
 ];
 
-export const MinimalFixedFrame: React.FC<FrameProps> = ({ currentChapter, onChapterClick }) => {
+export const MinimalFixedFrame: React.FC<FrameProps> = ({ onChapterClick }) => {
+  const currentChapter = useBabAktif();
   const {
     mode,
     setMode,

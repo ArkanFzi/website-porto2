@@ -1,19 +1,30 @@
 "use client";
 
-import React, { useEffect, useRef, useState, useSyncExternalStore, createContext, useContext } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import Lenis from "lenis";
 
 interface ScrollContextType {
   scrollProgressRef: React.RefObject<number>;
   scrollVelocityRef: React.RefObject<number>;
-  currentChapter: number;
+  subscribeBab: (cb: (bab: number) => void) => () => void;
+  bacaBab: () => number;
   scrollToChapter: (ch: number) => void;
 }
 
 const ScrollContext = createContext<ScrollContextType>({
   scrollProgressRef: { current: 0 },
   scrollVelocityRef: { current: 0 },
-  currentChapter: 1,
+  subscribeBab: () => () => {},
+  bacaBab: () => 1,
   scrollToChapter: () => {},
 });
 
@@ -43,12 +54,31 @@ export const SmoothScrollProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const scrollProgressRef = useRef(0);
   const scrollVelocityRef = useRef(0);
   const lenisRef = useRef<Lenis | null>(null);
-  const [currentChapter, setCurrentChapter] = useState(1);
+  const babRef = useRef(1);
+  const pendengarBab = useRef<Set<(bab: number) => void>>(new Set());
   const reduceMotion = useSyncExternalStore(
     dengarKurangiGerak,
     bacaKurangiGerak,
     bacaKurangiGerakSaatSSR
   );
+
+  // Bab tidak lagi lewat state provider. Terukur: 7 kali ChapterArchives ter-render
+  // ulang tiap lintasan scroll (state provider menyeret seluruh subtree + kanvas);
+  // sekarang nol, hanya HUD yang berlangganan dan ikut berganti.
+  const terbitkanBab = useCallback((bab: number) => {
+    if (bab === babRef.current) return;
+    babRef.current = bab;
+    pendengarBab.current.forEach((cb) => cb(bab));
+  }, []);
+
+  const subscribeBab = useCallback((cb: (bab: number) => void) => {
+    pendengarBab.current.add(cb);
+    return () => {
+      pendengarBab.current.delete(cb);
+    };
+  }, []);
+
+  const bacaBab = useCallback(() => babRef.current, []);
 
   useEffect(() => {
     if (reduceMotion) {
@@ -59,7 +89,7 @@ export const SmoothScrollProvider: React.FC<{ children: React.ReactNode }> = ({ 
         const maks = document.documentElement.scrollHeight - window.innerHeight;
         scrollProgressRef.current = maks > 0 ? Math.min(1, Math.max(0, window.scrollY / maks)) : 0;
         scrollVelocityRef.current = 0;
-        setCurrentChapter(chapterDari(scrollProgressRef.current));
+        terbitkanBab(chapterDari(scrollProgressRef.current));
       };
       baca();
       window.addEventListener("scroll", baca, { passive: true });
@@ -89,7 +119,7 @@ export const SmoothScrollProvider: React.FC<{ children: React.ReactNode }> = ({ 
     const onScroll = (e: { progress: number; velocity: number }) => {
       scrollProgressRef.current = e.progress;
       scrollVelocityRef.current = e.velocity;
-      setCurrentChapter(chapterDari(e.progress));
+      terbitkanBab(chapterDari(e.progress));
     };
     lenisInstance.on("scroll", onScroll);
 
@@ -99,28 +129,39 @@ export const SmoothScrollProvider: React.FC<{ children: React.ReactNode }> = ({ 
       lenisInstance.destroy();
       lenisRef.current = null;
     };
-  }, [reduceMotion]);
+  }, [reduceMotion, terbitkanBab]);
 
-  const scrollToChapter = (ch: number) => {
-    const target = document.getElementById(`chapter-0${ch}`);
-    if (!target) return;
-    if (lenisRef.current) {
-      lenisRef.current.scrollTo(target, { duration: reduceMotion ? 0 : 1.4 });
-      return;
-    }
-    target.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth" });
-  };
-
-  return (
-    <ScrollContext.Provider
-      value={{
-        scrollProgressRef,
-        scrollVelocityRef,
-        currentChapter,
-        scrollToChapter,
-      }}
-    >
-      {children}
-    </ScrollContext.Provider>
+  const scrollToChapter = useCallback(
+    (ch: number) => {
+      const target = document.getElementById(`chapter-0${ch}`);
+      if (!target) return;
+      if (lenisRef.current) {
+        lenisRef.current.scrollTo(target, { duration: reduceMotion ? 0 : 1.4 });
+        return;
+      }
+      target.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth" });
+    },
+    [reduceMotion]
   );
+
+  const nilai = useMemo<ScrollContextType>(
+    () => ({
+      scrollProgressRef,
+      scrollVelocityRef,
+      subscribeBab,
+      bacaBab,
+      scrollToChapter,
+    }),
+    // Ref sengaja tidak masuk deps: identity-nya stabil seumur sesi.
+    [subscribeBab, bacaBab, scrollToChapter]
+  );
+
+  return <ScrollContext.Provider value={nilai}>{children}</ScrollContext.Provider>;
+};
+
+export const useBabAktif = () => {
+  const { subscribeBab, bacaBab } = useScrollData();
+  const [bab, setBab] = useState(bacaBab);
+  useEffect(() => subscribeBab(setBab), [subscribeBab, bacaBab]);
+  return bab;
 };

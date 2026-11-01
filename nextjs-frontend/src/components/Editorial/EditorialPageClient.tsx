@@ -36,7 +36,7 @@ const EditorialInner: React.FC<PageClientProps> = ({
   certificates,
   experiences,
 }) => {
-  const { scrollProgressRef, scrollVelocityRef, currentChapter, scrollToChapter } = useScrollData();
+  const { scrollProgressRef, scrollVelocityRef, scrollToChapter } = useScrollData();
   const [hoveredProject, setHoveredProject] = useState<number | null>(null);
 
   return (
@@ -49,10 +49,7 @@ const EditorialInner: React.FC<PageClientProps> = ({
       />
 
       {/* ── Fixed Frame (Monogram, Switcher, Indeks, Contact) ── */}
-      <MinimalFixedFrame
-        currentChapter={currentChapter}
-        onChapterClick={scrollToChapter}
-      />
+      <MinimalFixedFrame onChapterClick={scrollToChapter} />
 
       {/* ── Pit-Wall Telemetry HUD Drawer & Interactive CLI Shell ── */}
       <TelemetryDrawer />
