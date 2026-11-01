@@ -30,11 +30,19 @@ const ScrollContext = createContext<ScrollContextType>({
 
 export const useScrollData = () => useContext(ScrollContext);
 
-const chapterDari = (progress: number) => {
-  if (progress < 0.25) return 1;
-  if (progress < 0.55) return 2;
-  if (progress < 0.85) return 3;
-  return 4;
+// Bab dibaca dari posisi keempat section sungguhan, bukan pecahan progress.
+// Terukur: dengan pecahan progress, mendarat tepat di puncak chapter-02 (scrollY
+// 900 dari maks 4331) masih dianggap bab 1, jadi label HUD dan hash URL saling
+// membantah. Garis baca = 35% tinggi viewport ke bawah.
+const GARIS_BACA = 0.35;
+const babDariPosisi = (elemen: (HTMLElement | null)[]): number => {
+  const garis = window.innerHeight * GARIS_BACA;
+  let bab = 1;
+  for (let ch = 1; ch <= 4; ch++) {
+    const el = elemen[ch - 1];
+    if (el && el.getBoundingClientRect().top <= garis) bab = ch;
+  }
+  return bab;
 };
 
 // MediaQueryList dibuat sekali; dibaca lewat store supaya preferensi yang sudah
@@ -50,11 +58,24 @@ const dengarKurangiGerak = (ubah: () => void) => {
 const bacaKurangiGerak = () => mediaKurangiGerak().matches;
 const bacaKurangiGerakSaatSSR = () => false;
 
+const idBab = (ch: number) => `chapter-0${ch}`;
+const babDariHash = (): number | null => {
+  const cocok = /^#chapter-0([1-4])$/.exec(window.location.hash || "");
+  return cocok ? Number(cocok[1]) : null;
+};
+const tulisHash = (ch: number, dorong: boolean) => {
+  const id = "#" + idBab(ch);
+  if (window.location.hash === id) return;
+  if (dorong) window.history.pushState({ bab: ch }, "", id);
+  else window.history.replaceState({ bab: ch }, "", id);
+};
+
 export const SmoothScrollProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const scrollProgressRef = useRef(0);
   const scrollVelocityRef = useRef(0);
   const lenisRef = useRef<Lenis | null>(null);
   const babRef = useRef(1);
+  const elemenBab = useRef<(HTMLElement | null)[]>([]);
   const pendengarBab = useRef<Set<(bab: number) => void>>(new Set());
   const reduceMotion = useSyncExternalStore(
     dengarKurangiGerak,
@@ -68,6 +89,7 @@ export const SmoothScrollProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const terbitkanBab = useCallback((bab: number) => {
     if (bab === babRef.current) return;
     babRef.current = bab;
+    tulisHash(bab, false);
     pendengarBab.current.forEach((cb) => cb(bab));
   }, []);
 
@@ -80,6 +102,26 @@ export const SmoothScrollProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   const bacaBab = useCallback(() => babRef.current, []);
 
+  // Elemen bab dicari sekali saat mount; effect ini sengaja di atas effect scroll
+  // supaya pembacaan pertama sudah punya pegangan.
+  useEffect(() => {
+    elemenBab.current = [1, 2, 3, 4].map((ch) => document.getElementById(idBab(ch)));
+    terbitkanBab(babDariPosisi(elemenBab.current));
+  }, [terbitkanBab]);
+
+  // Preferensi gerakan dibaca langsung dari media query di sini supaya fungsi ini
+  // tetap stabil dan bisa dipakai handler popstate tanpa ikut di-daftar-ulang.
+  const gulirKe = useCallback((ch: number, animasi: boolean) => {
+    const target = document.getElementById(idBab(ch));
+    if (!target) return;
+    const jalan = animasi && !bacaKurangiGerak();
+    if (lenisRef.current) {
+      lenisRef.current.scrollTo(target, jalan ? { duration: 1.4 } : { immediate: true });
+      return;
+    }
+    target.scrollIntoView({ behavior: jalan ? "smooth" : "auto" });
+  }, []);
+
   useEffect(() => {
     if (reduceMotion) {
       // Lenis selalu menjalankan rAF sendiri dan menggulirkan halaman setelah
@@ -89,7 +131,7 @@ export const SmoothScrollProvider: React.FC<{ children: React.ReactNode }> = ({ 
         const maks = document.documentElement.scrollHeight - window.innerHeight;
         scrollProgressRef.current = maks > 0 ? Math.min(1, Math.max(0, window.scrollY / maks)) : 0;
         scrollVelocityRef.current = 0;
-        terbitkanBab(chapterDari(scrollProgressRef.current));
+        terbitkanBab(babDariPosisi(elemenBab.current));
       };
       baca();
       window.addEventListener("scroll", baca, { passive: true });
@@ -119,7 +161,7 @@ export const SmoothScrollProvider: React.FC<{ children: React.ReactNode }> = ({ 
     const onScroll = (e: { progress: number; velocity: number }) => {
       scrollProgressRef.current = e.progress;
       scrollVelocityRef.current = e.velocity;
-      terbitkanBab(chapterDari(e.progress));
+      terbitkanBab(babDariPosisi(elemenBab.current));
     };
     lenisInstance.on("scroll", onScroll);
 
@@ -131,17 +173,33 @@ export const SmoothScrollProvider: React.FC<{ children: React.ReactNode }> = ({ 
     };
   }, [reduceMotion, terbitkanBab]);
 
+  // Deep link /#chapter-03 dipatuhi saat mendarat; tombol back/forward menggulir
+  // ke bab yang ada di URL. Gulir biasa hanya replaceState supaya riwayat tidak
+  // terisi satu entri per pergantian bab.
+  useEffect(() => {
+    const padaPopstate = () => {
+      const ch = babDariHash();
+      if (ch !== null) gulirKe(ch, true);
+    };
+    const padaMuat = () => {
+      const ch = babDariHash();
+      if (ch !== null && ch !== 1) gulirKe(ch, false);
+    };
+    window.addEventListener("popstate", padaPopstate);
+    if (document.readyState === "complete") padaMuat();
+    else window.addEventListener("load", padaMuat, { once: true });
+    return () => {
+      window.removeEventListener("popstate", padaPopstate);
+      window.removeEventListener("load", padaMuat);
+    };
+  }, [gulirKe]);
+
   const scrollToChapter = useCallback(
     (ch: number) => {
-      const target = document.getElementById(`chapter-0${ch}`);
-      if (!target) return;
-      if (lenisRef.current) {
-        lenisRef.current.scrollTo(target, { duration: reduceMotion ? 0 : 1.4 });
-        return;
-      }
-      target.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth" });
+      tulisHash(ch, true);
+      gulirKe(ch, true);
     },
-    [reduceMotion]
+    [gulirKe]
   );
 
   const nilai = useMemo<ScrollContextType>(
