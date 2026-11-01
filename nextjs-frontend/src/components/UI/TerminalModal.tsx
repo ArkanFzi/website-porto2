@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { usePortfolioMode } from "@/context/PortfolioModeContext";
 import { X, Terminal as TerminalIcon } from "lucide-react";
 import audioEngine from "@/lib/audioEngine";
+import { SITE_HOST } from "@/lib/site";
 
 interface CommandOutput {
   command: string;
@@ -72,7 +73,6 @@ export const TerminalModal: React.FC = () => {
             <div><span className="text-[#D41E12] font-bold">skills</span> — Tech stack & throughput benchmarks</div>
             <div><span className="text-[#D41E12] font-bold">projects</span> — Key production architectures</div>
             <div><span className="text-[#D41E12] font-bold">benchmark</span> — Execute in-browser concurrency benchmark</div>
-            <div><span className="text-[#D41E12] font-bold">gpg</span> — Export Public Key fingerprint</div>
             <div><span className="text-[#D41E12] font-bold">changelog</span> — View recent Git release logs</div>
             <div><span className="text-[#D41E12] font-bold">clear</span> — Wipe terminal screen</div>
             <div><span className="text-[#D41E12] font-bold">exit</span> — Close terminal session</div>
@@ -141,12 +141,15 @@ export const TerminalModal: React.FC = () => {
 
       case "gpg":
       case "pgp":
+        // Tidak ada kunci publik yang pernah diterbitkan untuk situs ini. Perintah ini
+        // sebelumnya mencetak sepasang header blok kunci tanpa material kunci di
+        // antaranya, plus uid ke domain yang tidak pernah terdaftar — klaim palsu.
+        // Yang jujur: katakan kunci tidak tersedia.
         response = (
           <div className="space-y-1 font-mono text-[10px] text-white/70 bg-black/40 p-2.5 rounded border border-white/10">
-            <p className="text-[#D41E12] font-bold">-----BEGIN PGP PUBLIC KEY BLOCK-----</p>
-            <p>mQGNBF/ArkanFauziKey16...4A8E C6D2 9B14 88FE 16AF</p>
-            <p>Uid: M. Arkan Fauzi &lt;contact@arkanfauzi.dev&gt;</p>
-            <p className="text-[#D41E12] font-bold">-----END PGP PUBLIC KEY BLOCK-----</p>
+            <p className="text-[#D41E12] font-bold">NO PUBLIC KEY PUBLISHED</p>
+            <p>This site ships no signing key, so there is nothing to export here.</p>
+            <p className="text-white/50">Use the contact form or the mailto link in CH.04.</p>
           </div>
         );
         break;
@@ -240,7 +243,7 @@ export const TerminalModal: React.FC = () => {
               <div className="flex items-center gap-2">
                 <TerminalIcon className="w-4 h-4 text-[#D41E12]" />
                 <span className="text-xs font-bold text-white tracking-widest uppercase">
-                  guest@arkanfauzi.dev: ~ (zsh)
+                  guest@{SITE_HOST}: ~ (zsh)
                 </span>
               </div>
               <button

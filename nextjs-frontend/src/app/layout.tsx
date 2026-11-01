@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, Playfair_Display, Space_Mono } from "next/font/google";
 import "./globals.css";
 import { PortfolioModeProvider } from "@/context/PortfolioModeContext";
+import { SITE_URL } from "@/lib/site";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -23,9 +24,18 @@ const spaceMono = Space_Mono({
 });
 
 export const metadata: Metadata = {
+  // Tanpa metadataBase, open graph & canonical keluar sebagai URL relatif dan crawler
+  // membacanya dari host apa pun halaman itu jatuh (termasuk *.run.app).
+  metadataBase: new URL(SITE_URL),
   title: "M. Arkan Fauzi — Systems Architect & Creative Technologist // #16",
   description: "Awwwards-grade interactive editorial portfolio of M. Arkan Fauzi (@ArkanFzi). Haute-couture minimalism meets real-time WebGL Chiaroscuro shader sculpture.",
   keywords: ["Arkan Fauzi", "Full Stack Engineer", "WebGL", "Three.js", "Scuderia Ferrari", "Creative Technologist"],
+  alternates: { canonical: "/" },
+  openGraph: {
+    url: "/",
+    siteName: "M. Arkan Fauzi",
+    type: "website",
+  },
 };
 
 export default function RootLayout({

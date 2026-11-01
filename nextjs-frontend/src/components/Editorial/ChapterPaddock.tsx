@@ -13,7 +13,6 @@ const SOCIAL_CHANNELS = [
 
 export const ChapterPaddock: React.FC = () => {
   const [dispatchInput, setDispatchInput] = useState("");
-  const [pgpEncrypt, setPgpEncrypt] = useState(false);
   const [dispatchStatus, setDispatchStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [statusMessage, setStatusMessage] = useState("");
 
@@ -30,10 +29,12 @@ export const ChapterPaddock: React.FC = () => {
     }
 
     const email = emailMatch[0];
-    const rawMessage = dispatchInput.replace(email, "").replace(/^[\s—\-:]+/, "").trim() || "Interested in collaborating.";
-    const message = pgpEncrypt
-      ? `-----BEGIN PGP MESSAGE-----\nVersion: OpenPGP.js v4\nComment: Encrypted Dispatch\n\nhQGMA4...${btoa(rawMessage)}...==\n-----END PGP MESSAGE-----`
-      : rawMessage;
+    // Isi pesan dikirim apa adanya. Di tempat ini pernah ada checkbox "encrypt" yang
+    // membungkus teks dengan header pesan tersandi palsu lalu menempelkan btoa() di
+    // dalamnya: base64 bukan enkripsi, pustaka kuncinya tidak pernah jadi dependensi,
+    // dan /api/contact menerima body ini sebagai plaintext. Jangan memasang klaim itu
+    // kembali sebelum ada kunci dan enkripsi sungguhan di kedua ujung.
+    const message = dispatchInput.replace(email, "").replace(/^[\s—\-:]+/, "").trim() || "Interested in collaborating.";
 
     setDispatchStatus("loading");
     setStatusMessage("TRANSMITTING TELEMETRY DISPATCH...");
@@ -141,17 +142,8 @@ export const ChapterPaddock: React.FC = () => {
             </button>
           </form>
 
-          {/* PGP Encryption & Security Controls */}
-          <div className="flex items-center justify-between mt-2.5 font-mono text-[9px] text-white/70">
-            <label className="flex items-center gap-1.5 cursor-pointer hover:text-white select-none">
-              <input
-                type="checkbox"
-                checked={pgpEncrypt}
-                onChange={(e) => setPgpEncrypt(e.target.checked)}
-                className="w-3 h-3 rounded accent-[#0A0A0A] cursor-pointer"
-              />
-              <span className="tracking-wider">END-TO-END PGP ENCRYPT</span>
-            </label>
+          {/* Catatan laju pengiriman — tidak ada klaim enkripsi di sini. */}
+          <div className="flex items-center justify-end mt-2.5 font-mono text-[9px] text-white/70">
             <span className="text-white/40">RATE LIMIT: 5 MSG/HR</span>
           </div>
 
