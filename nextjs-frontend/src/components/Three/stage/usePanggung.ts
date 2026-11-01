@@ -35,6 +35,16 @@ const KECEPATAN_PENUH = 25;
 /** Konstanta waktu pegas dolly, detik. */
 const TAU_DOLLY = 0.14;
 
+/** Setengah lebar inti sapuan, dalam t koreografi. Di dalam inti ini kartu tertutup
+ *  habis. */
+const SAPUAN_INTI = 0.08;
+
+/** Lebar rampa pembuka di luar inti, dalam t yang sama. Jadi sapuan hanya ada di
+ *  t 0,24–0,76 dan selebihnya kartu terbuka penuh: pita koreografi bisa 400–700 pixel
+ *  gulir lebar, dan potret yang hilang sepanjang itu terbaca sebagai gangguan, bukan
+ *  sebagai perpindahan. */
+const SAPUAN_RAMPA = 0.18;
+
 /** Bentuk window.__panggung — dibaca verifier, tidak pernah dipakai kode produksi. */
 export interface PembacaanPanggung {
   p: number;
@@ -68,6 +78,9 @@ export interface PembacaanPanggung {
    *  mengubah world→NDC sendiri, jadi klaim "kartu duduk di tengah kotaknya" bisa diuji
    *  tanpa menelan kalibrasi yang sedang diuji. */
   kamera: [number, number];
+  /** Iris potong pada kotak portal: 0 = terbuka penuh, 1 = tertutup habis. Hanya bukan
+   *  nol selama kartu benar-benar berpindah bab. */
+  wipe: number;
 }
 
 const bundar = (n: number) => Math.round(n * 1e4) / 1e4;
@@ -82,6 +95,7 @@ interface BacaanTambahan {
   kursor: [number, number, number, number];
   dolly: number;
   kamera: [number, number];
+  wipe: number;
 }
 
 const tulisPanggungDebug = (
@@ -92,7 +106,7 @@ const tulisPanggungDebug = (
   kotak: PortalKotak,
   tambahan: BacaanTambahan
 ) => {
-  const { putar, jejak, balik, persona, kursor, dolly, kamera } = tambahan;
+  const { putar, jejak, balik, persona, kursor, dolly, kamera, wipe } = tambahan;
   const jendela = window as unknown as { __panggung?: PembacaanPanggung };
   jendela.__panggung = {
     p: bundar(p),
@@ -115,6 +129,7 @@ const tulisPanggungDebug = (
     kursor: kursor.map(bundar) as [number, number, number, number],
     dolly: bundar(dolly),
     kamera: kamera.map(bundar) as [number, number],
+    wipe: bundar(wipe),
   };
 };
 
@@ -343,6 +358,20 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
     );
     mat.uniforms.uNdcPerPx.value.set(2 / layarX, 2 / layarY);
 
+    // ── WIPE ANTAR BAB ──
+    // Hidup hanya di dalam pita perpindahan (bab dari ≠ bab ke) dan hanya di tengahnya:
+    // kartu menutup habis sebentar saat ia berada di "tidak ada rumah" antara dua portal,
+    // lalu terbuka lagi sebelum mendarat. reduce-motion tidak mendapat sapuan — yang
+    // boleh hilang adalah gerakannya, bukan kartunya.
+    const jarakTengah = Math.abs(k.t - 0.5);
+    const buka = THREE.MathUtils.clamp(
+      1 - Math.max(0, jarakTengah - SAPUAN_INTI) / SAPUAN_RAMPA,
+      0,
+      1
+    );
+    const wipe = kurangiGerak || k.babDari === k.babKe ? 0 : buka;
+    mat.uniforms.uWipe.value = wipe;
+
     // Putaran flip dilicinkan di kedua ujungnya (smoothstep) supaya kartu selalu
     // berhenti tepat pada yaw sikap bab-nya, tidak pernah di tengah putaran.
     const sudutBalik = balik.current > 0 ? Math.PI * 2 * (maju * maju * (3 - 2 * maju)) : 0;
@@ -482,6 +511,7 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
         kursor: [uv.x, uv.y, dipegang ? 1 : 0, mat.uniforms.uReveal.value as number],
         dolly,
         kamera: [lensa?.fov ?? fovDasar.current, camera.position.z],
+        wipe,
       });
 
     }

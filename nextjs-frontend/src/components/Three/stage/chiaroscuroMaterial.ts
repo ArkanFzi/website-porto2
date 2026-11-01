@@ -66,6 +66,10 @@ export const fragmentShader = /* glsl */ `
   uniform vec3 uJejak[${JUMLAH_JEJAK}];
   uniform vec4 uMask;      // batas portal dalam NDC: kiri, kanan, bawah, atas
   uniform vec2 uNdcPerPx;  // lebar/satu tinggi layar dalam NDC, untuk tepi potong
+  /** Penutup iris antar bab, 0 = terbuka penuh sampai 1 = tertutup. Ambangnya dihitung
+   *  dari bidang jarak yang sama dengan potongan portal, jadi wipe tidak membawa bentuk
+   *  baru ke kartu — ia hanya menarik tepi potong yang sudah ada ke dalam. */
+  uniform float uWipe;
 
   varying vec2 vUv;
   varying vec3 vNormal;
@@ -184,9 +188,22 @@ export const fragmentShader = /* glsl */ `
     // Kartu boleh lebih lebar dari kotaknya (parallax pointer, gelombang, miring);
     // sisanya dipotong pada batas kotak DOM bab, supaya kartu tidak pernah menutupi
     // teks. Tepi dibuat lunak ~3px agar tidak terlihat sebagai garis bergerigi.
-    float luarX = max(max(uMask.x - vClip.x, vClip.x - uMask.y) / uNdcPerPx.x, 0.0);
-    float luarY = max(max(uMask.z - vClip.y, vClip.y - uMask.w) / uNdcPerPx.y, 0.0);
-    alpha *= 1.0 - smoothstep(0.0, 3.0, max(luarX, luarY));
+    // ── POTONG PORTAL + WIPE ANTAR BAB ──
+    // Satu bidang jarak, satu ambang. jarak = jarak bertanda ke tepi kotak portal dalam
+    // pixel: positif di dalam (sampai setengah dimensi terkecil di tengah), nol di tepi,
+    // negatif di luar. Kartu boleh lebih lebar dari kotaknya (parallax pointer, gelombang,
+    // miring); sisanya dipotong pada batas kotak DOM bab supaya kartu tidak pernah menutupi
+    // teks. uWipe menggeser ambangnya ke dalam, jadi berpindah bab adalah sapuan pada
+    // bingkai yang sama, bukan bentuk baru. Pada uWipe = 0 hasilnya IDENTIK dengan potongan
+    // saja: ramp 1.5px di kedua sisi membuat (-3,0) jatuh tepat seperti potongan lunak
+    // 3px yang lama, dan kartu diam tidak kehilangan satu pixel pun di tepinya.
+    float tepiX = min(vClip.x - uMask.x, uMask.y - vClip.x) / uNdcPerPx.x;
+    float tepiY = min(vClip.y - uMask.z, uMask.w - vClip.y) / uNdcPerPx.y;
+    float jarak = min(tepiX, tepiY);
+    float jari =
+      min((uMask.y - uMask.x) / uNdcPerPx.x, (uMask.w - uMask.z) / uNdcPerPx.y) * 0.5;
+    float tutup = uWipe * (jari + 1.5) - 1.5;
+    alpha *= smoothstep(tutup - 1.5, tutup + 1.5, jarak);
 
     gl_FragColor = vec4(finalColor, alpha);
   }
@@ -207,6 +224,7 @@ export interface UniformsPanggung {
   uJejak: { value: THREE.Vector3[] };
   uMask: { value: THREE.Vector4 };
   uNdcPerPx: { value: THREE.Vector2 };
+  uWipe: { value: number };
 }
 
 /** Ditambah index signature supaya bisa disuapkan ke prop `uniforms` milik
@@ -232,4 +250,6 @@ export const buatUniformPanggung = (
   // berjalan tidak memotong kartu seluruhnya.
   uMask: { value: new THREE.Vector4(-1, 1, -1, 1) },
   uNdcPerPx: { value: new THREE.Vector2(2 / 1440, 2 / 900) },
+  // Terbuka: kartu penuh sampai panggung memutuskan bahwa ia sedang berpindah bab.
+  uWipe: { value: 0 },
 });

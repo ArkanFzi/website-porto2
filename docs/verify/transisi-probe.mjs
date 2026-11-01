@@ -49,6 +49,9 @@ const baca = () =>
       rotY: kartu?.rotation.y ?? p.rotY,
       p: p.p,
       t: p.t,
+      wipe: p.wipe,
+      babDari: p.babDari,
+      babKe: p.babKe,
       mask: p.mask,
       kamera: p.kamera,
       portal: p.portal,
@@ -88,6 +91,104 @@ const tungguDolly = async (batas, maksMs = 8000) => {
     b = await baca();
   }
   return b;
+};
+
+/** Bagian kotak portal yang benar-benar berisi kartu, diukur dari layar. Uniform boleh
+ *  sempurna sementara shader tidak menggambar apa pun (pernah terjadi: nama konstanta
+ *  TypeScript yang disisipkan apa adanya ke GLSL), jadi klaim tentang potongan wajib
+ *  lewat piksel. Ambang 26/255 memisahkan kertas gelap dari potret; yang dibandingkan
+ *  adalah LUAS relatif, bukan kecerahan, karena potret bergerak bersama kotaknya.
+ *  Kotak dibaca sebelum DAN sesudah foto: tanpa itu yang diukur adalah kotak sekarang
+ *  atas foto yang tadi, dan sapuan yang sedang lewat ketahuan sebagai bidang kecil
+ *  yang sepenuhnya terang. */
+const areaKartu = async () => {
+  const sebelum = await baca();
+  if (!sebelum) return null;
+  const gamba = await page.screenshot({ encoding: 'base64' });
+  const sesudah = await baca();
+  const [k, a, l, t] = sebelum.portal;
+  const ukur = await page.evaluate(
+    async ({ gamba, k, a, l, t }) => {
+      const img = new Image();
+      img.src = 'data:image/png;base64,' + gamba;
+      await img.decode();
+      const c = document.createElement('canvas');
+      c.width = img.width;
+      c.height = img.height;
+      const ctx = c.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0);
+      const w = Math.max(1, Math.min(Math.round(l), img.width - Math.round(k)));
+      const h = Math.max(1, Math.min(Math.round(t), img.height - Math.round(a)));
+      const d = ctx.getImageData(Math.round(k), Math.round(a), w, h).data;
+      let terang = 0;
+      let n = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        const v = (d[i] + d[i + 1] + d[i + 2]) / 3;
+        n++;
+        if (v > 26) terang++;
+      }
+      return { pecah: terang / n, piksel: n };
+    },
+    { gamba, k, a, l, t }
+  );
+  return {
+    ...ukur,
+    portal: sebelum.portal,
+    portalSesudah: sesudah?.portal ?? null,
+    wipeSebelum: sebelum.wipe,
+    wipeSesudah: sesudah?.wipe ?? -1,
+  };
+};
+
+/** Berpindah bab sambil berhenti di tengahnya. Sapuan hanya fungsi dari posisi gulir,
+ *  jadi halaman boleh DIPARKIR pada puncaknya dan difoto — kecepatan roda tidak akan
+ *  pernah cukup lambat untuk menangkap satu frame di tengah sapuan. Langkah kecil,
+ *  berhenti begitu sapuan menutup, lalu jalan lagi sampai ia membuka. */
+const lewatiBand = async (n) => {
+  await klikBab(n);
+  const awal = await tungguSikap();
+  const terbuka = await areaKartu();
+  const langkah = 30;
+  const batas = 60;
+  const naik = [];
+  let puncak = awal?.wipe ?? 0;
+  for (let i = 0; i < batas; i++) {
+    await page.mouse.wheel({ deltaY: langkah });
+    await diamkan(90);
+    const b = await baca();
+    if (!b) break;
+    naik.push(b);
+    puncak = Math.max(puncak, b.wipe);
+    if (b.wipe >= 0.85) break;
+  }
+  const tenang = await tungguSikap();
+  const foto = await areaKartu();
+  const turun = [];
+  for (let i = 0; i < batas; i++) {
+    await page.mouse.wheel({ deltaY: langkah });
+    await diamkan(90);
+    const b = await baca();
+    if (!b) break;
+    turun.push(b);
+    // Satu sapuan saja yang direkam: begitu kartu membuka kembali, perpindahan bab ini
+    // selesai dan sisanya adalah ruang diam di dalam bab tujuan.
+    if (b.wipe <= 0.05) break;
+  }
+  const akhir = await tungguSikap();
+  const mendarat = await areaKartu();
+  const semua = [...naik, tenang, ...turun].filter(Boolean);
+  return {
+    awal,
+    terbuka,
+    naik,
+    turun,
+    foto,
+    tenang,
+    akhir,
+    mendarat,
+    profil: semua,
+    puncak: Math.max(puncak, ...semua.map((r) => r.wipe)),
+  };
 };
 
 const hasil = [];
@@ -214,15 +315,94 @@ kisar('posisi kartu kembali seperti sebelum digulir', Math.abs(sesudah3.x - diam
 kisar('yaw kartu kembali seperti sebelum digulir', Math.abs(sesudah3.rotY - diam1.rotY), 0, 0.005);
 kisar('pusat kartu mendarat di tempat yang sama terhadap kotak portalnya', selisihRel, 0, 0.002);
 
-// ── 4 · prefers-reduced-motion: kamera tidak boleh didolly ──
+// ── 4 · wipe antar bab: satu sapuan pada bingkai portal, terbukti di layar ──
+// Sapuan lahir dari bidang jarak yang sama dengan potongan portal, jadi yang diuji
+// adalah: diam = terbuka penuh, berpindah = menutup lalu membuka lagi, dan keduanya
+// sampai ke piksel. Gerbang uniform saja tidak cukup — shader yang gagal kompilasi
+// melaporkan angka sempurna tanpa menggambar satu pixel pun.
+const sapu = await lewatiBand(2);
+const profil = sapu.profil;
+const tengah = sapu.foto ? sapu.foto.wipeSebelum : 0;
+console.log(
+  'sapuan   puncak:', sapu.puncak.toFixed(3), '| parkir:', tengah.toFixed(3), '| sampel:', profil.length,
+  '| nilai:', profil.map((r) => r.wipe.toFixed(2)).join(' '),
+  '\n         area  terbuka:', sapu.terbuka?.pecah.toFixed(3), 'tertutup:', sapu.foto?.pecah.toFixed(3),
+  'mendarat:', sapu.mendarat?.pecah.toFixed(3),
+  '| kotak foto:', JSON.stringify(sapu.foto?.portal), '→', JSON.stringify(sapu.foto?.portalSesudah)
+);
+cek('kartu diam dalam sebuah bab tidak terpotong sapuan', sapu.awal.wipe <= 0.02 && sapu.terbuka.pecah >= 0.5, true);
+cek('berpindah bab menghasilkan sapuan yang hampir menutup', sapu.puncak >= 0.9, true);
+cek('sapuan tidak pernah melewati satu', profil.every((r) => r.wipe <= 1 + 1e-6), true);
+cek('sapuan menutup lalu membuka lagi, satu punggungan', (() => {
+  const w = profil.map((r) => r.wipe);
+  const p = w.indexOf(Math.max(...w));
+  const mulai = w.findIndex((v) => v >= 0.05);
+  const selesai = w.slice(p).findIndex((v) => v <= 0.05);
+  if (mulai < 0 || p <= mulai || selesai < 0) return false;
+  const sisiNaik = w.slice(mulai, p + 1);
+  const sisiTurun = w.slice(p, p + selesai + 1);
+  return (
+    sisiNaik.every((v, j) => j === 0 || v >= sisiNaik[j - 1] - 0.03) &&
+    sisiTurun.every((v, j) => j === 0 || v <= sisiTurun[j - 1] + 0.03)
+  );
+})(), true);
+cek(
+  'potongan sapuan sampai ke layar, bukan hanya ke uniform',
+  !!sapu.foto &&
+    sapu.foto.wipeSebelum >= 0.6 &&
+    sapu.foto.wipeSesudah >= 0.6 &&
+    sapu.foto.portal.every((v, i) => Math.abs(v - sapu.foto.portalSesudah[i]) <= 1) &&
+    sapu.foto.pecah <= 0.4 * sapu.terbuka.pecah,
+  true
+);
+cek('setelah mendarat kartu terbuka kembali', sapu.akhir.wipe <= 0.02 && sapu.mendarat.pecah >= 0.5, true);
+
+// ── 5 · prefers-reduced-motion: kamera tidak boleh didolly, kartu tidak disapu ──
 await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
 await diamkan(900);
-const rekam4 = await rekamDolly(1, 10);
-cek('reduce-motion: gulir cepat tidak menggeser fov', rekam4.every((r) => r.dolly === 0), true);
+const query = await page.evaluate(() =>
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches
+);
+cek('emulasi reduce-motion sampai ke dokumen', query, true);
+const rekam5 = await rekamDolly(1, 10);
+// Yang dibuktikan gerbang ini hanya "fov tidak bergeser": di bawah reduce-motion Lenis
+// tidak berjalan, jadi velositas gulir memang nol dan cabang kurangiGerak pada dolly tidak
+// pernah bisa terbedakan dari laju nol. Cabang itu diuji lewat sapuan di bawah, yang
+// paksa satu render per langkah supaya keadaan yang dibaca benar-benar keadaan terbaru.
+cek('reduce-motion: fov kamera tidak pernah bergeser selama gulir', rekam5.every((r) => r.dolly === 0), true);
+const sapu5 = [];
+let lewatTengah = 0;
+for (let i = 0; i < 24; i++) {
+  await page.mouse.wheel({ deltaY: 90 });
+  // Di bawah reduce-motion halaman sengaja tidak menggambar saat menggulir (loop-nya
+  // "demand" permanen dan pendengar aktivitas tidak dipasang), jadi tanpa satu pemicu
+  // render gerbang ini hanya membaca keadaan basi dan akan selalu lulus. Resize adalah
+  // pemicu yang tidak mengubah keadaan apa pun selain membuat registry mengukur lagi.
+  await page.evaluate(() => window.dispatchEvent(new Event("resize")));
+  await diamkan(350);
+  const b = await baca();
+  if (!b) break;
+  sapu5.push(b);
+  if (b.babDari !== b.babKe && b.t > 0.05 && b.t < 0.95) lewatTengah++;
+}
+console.log(
+  'reduce-motion   sampel:', sapu5.length,
+  '| bab yang lewat:', [...new Set(sapu5.map((r) => `${r.babDari}→${r.babKe}`))].join(' '),
+  '| di tengah pita:', lewatTengah,
+  '| wipe terbesar:', Math.max(0, ...sapu5.map((r) => r.wipe))
+);
+cek(
+  'reduce-motion: kartu benar-benar terlihat berpindah bab saat diuji', lewatTengah >= 1, true
+);
+cek(
+  'reduce-motion: berpindah bab tidak pernah menutup kartu',
+  sapu5.length > 3 && sapu5.every((r) => r.wipe === 0),
+  true
+);
 await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }]);
 await diamkan(900);
 
-// ── 5 · halaman masih bisa dinavigasi setelah semua ini ──
+// ── 6 · halaman masih bisa dinavigasi setelah semua ini ──
 const bab = await page.evaluate(() => {
   const el = document.querySelector('[data-bab="4"]') || document.querySelector('#chapter-04');
   return !!el;

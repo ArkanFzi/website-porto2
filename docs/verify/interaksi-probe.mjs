@@ -60,11 +60,21 @@ const kisar = (nama, dapat, target, toleransi) =>
     harus: true,
   });
 
-/** Rotasi perintah pengunjung, kotak portal kartu, jejak, dan reticle. */
+/** Rotasi perintah pengunjung, kotak portal kartu, jejak, reticle, dan keadaan gulir. */
 const baca = () =>
   page.evaluate(() => {
     const p = window.__panggung;
-    return p ? { putar: p.putar, portal: p.portal, jejak: p.jejak, kursor: p.kursor } : null;
+    return p
+      ? {
+          putar: p.putar,
+          portal: p.portal,
+          jejak: p.jejak,
+          kursor: p.kursor,
+          p: p.p,
+          t: p.t,
+          wipe: p.wipe,
+        }
+      : null;
   });
 const derajati = (b, i) => DERAJAT(b.putar[i]);
 
@@ -149,12 +159,28 @@ const tungguPersona = async (target) => {
 
 const diamkan = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/** Mendarat di sebuah sikap bab dan TUNGGU sampai benar-benar berhenti. Dua alasan:
+ *  rasio gulir harus jatuh di dalam bab (t = 0, kartu duduk di portalnya sendiri, tanpa
+ *  kemiringan tengah-pita) karena gerbang di bawah menguji seret/reticle pada kartu yang
+ *  diam, bukan yang sedang berpindah; dan pegas sikap butuh puluhan frame untuk menutup
+ *  sisanya, jadi jeda tetap 2 detik pernah mengukur kartu yang masih dalam perjalanan. */
 const parkir = async (f) => {
   await page.evaluate((fr) => {
     const t = document.body.scrollHeight - window.innerHeight;
     window.scrollTo(0, Math.round(fr * t));
   }, f);
-  await diamkan(2000);
+  let terakhir = null;
+  let sama = 0;
+  for (let i = 0; i < 60; i++) {
+    await diamkan(200);
+    const b = await baca();
+    if (!b) continue;
+    const tenang = terakhir !== null && b.portal.every((v, j) => Math.abs(v - terakhir[j]) < 0.01);
+    sama = tenang ? sama + 1 : 0;
+    terakhir = b.portal;
+    if (sama >= 4) return b;
+  }
+  return await baca();
 };
 
 /** Reset penuh: Escape melepas perintah keyboard, blur mengembalikan pegas. */
@@ -211,7 +237,7 @@ const panah = async (tombol, jumlah) => {
 
 const foto = async (nama) => page.screenshot({ path: `${DIR}/${nama}.png` });
 
-await parkir(0.12);
+await parkir(0.3);
 
 // ── 0 · kartu tergambar sebagai piksel, bukan hanya sebagai uniform ──
 // Semua gerbang di bawah membaca nilai uniform dan sudut. Program GLSL yang gagal
@@ -219,8 +245,10 @@ await parkir(0.12);
 // pernah terjadi nyata lewat `uniform vec3 uJejak[JUMLAH_JEJAK];`, nama konstanta
 // TypeScript yang tidak dikenal GLSL. Jadi adu dulu screenshot dengan warna kertas.
 {
+  const sebelum = await baca();
+  const [k, a, l, t] = sebelum.portal;
   const gamba = await page.screenshot({ encoding: 'base64' });
-  const [k, a, l, t] = (await baca()).portal;
+  const sesudah = await baca();
   const piksel = await page.evaluate(
     async ({ gamba, k, a, l, t }) => {
       const img = new Image();
@@ -245,8 +273,23 @@ await parkir(0.12);
     },
     { gamba, k, a, l, t }
   );
-  console.log('piksel   ', JSON.stringify({ ...piksel, rata: +piksel.rata.toFixed(1), portal: [k, a, l, t] }));
-  cek('kartu tergambar di layar, bukan hanya di uniform', piksel.rata <= 200, true);
+  console.log(
+    'piksel   ',
+    JSON.stringify({
+      ...piksel,
+      rata: +piksel.rata.toFixed(1),
+      portal: [k, a, l, t],
+      gulir: [sebelum.p, sebelum.t, sebelum.wipe, sesudah.wipe],
+    })
+  );
+  // Gerbangnya ikut terikat pada keadaan yang diukur: kartu hanya boleh diadukan ke
+  // warna kertas kalau ia memang sedang terbuka (wipe nol di kedua sisi foto), kalau tidak
+  // yang lulus atau gagal adalah sapuan, bukan shader.
+  cek(
+    'kartu tergambar di layar, bukan hanya di uniform',
+    piksel.rata <= 200 && sebelum.wipe === 0 && sesudah.wipe === 0,
+    true
+  );
 }
 
 // ── 1 · seret: arah, besaran, batas, pegas kembali ──
