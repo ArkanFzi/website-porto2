@@ -5,10 +5,14 @@
  *  Titiknya diambil dari tepi portal DOM bab asal dan bab tujuan (registry yang
  *  mengukur keduanya), lalu dibengkokkan lewat kurva Kuadratik Bezier ke arah pusat
  *  layar. Satu objek = satu draw call, dan ia tidak pernah terpasang saat kartu diam
- *  di satu bab. Buffer posisi dipakai sebagai attribut deklaratif dan ditulis lewat
- *  objek yang sedang terpasang — nilai hasil useMemo tidak pernah dimutasi, karena
- *  reakt-compiler melarang itu dan diam-diam melewatkan tulisannya. */
-import React, { useRef, useState, useSyncExternalStore } from "react";
+ *  di satu bab.
+ *
+ * Objeknya dibangun imperatif lalu dipasang lewat `<primitive>`: ejaan `<threeLine>` di
+ * R3F 9 hanya ada di tipe (`three-types.d.ts:47`), runtime tetap mencari `THREE.ThreeLine`
+ * dan melempar "not part of the THREE namespace", jadi garis tidak pernah muncul sama
+ * sekali. Buffer posisi ditulis lewat objek yang sedang terpasang (`garis.current`),
+ * bukan lewat nilai useMemo, karena react-compiler melarang mutasi memo. */
+import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import type { AktorProps } from "../AktorPotret";
@@ -19,10 +23,10 @@ const TITIK = 24;
 
 /** Seberapa jauh titik kendali ditarik ke pusat layar. 0 = garis lurus antar tepi. */
 const TARIK_TENGAH = 0.42;
-
-/** Isi buffer posisi garis. Identitasnya harus stabil supaya R3F tidak membuat ulang
- *  attribut tiap render; yang berubah hanya isinya, lewat objek yang terpasang. */
-const POSISI_AWAL = new Float32Array(TITIK * 3);
+/** Kartu potret digambar pada z portal dan menutupi seluruh kotak portalnya, jadi garis
+ *  pada z yang sama tidak pernah terlihat (dua objek transparan pada kedalaman yang sama
+ *  urutnya tidak menentu). Sedikit ke depan kamera membuat jahitan terbaca di atas kartu. */
+const Z_DEPAN = 0.3;
 
 // Sama seperti GlobalEditorialCanvas: MediaQueryList dibuat sekali di module scope
 // supaya preferensi gerak dibaca lewat store tanpa effect-setState per frame.
@@ -54,6 +58,35 @@ export const BenangRosso: React.FC<AktorProps> = ({ scrollProgressRef }) => {
   const portal = usePortalRegistry();
   const garis = useRef<THREE.Line>(null);
 
+  // Satu geometri + satu material untuk seumur komponen; perpindahan bab hanya menulis
+  // ulang isinya. Komponen ini tidak pernah di-unmount selama canvas hidup, jadi tidak
+  // ada buffer yang tertinggal per perpindahan.
+  const benang = useMemo(() => {
+    const geometri = new THREE.BufferGeometry();
+    geometri.setAttribute(
+      "position",
+      new THREE.BufferAttribute(new Float32Array(TITIK * 3), 3)
+    );
+    const material = new THREE.LineBasicMaterial({
+      color: "#D41E12",
+      transparent: true,
+      depthWrite: false,
+      opacity: 0,
+    });
+    const jahitan = new THREE.Line(geometri, material);
+    jahitan.frustumCulled = false;
+    jahitan.name = "benang";
+    return jahitan;
+  }, []);
+
+  useEffect(
+    () => () => {
+      benang.geometry.dispose();
+      (benang.material as THREE.LineBasicMaterial).dispose();
+    },
+    [benang]
+  );
+
   // Gerbang hidup ada di React (objeknya memang tidak terpasang di luar perpindahan),
   // tapi yang membacanya tiap frame adalah useFrame di bawah. Ref ini menyimpan nilai
   // terakhir supaya setState hanya jalan saat gerbangnya benar-benar berbalik.
@@ -76,18 +109,22 @@ export const BenangRosso: React.FC<AktorProps> = ({ scrollProgressRef }) => {
     if (!dari || !ke) return;
 
     // Rumus pixel CSS -> satuan dunia yang dipakai kartu potret (lihat usePanggung).
-    // Semua titik benang duduk pada kedalaman kartu, jadi satu angka saja cukup.
+    // Angka z yang dipakai untuk MENULIS titik harus sama dengan angka yang dipakai untuk
+    // MEMPROYEKSIKAN koordinat portal, kalau tidak kedua ujung benang meleset dari tepi
+    // portalnya sendiri (parallax 0.3 satuan ≈ 6% pada kamera z=5).
     const dpp = viewport.width / size.width;
-    const pxPerWorld = (1 / dpp) * (camera.position.z / (camera.position.z - k.z));
+    const z = k.z + Z_DEPAN;
+    const pxPerWorld = (1 / dpp) * (camera.position.z / (camera.position.z - z));
     const tengahX = size.width / 2;
     const tengahY = size.height / 2;
 
-    // Jahitan mengikuti arah baca: tepi portal yang menghadap bab tujuan, setinggi
-    // tengahnya, supaya benang keluar dari bingkai yang sedang ditinggalkan.
-    const keKanan = ke.kotak.kiri + ke.kotak.lebar / 2 >= dari.kotak.kiri + dari.kotak.lebar / 2;
-    const x0 = keKanan ? dari.kotak.kiri + dari.kotak.lebar : dari.kotak.kiri;
+    // Jahitan ditarik dari pusat portal bab asal ke pusat portal bab tujuan. Tepi yang
+    // saling menghadap pernah dicoba dan tidak terbaca: portal bab yang bersebelahan bisa
+    // saling bertumpuk (bab 1 kiri=554, bab 2 kanan=569 pada 1440px), jadi tepi-ke-tepi
+    // hanya sepanjang 15px sementara pusat-ke-pusat 316px.
+    const x0 = dari.kotak.kiri + dari.kotak.lebar / 2;
     const y0 = dari.kotak.atas + dari.kotak.tinggi / 2;
-    const x1 = keKanan ? ke.kotak.kiri : ke.kotak.kiri + ke.kotak.lebar;
+    const x1 = ke.kotak.kiri + ke.kotak.lebar / 2;
     const y1 = ke.kotak.atas + ke.kotak.tinggi / 2;
 
     const pusX = (x0 + x1) / 2;
@@ -105,7 +142,7 @@ export const BenangRosso: React.FC<AktorProps> = ({ scrollProgressRef }) => {
       const j = i * 3;
       arr[j] = (cssX - tengahX) / pxPerWorld;
       arr[j + 1] = -(cssY - tengahY) / pxPerWorld;
-      arr[j + 2] = k.z;
+      arr[j + 2] = z;
     }
     atribut.needsUpdate = true;
 
@@ -116,15 +153,7 @@ export const BenangRosso: React.FC<AktorProps> = ({ scrollProgressRef }) => {
 
   if (reduce || !jahit) return null;
 
-  return (
-    // `threeLine` adalah ejaan THREE.Line di R3F 9; `line` sudah diambil SVG oleh tipe React.
-    <threeLine ref={garis} frustumCulled={false}>
-      <bufferGeometry>
-        <bufferAttribute attach="attributes-position" args={[POSISI_AWAL, 3]} />
-      </bufferGeometry>
-      <lineBasicMaterial color="#D41E12" transparent depthWrite={false} opacity={0} />
-    </threeLine>
-  );
+  return <primitive object={benang} ref={garis} />;
 };
 
 export default BenangRosso;

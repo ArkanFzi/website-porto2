@@ -7,10 +7,10 @@
  *  tetap satu geometri, lewat atribut warna per titik — dua draw call untuk satu glyph
  *  kecil tidak seharga kanvas yang hari ini berhenti pada nol frame saat diam.
  *
- *  Saat gulir tidak bergerak, objeknya tidak ada: di render (kalau React kebetulan
- *  merender) dan di dalam frame (yang sebenarnya menjamin, karena velositas hidup di ref
- *  dan tidak pernah memicu render). */
-import React, { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+ *  Saat gulir tidak bergerak, objeknya di-unmount: gerbang velositas ditulis ke state di
+ *  dalam useFrame, karena velositas sendiri datang dari ref yang tidak pernah memicu
+ *  render dan tidak boleh dibaca saat render (react-hooks/refs). */
+import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import type { AktorProps } from "../AktorPotret";
@@ -87,6 +87,9 @@ export const KompasGulir: React.FC<AktorProps> = ({ scrollProgressRef, scrollVel
     return geometri;
   }, []);
 
+  const [bergerak, setBergerak] = useState(false);
+  const bergerakRef = useRef(false);
+
   useEffect(
     () => () => {
       jarum.dispose();
@@ -95,24 +98,31 @@ export const KompasGulir: React.FC<AktorProps> = ({ scrollProgressRef, scrollVel
   );
 
   useFrame(() => {
-    const garis = garisRef.current;
-    if (!garis) return;
-
     const vel = scrollVelocityRef.current;
     const mutlak = Math.abs(vel);
-    // Velositas datang dari ref dan tidak pernah memicu render, jadi mati-nya jarum
-    // harus diputuskan di sini juga, bukan hanya di kondisi return null di bawah.
-    if (mutlak < AMBANG) {
-      garis.visible = false;
-      return;
+
+    // Velositas hidup di ref dan tidak pernah memicu render, jadi gerbangnya disinkronkan
+    // ke state di sini: objeknya benar-benar di-unmount saat gulir diam, bukan hanya
+    // disembunyikan.
+    const gerak = !kurangiGerak && mutlak >= AMBANG;
+    if (gerak !== bergerakRef.current) {
+      bergerakRef.current = gerak;
+      setBergerak(gerak);
     }
-    garis.visible = true;
+
+    const garis = garisRef.current;
+    if (!garis || !gerak) return;
 
     const p = Math.max(0, Math.min(1, scrollProgressRef.current));
     const k = sikap(p, portal.current);
     if (!k) return;
 
-    const l = Math.min(MAKS, Math.sqrt(mutlak) * GAIN_AKAR);
+    const dpp = viewport.width / size.width;
+    const pxZ = (1 / dpp) * (camera.position.z / (camera.position.z - k.z));
+    // Panjang dibatasi tinggi portal: jarum 0.9 satuan dunia (±340 px CSS) akan keluar
+    // dari tepi atas dan tertimbun papan DOM, padahal di luar portal tidak ada yang terlihat.
+    const tinggiDunia = k.kotak.tinggi / pxZ;
+    const l = Math.min(MAKS, Math.sqrt(mutlak) * GAIN_AKAR, tinggiDunia * 0.28);
     // Titik [1] = ujung jarum, titik [3] = ujung ekor; keduanya ditulis ke buffer yang
     // sudah ada lewat setY, jadi tidak ada alokasi dan tidak ada buffer baru.
     const posisi = garis.geometry.getAttribute("position");
@@ -120,11 +130,12 @@ export const KompasGulir: React.FC<AktorProps> = ({ scrollProgressRef, scrollVel
     posisi.setY(3, -l * RASIO_EKOR);
     posisi.needsUpdate = true;
 
-    const dpp = viewport.width / size.width;
-    const pxZ = (1 / dpp) * (camera.position.z / (camera.position.z - k.z));
+    // Poros ditarik `l` ke dalam dari tepi atas, supaya jarum (ke atas) maupun ekornya
+    // tetap di dalam portal pada kedua arah gulir — saat arah dibalik, ujung jarum justru
+    // turun sejauh l dan porosnya tidak berubah.
     garis.position.set(
       (k.kotak.kiri + k.kotak.lebar - MUNDUR - size.width / 2) / pxZ,
-      -(k.kotak.atas + MUNDUR - size.height / 2) / pxZ,
+      -(k.kotak.atas + MUNDUR + l * pxZ - size.height / 2) / pxZ,
       k.z
     );
     // 0 rad = ke atas untuk gulir ke bawah, PI untuk gulir ke atas. Condong kecil
@@ -133,15 +144,10 @@ export const KompasGulir: React.FC<AktorProps> = ({ scrollProgressRef, scrollVel
     garis.rotation.z = (vel >= 0 ? 0 : Math.PI) + condong;
   });
 
-  // Menjaga spesifikasi "objeknya tidak ada saat gulir diam". Ref tidak memicu render,
-  // jadi angka ini hanya sepanjang yang kebetulan dibaca saat React merender; `visible`
-  // di dalam useFrame-lah yang benar-benar menjamin nol draw call saat diam.
-  // eslint-disable-next-line react-hooks/refs
-  const velRender = scrollVelocityRef.current;
-  if (kurangiGerak || Math.abs(velRender) < AMBANG) return null;
+  if (kurangiGerak || !bergerak) return null;
 
   return (
-    <lineSegments ref={garisRef} geometry={jarum}>
+    <lineSegments ref={garisRef} name="kompas" geometry={jarum}>
       <lineBasicMaterial vertexColors transparent opacity={OPASITAS} depthWrite={false} />
     </lineSegments>
   );

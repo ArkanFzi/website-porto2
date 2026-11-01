@@ -96,7 +96,7 @@ export const RollCage: React.FC<AktorProps> = ({ scrollProgressRef, hoveredProje
   if (kurangiGerak || hoveredProject === null) return null;
 
   return (
-    <lineSegments ref={garisRef} geometry={kawat}>
+    <lineSegments ref={garisRef} name="sangkar" geometry={kawat}>
       <lineBasicMaterial
         color={WARNA_KAWAT}
         transparent

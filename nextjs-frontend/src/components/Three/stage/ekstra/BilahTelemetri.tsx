@@ -3,10 +3,9 @@
 /** Bilah telemetri panggung: dua belas bilah hasil ukur ritme frame pengunjung
  *  (lib/perfStats) dilukis sebagai SATU instancedMesh di dalam portal bab aktif.
  *
- *  Satu draw call dan nol frame tambahan: tinggi bilah hanya berubah saat cuplikan baru
- *  terbit (~1 detik sekali), dan itu satu-satunya hal yang membangunkan loop demand di
- *  luar gulir/pointer yang sudah ditangani kanvas. Posisi barisnya ikut kotak portal lewat
- *  useFrame — useFrame tidak berjalan saat halaman diam, jadi tidak ada biaya saat idle.
+ *  Satu draw call dan nol frame tambahan: cuplikan baru terbit ±1 detik sekali dan itu
+ *  hanya menandai ring kotor; instans ditulis pada frame yang memang sedang jalan
+ *  (gulir/pointer). useFrame tidak berjalan saat halaman diam, jadi bilah ikut diam.
  *
  *  Urutan bilah kronologis: kiri paling tua, kanan paling baru, tanpa interpolasi di
  *  antara sampel. Slot yang belum punya sampel ber-scale nol, bukan bilah dekoratif. */
@@ -148,7 +147,7 @@ export const BilahTelemetri: React.FC<AktorProps> = ({ scrollProgressRef }) => {
   );
   const adaCuplik = useSyncExternalStore(dengarCuplik, bacaAdaCuplik, tidakAdaSaatSSR);
 
-  const { size, viewport, camera, invalidate } = useThree();
+  const { size, viewport, camera } = useThree();
   const portal = usePortalRegistry();
   const meshRef = useRef<THREE.InstancedMesh>(null);
 
@@ -164,6 +163,8 @@ export const BilahTelemetri: React.FC<AktorProps> = ({ scrollProgressRef }) => {
   // Ring 12 sampel + scratch matriks/warna: satu wadah useRef, tidak ada alokasi saat
   // menulis ulang instans, dan tidak ada state React yang ikut naik tiap sampel.
   const alat = useRef<AlatTulis>(buatAlatTulis());
+  const kotor = useRef(true);
+  const kunciTerpakai = useRef<Kunci[]>([]);
   const cuplikTerakhir = useRef<CuplikanFrame | null>(null);
   const cacheSikap = useRef<{ p: number; kunci: Kunci[]; s: Sikap | undefined }>({
     p: -1,
@@ -171,14 +172,13 @@ export const BilahTelemetri: React.FC<AktorProps> = ({ scrollProgressRef }) => {
     s: undefined,
   });
 
-  /** Ditulis ulang hanya pada peristiwa (sampel baru, kotak portal dibaca ulang),
-   *  bukan per frame — see `pasangBilah`. */
+  /** Sampel baru atau kotak portal dibaca ulang -> tandai kotor; penulisan instans
+   *  terjadi di frame berikutnya, tidak pernah dibungkus sebagai callback React. */
   useEffect(() => {
     // Pengunjung yang minta gerakan dikurangi tidak boleh dibangunkan frame: tanpa mount,
-    // tidak ada subscription dan tidak ada invalidate.
+    // tidak ada subscription sama sekali.
     if (reduceMotion || !adaCuplik) return;
     const im = meshRef.current;
-    const a = alat.current;
     if (!im) return;
     im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
@@ -188,20 +188,20 @@ export const BilahTelemetri: React.FC<AktorProps> = ({ scrollProgressRef }) => {
       // dipasang ulang, bukan sampel baru.
       if (!c || c.frames === 0 || c === cuplikTerakhir.current) return false;
       cuplikTerakhir.current = c;
-      dorongSampel(c.p95Ms, a);
+      dorongSampel(c.p95Ms, alat.current);
       return true;
     };
 
-    const baru = terima();
-    pasangBilah(im, portal.current, a);
-    if (baru) invalidate();
-    const bubar = dengarCuplik(() => {
-      if (!terima()) return;
-      pasangBilah(im, portal.current, a);
-      invalidate();
+    terima();
+    kotor.current = true;
+    // Cuplikan terbit ±1 detik sekali. Menggambar langsung + invalidate() akan
+    // membangunkan kanvas setiap detik bahkan saat pengunjung diam, dan itu menghapus
+    // nol-frame-saat-diam yang dijaga GlobalEditorialCanvas. Jadi peristiwa ini hanya
+    // menandai ring kotor; frame yang kebetulan jalan yang menggambar.
+    return dengarCuplik(() => {
+      if (terima()) kotor.current = true;
     });
-    return bubar;
-  }, [adaCuplik, alat, invalidate, portal, reduceMotion]);
+  }, [adaCuplik, kotor, reduceMotion]);
 
   useEffect(
     () => () => {
@@ -219,13 +219,17 @@ export const BilahTelemetri: React.FC<AktorProps> = ({ scrollProgressRef }) => {
     // `sikap()` membuat objek baru, jadi dihitung ulang hanya saat angkanya benar-benar
     // berubah. Saat halaman diam tidak ada frame sama sekali, jadi tidak ada alokasi.
     if (p !== g.p || g.kunci !== portal.current) {
-      const kotakDibacaUlang = g.kunci !== portal.current;
       g.p = p;
       g.kunci = portal.current;
       g.s = sikap(p, portal.current);
-      // Registry membaca ulang kotak portal saat layout/ukuran berubah, dan pembacaan
-      // itulah yang membangunkan frame ini: tata letak baris ditulis sekali per peristiwa.
-      if (kotakDibacaUlang) pasangBilah(im, portal.current, alat.current);
+      // Registry membaca ulang kotak portal saat layout/ukuran berubah; bacaan baru
+      // berarti tata letak baris harus dihitung lagi.
+      if (g.kunci !== kunciTerpakai.current) kotor.current = true;
+    }
+    if (kotor.current) {
+      kunciTerpakai.current = g.kunci;
+      pasangBilah(im, g.kunci, alat.current);
+      kotor.current = false;
     }
     const k = g.s;
     if (!k) return;
@@ -245,6 +249,7 @@ export const BilahTelemetri: React.FC<AktorProps> = ({ scrollProgressRef }) => {
   return (
     <instancedMesh
       ref={meshRef}
+      name="bilah"
       args={[geometri, material, JUMLAH_INSTANS]}
       frustumCulled={false}
     />

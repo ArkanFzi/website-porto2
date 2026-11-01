@@ -3,7 +3,12 @@
 import React, { Suspense, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Canvas } from "@react-three/fiber";
 import { PerformanceMonitor } from "@react-three/drei";
-import { AktorPotret } from "./stage/AktorPotret";
+import { AktorPotret, type AktorProps } from "./stage/AktorPotret";
+import { BenangRosso } from "./stage/ekstra/BenangRosso";
+import { BilahTelemetri } from "./stage/ekstra/BilahTelemetri";
+import { Debu } from "./stage/ekstra/Debu";
+import { KompasGulir } from "./stage/ekstra/KompasGulir";
+import { RollCage } from "./stage/ekstra/RollCage";
 import { PengukurRender } from "./stage/PengukurRender";
 import { mulai, mulaiLapor, setDprKanvas } from "@/lib/perfStats";
 
@@ -50,6 +55,9 @@ export const GlobalEditorialCanvas: React.FC<CanvasProps> = ({
     bacaKurangiGerakSaatSSR
   );
   const idleTimer = useRef<number | undefined>(undefined);
+  // Semua aktor panggung memakai kontrak props yang sama; objeknya sendiri yang
+  // memutuskan kapan ia terpasang.
+  const aktor: AktorProps = { scrollProgressRef, scrollVelocityRef, hoveredProject };
 
   // Pengunjung yang minta gerakan dikurangi tidak pernah menggerakkan shader,
   // jadi frame terakhir hasil mount sudah cukup dan loop-nya dibiarkan diam.
@@ -122,11 +130,16 @@ export const GlobalEditorialCanvas: React.FC<CanvasProps> = ({
             onFallback={() => setDpr(DPR_MIN)}
           />
           <Suspense fallback={null}>
-            <AktorPotret
-              scrollProgressRef={scrollProgressRef}
-              hoveredProject={hoveredProject}
-              scrollVelocityRef={scrollVelocityRef}
-            />
+            <AktorPotret {...aktor} />
+            {/* Benang hanya ada selama perpindahan antar bab, debu hanya selama gulir
+                bergerak. Keduanya lepas dari scene graph di luar itu. */}
+            <BenangRosso {...aktor} />
+            <Debu {...aktor} />
+            {/* Sangkar mengikuti hover baris arsip; kompas mengikuti arah gulir. */}
+            <RollCage {...aktor} />
+            <KompasGulir {...aktor} />
+            {/* Bilah telemetri digambar dari sampel p95Ms pengunjung, bukan angka hiasan. */}
+            <BilahTelemetri {...aktor} />
           </Suspense>
           {/* Alat ukur, bukan bagian isi panggung: write-only, tidak memengaruhi render. */}
           {process.env.NODE_ENV !== "production" && <PengukurRender />}

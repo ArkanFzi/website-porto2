@@ -153,7 +153,7 @@ export const Debu: React.FC<AktorProps> = ({ scrollProgressRef, scrollVelocityRe
   if (reduce || !bergulir) return null;
 
   return (
-    <points ref={titik} frustumCulled={false}>
+    <points ref={titik} name="debu" frustumCulled={false}>
       <bufferGeometry>
         <bufferAttribute attach="attributes-position" args={[POSISI_AWAL, 3]} />
       </bufferGeometry>
