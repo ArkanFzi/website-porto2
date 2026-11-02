@@ -861,6 +861,8 @@ cek('sangkar tergambar sebagai satu draw call', sangkarAwal.render?.calls, 1);
 cek('verifier sudut terpasang', !!sangkarAwal.sangkar, true);
 cek('batas sudut datang dari modul, bukan dari halaman', sangkarAwal.sangkar?.batasDerajat, 12);
 cek('sangkar diparkir pada yaw 45 derajat', Math.round(((sangkarAwal.sangkar?.yawAwal ?? 0) * 180) / Math.PI), 45);
+cek('tujuh tanda skala tergambar dalam objek yang sama', sangkarAwal.sangkar?.tanda, 7);
+cek('penanda rosso duduk di nol saat belum ada perintah', sangkarAwal.sangkar?.penandaY, 0);
 
 // Seret 100 px ke kanan: JANGKAUAN_PX 200 untuk 12 derajat, jadi ini ±6 derajat.
 const kotak = await pageSangkar.evaluate(() => {
@@ -876,6 +878,11 @@ if (kotak) {
   const diseret = await bacaSangkar(pageSangkar);
   console.log('seret    ', JSON.stringify(diseret.sangkar));
   cek('seret menghasilkan sudut yang benar-benar berubah', diseret.sangkar?.derajatX, 6);
+  cek(
+    'penanda rosso mengikuti derajatX di meteran yang sama dengan tanda skala',
+    diseret.sangkar ? Math.abs(diseret.sangkar.penandaY - (diseret.sangkar.derajatX / 12) * 0.9) < 0.001 : false,
+    true
+  );
   cek(
     'DOM menyebut derajat yang sama dengan yang dipakai kanvas',
     !!diseret.dom?.startsWith('+6°'),
