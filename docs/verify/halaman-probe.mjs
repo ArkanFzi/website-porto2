@@ -1277,6 +1277,56 @@ cek(
   lumaSetengah > lumaTerbuka + 5 && Math.abs(lumaSetengah - lumaKertas) < 2,
   true
 );
+
+// Tinta satu pixel di dalam fragmen yang sama. Diukur saat tertutup penuh, saat seluruh
+// bingkai adalah kertas: tiap pixel yang jauh dari kertas harus berasal dari garis, bukan dari
+// huruf di belakangnya. Dua tagihan sekaligus — garis itu ADA, dan ia hanya boleh ada di paruh
+// bawah, karena gerbang luma di atas mengukur sudut kiri-atas.
+const hitungTinta = async () => {
+  const klip = await pageIris.evaluate(() => {
+    const el = document.querySelector('[data-iris-wadah]');
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return {
+      x: r.x + window.scrollX + 6,
+      y: r.y + window.scrollY + 6,
+      width: r.width - 12,
+      height: r.height - 12,
+    };
+  });
+  if (!klip) return { atas: -1, bawah: -1 };
+  const b64 = await pageIris.screenshot({ clip: klip, encoding: 'base64' });
+  return pageIris.evaluate(async (data) => {
+    const img = new Image();
+    await new Promise((res, rej) => {
+      img.onload = res;
+      img.onerror = rej;
+      img.src = `data:image/png;base64,${data}`;
+    });
+    const c = document.createElement('canvas');
+    c.width = img.width;
+    c.height = img.height;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    const d = ctx.getImageData(0, 0, c.width, c.height).data;
+    let atas = 0;
+    let bawah = 0;
+    for (let y = 0; y < c.height; y++) {
+      for (let x = 0; x < c.width; x++) {
+        const i = (y * c.width + x) * 4;
+        const luma = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+        if (luma > 200) continue;
+        if (y < c.height / 2) atas++;
+        else bawah++;
+      }
+    }
+    return { atas, bawah };
+  }, b64);
+};
+const tinta = await hitungTinta();
+console.log('iris-tinta', JSON.stringify(tinta));
+cek('garis diafragma tergambar di kertas', tinta.bawah > 20, true);
+cek('garis tidak pernah masuk ke paruh atas tempat luma diukur', tinta.atas, 0);
 await foto(pageIris, '12b-iris-tutup');
 
 // Lanjut ke ujung kanan: B terbuka, A hilang, dan angka DOM = angka uniform.

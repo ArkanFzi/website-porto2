@@ -66,7 +66,11 @@ export default function Iris() {
         />
         <Aturan
           judul="ONE QUAD"
-          isi="The curtain is a single plane carrying two uniforms — a radius and an aspect — and a four-line fragment: distance from centre tested against that radius, feathered by one pixel of derivative. The feather is fwidth, so it stays one device pixel at any resolution."
+          isi="The curtain is a single plane carrying two uniforms — a radius and an aspect — and a handful of lines of fragment: distance from centre tested against that radius, feathered by one pixel of derivative. The feather is fwidth, so it stays one device pixel at any resolution."
+        />
+        <Aturan
+          judul="THE MARK IS THE SAME FRAGMENT"
+          isi="A one-pixel rim traces the aperture's own radius and a hairline marks the axis, both multiplied by the same derivative as the feather and both masked to the lower half of the frame. They cost no second mesh and no second draw call, and they never enter the top-left corner where the paper's luminance is measured — the verifier counts ink pixels per half and fails if the upper half has any."
         />
         <Aturan
           judul="NOT THE STAGE'S SHADER"

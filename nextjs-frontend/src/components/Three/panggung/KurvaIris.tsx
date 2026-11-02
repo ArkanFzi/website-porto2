@@ -43,7 +43,19 @@ const fragmentShader = /* glsl */ `
     // Tebal tepi diambil dari turunan d per pixel: satu pixel, di resolution apa pun.
     float tepi = 2.0 * fwidth(d);
     float lubang = 1.0 - smoothstep(uBuka, uBuka + tepi, d);
-    gl_FragColor = vec4(${KERTAS.r.toFixed(5)}, ${KERTAS.g.toFixed(5)}, ${KERTAS.b.toFixed(5)}, 1.0 - lubang);
+
+    // Tinta. Dua duanya satu pixel dan dua-duanya hanya boleh jatuh di paruh bawah bingkai
+    // (vUv.y < 0,5): gerbang luma mengklip sudut kiri-atas, dan garis yang lewat di sana akan
+    // membuat angka "setengah = sekertas" mengukur garis, bukan kertas. Cincinnya di radius
+    // bukaan, jadi ia menutup begitu diafragma melebar; hairline sumbu terpotong oleh lubangnya
+    // sendiri, karena alpha di dalam bukaan nol — yang tersisa hanya goresan dari tepi ke luar.
+    float bawah = step(p.y, -tepi);
+    float cincin = (1.0 - smoothstep(tepi, 2.0 * tepi, abs(d - uBuka))) * bawah;
+    float sumbu = (1.0 - smoothstep(tepi, 2.0 * tepi, -p.y)) * bawah;
+    float tinta = max(cincin, sumbu);
+
+    vec3 kertas = vec3(${KERTAS.r.toFixed(5)}, ${KERTAS.g.toFixed(5)}, ${KERTAS.b.toFixed(5)});
+    gl_FragColor = vec4(mix(kertas, vec3(0.0392157), tinta), 1.0 - lubang);
   }
 `;
 
