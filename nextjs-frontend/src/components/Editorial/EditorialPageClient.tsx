@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import dynamic from "next/dynamic";
 import { MotionConfig } from "framer-motion";
-import { SmoothScrollProvider, useScrollData } from "@/components/SmoothScrollProvider";
+import { SmoothScrollProvider, useScrollData, useBabAktif } from "@/components/SmoothScrollProvider";
 import EditorialPreloader from "@/components/UI/EditorialPreloader";
 import RingDotCursor from "@/components/UI/RingDotCursor";
 import MinimalFixedFrame from "@/components/UI/MinimalFixedFrame";
@@ -30,24 +30,22 @@ const GlobalEditorialCanvas = dynamic(
  * kanvas yang juga z-10, jadi seluruh subtree-nya — termasuk latar section — melukis
  * di atas kartu potret. Hasil terukurnya: 84-92% isi kotak portal bab 04 adalah rosso
  * rata, kartu tidak ada di layar. Dipindah ke lapisan z-0, kartu boleh muncul dan teks
- * tetap di depannya. */
+ * tetap di depannya.
+ *
+ * Pemicunya sekarang useBabAktif — sinyal yang sama yang mengganti HUD ke gaya rosso,
+ * jadi keduanya menyala bersamaan. Sebelumnya lapisan ini mengandalkan
+ * IntersectionObserver yang dipasang saat mount: di tab lama yang kena hot-reload dan
+ * di pendaratan langsung lewat #chapter-04, observer itu terbukti bisa tinggal
+ * opacity-0 sementara seluruh sisa halaman sudah pindah ke bab penutup — teks putih di
+ * atas kertas, tidak terbaca. */
 const LatarPaddock: React.FC = () => {
-  const [masuk, setMasuk] = useState(false);
-  useEffect(() => {
-    const section = document.getElementById("chapter-04");
-    if (!section) return;
-    const pemantau = new IntersectionObserver(
-      ([entri]) => setMasuk(entri.isIntersecting),
-      { threshold: 0 }
-    );
-    pemantau.observe(section);
-    return () => pemantau.disconnect();
-  }, []);
+  const bab = useBabAktif();
   return (
     <div
       aria-hidden="true"
+      data-latar-paddock=""
       className={`fixed inset-0 z-0 pointer-events-none bg-[#D41E12] transition-opacity duration-700 ${
-        masuk ? "opacity-100" : "opacity-0"
+        bab === 4 ? "opacity-100" : "opacity-0"
       }`}
     />
   );

@@ -502,6 +502,83 @@ cek(
   true
 );
 
+// ── 5c · bab tidak boleh terganjel di bawah kolom kiri HUD ──
+// HUD fixed dan kolom kiri-atasnya bertambah tinggi tiap kali jalan masuk baru dipasang.
+// Bab penutup dulu menanggung ini dengan padding keras (pt-32 sm:pt-36) yang suatu hari
+// ketinggalan. Sekarang kolom menerbitkan --hud-atas dan bab membacanya — jadi yang ditagih
+// di sini geometri, bukan janji: untuk tiap bab, saat puncaknya mendarat di tepi atas
+// viewport, anak-flow-pertamanya harus tetap >= batas bawah kolom + 8px, dan tiap tautan
+// header harus tetap mengembalikan dirinya sendiri lewat elementFromPoint.
+
+// Latar rosso bab penutup pernah tinggal opacity-0 di tab lama sementara HUD-nya sudah
+// pindah ke gaya rosso: teks putih di atas kertas. Di posisi parkir bab 3 sekarang lapisan
+// itu wajib mati, dan menyala penuh begitu bab 4 diparkir — diukur dari computed style,
+// bukan dari janji kode.
+const bacaRosso = () =>
+  pageUtama.evaluate(() => {
+    const l = document.querySelector('[data-latar-paddock]');
+    return l ? getComputedStyle(l).opacity : 'tanpa-lapisan';
+  });
+cek('di bab 3 lapisan rosso tetap mati', await bacaRosso(), '0');
+const ganjel = await pageUtama.evaluate(() => {
+  const hud = document.querySelector('[data-hud-kolom]');
+  const akar = document.querySelector('header');
+  const tautan = [...document.querySelectorAll('header a')];
+  const bab = [...document.querySelectorAll('[id^="chapter-"]')].map((s) => {
+    const asal = window.scrollY;
+    window.scrollTo(0, Math.max(0, Math.round(s.getBoundingClientRect().top + window.scrollY)));
+    const hudBawah = hud ? hud.getBoundingClientRect().bottom : 0;
+    // Anak pertama yang benar-benar mengalir: kartu portal dan latar dilukis absolute,
+    // mereka memang dirancang untuk berada di bawah teks.
+    const anak = [...s.children].find((e) => {
+      const p = getComputedStyle(e).position;
+      return p !== 'absolute' && p !== 'fixed';
+    });
+    const top = anak ? anak.getBoundingClientRect().top : Infinity;
+    const kena = tautan.map((t) => {
+      const r = t.getBoundingClientRect();
+      const h = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return t === h || t.contains(h) || (!!h && h.contains(t));
+    });
+    window.scrollTo(0, asal);
+    return {
+      id: s.id,
+      hudBawah: Math.round(hudBawah),
+      top: Math.round(top),
+      aman: top >= hudBawah + 8,
+      tautanTertembus: kena.every(Boolean),
+    };
+  });
+  return {
+    ada: !!hud && !!akar,
+    variabel: getComputedStyle(document.documentElement).getPropertyValue('--hud-atas').trim(),
+    dicetak: akar?.getAttribute('data-hud-atas'),
+    bab,
+  };
+});
+console.log('ganjel   ', JSON.stringify(ganjel));
+cek('kolom HUD menerbitkan --hud-atas yang terbaca', /^[0-9]+px$/.test(ganjel.variabel), true);
+cek('data-hud-atas mencetak angka yang sama dengan variabelnya', ganjel.dicetak, ganjel.variabel.replace('px', ''));
+cek('empat bab ikut diuji gerbang ganjelan', ganjel.bab.length, 4);
+cek(
+  'tidak ada bab yang anak pertamanya terganjel di bawah kolom HUD',
+  ganjel.bab.filter((b) => !b.aman).map((b) => `${b.id} top=${b.top} hud=${b.hudBawah}`).join(' | '),
+  ''
+);
+cek(
+  'setiap tautan header tertembak hit-test-nya sendiri di tiap bab',
+  ganjel.bab.every((b) => b.tautanTertembus),
+  true
+);
+// Parkir sedikit ke dalam bab penutup, tunggu transisi 700ms lewat, lalu tagih nyala.
+await pageUtama.evaluate(() => {
+  const s = document.getElementById('chapter-04');
+  window.scrollTo(0, Math.round(s.getBoundingClientRect().top + window.scrollY) + 40);
+});
+await jeda(1600);
+cek('di bab penutup lapisan rosso menyala penuh', await bacaRosso(), '1');
+await foto(pageUtama, '05b-bab-tanpa-ganjelan');
+
 // ── 6 · penjaga jalur: apa yang boleh dibaca crawler dan apa yang tidak ──
 // /cv-layout adalah kertas render untuk /api/cv, bukan halaman. robots.txt sudah menolaknya;
 // gerbang ini memastikan dokumen itu sendiri juga menolak, dan bahwa dua lorong rincian yang

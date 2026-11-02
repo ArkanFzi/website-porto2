@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePortfolioMode } from "@/context/PortfolioModeContext";
 import { useBabAktif } from "@/components/SmoothScrollProvider";
@@ -35,6 +35,31 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ onChapterClick }) => {
   // Yang dibaca di sini hanya "apakah /api/telemetry menjawab" — angkanya tampil di
   // drawer, bukan di pil, supaya pil tidak melebar menutupi isi halaman.
   const [telemetryHidup, setTelemetryHidup] = useState(false);
+
+  // Tinggi kolom kiri-atas tidak tetap: kolom ini menampung monogram, daftar jalan masuk,
+  // dan pil — yang bertambah tiap kali jalan masuk baru dipasang. Bab penutup dulu mengeras
+  // padding atasnya (pt-32), dan begitu kolom melebar teks pertama bab tertutup HUD. Jadi
+  // kolom mengukur dirinya lewat ResizeObserver dan menerbitkan batas bawahnya sebagai
+  // --hud-atas di <html>; yang membacanya cukup menulis pt-[calc(var(--hud-atas)+2rem)].
+  // Variabel di <header> tidak akan sampai: section bab adalah tetangga header, bukan
+  // keturunannya, dan properti kustom hanya mewarisi ke bawah. Angka datanya ikut ditulis
+  // sebagai data-hud-atas supaya verifier bisa membacanya tanpa menghitung ulang.
+  const akarRef = useRef<HTMLElement>(null);
+  const kolomRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const akar = akarRef.current;
+    const kolom = kolomRef.current;
+    if (!akar || !kolom) return;
+    const terbitkan = () => {
+      const bawah = Math.round(kolom.getBoundingClientRect().bottom);
+      document.documentElement.style.setProperty("--hud-atas", `${bawah}px`);
+      akar.setAttribute("data-hud-atas", String(bawah));
+    };
+    terbitkan();
+    const pengamat = new ResizeObserver(terbitkan);
+    pengamat.observe(kolom);
+    return () => pengamat.disconnect();
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -90,7 +115,7 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ onChapterClick }) => {
   const accentColor = isRossoSection ? "text-white" : "text-[#D41E12]";
 
   return (
-    <header className="fixed inset-0 pointer-events-none z-50 p-6 md:p-10 flex flex-col justify-between">
+    <header ref={akarRef} className="fixed inset-0 pointer-events-none z-50 p-6 md:p-10 flex flex-col justify-between">
       {/* ── TOP BAR ── */}
       <div className="w-full flex items-center justify-between pointer-events-auto">
         
@@ -98,7 +123,7 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ onChapterClick }) => {
             Kedua tautan ditumpuk VERTIKAL di bawah monogram, bukan di bar bawah: bar itu
             pernah menelan sasaran interaktif halaman (catatan di bagian bawah file ini), dan
             kolom kiri tidak menggeser pil mana pun secara horizontal. */}
-        <div className="flex flex-col gap-1.5">
+        <div ref={kolomRef} data-hud-kolom="" className="flex flex-col gap-1.5">
           <button
             onClick={() => onChapterClick(1)}
             className="group flex items-center gap-3 cursor-pointer text-left"
