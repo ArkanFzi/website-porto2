@@ -12,6 +12,9 @@
 //     melakukan persis hal yang sama
 //   · prefers-reduced-motion mematikan rotasi, TIDAK mematikan navigasi bab, fokus,
 //     maupun pergantian wajah
+//   · klik SPEC membuka strip data DI KOLOM BACA (bukan lapisan dialog) dengan melebarkan
+//     mask portal: satu variabel CSS menggerakkan tepi kiri mask dan lebar kolom, jadi
+//     kartu membesar tanpa pernah menutupi teks, dan Escape mengembalikan geometri itu
 // Rotasi dibaca dari window.__panggung.putar = [terpasangX, terpasangY, targetX,
 // targetY] — komponen rotasi PERINTAH PENGUNJUNG saja. rotY total tidak dipakai untuk
 // gerbang sudut karena ia juga mengandung parallax pointer, sehingga menggeser kursor
@@ -73,6 +76,9 @@ const baca = () =>
           p: p.p,
           t: p.t,
           wipe: p.wipe,
+          babDari: p.babDari,
+          babKe: p.babKe,
+          skala: p.skala,
         }
       : null;
   });
@@ -190,9 +196,24 @@ const parkir = async (f) => {
   return await baca();
 };
 
+/** Sama seperti parkir tapi TANPA menggulir: dipakai untuk menunggu kotak portal berhenti
+ *  bergerak setelah DOM-nya yang berubah (mis. kelas portal diganti saat strip terbuka). */
+const tenang = async () => {
+  let tadi = null;
+  let sama = 0;
+  for (let i = 0; i < 40; i++) {
+    await diamkan(200);
+    const b = await baca();
+    if (!b) continue;
+    sama = tadi && b.portal.every((v, j) => Math.abs(v - tadi[j]) < 0.01) ? sama + 1 : 0;
+    tadi = b.portal;
+    if (sama >= 3) return b;
+  }
+  return await baca();
+};
+
 /** Reset penuh: Escape melepas perintah keyboard, blur mengembalikan pegas. */
-const reset = async () => {
-  await page.evaluate(() => document.activeElement?.blur());
+const reset = async () => {  await page.evaluate(() => document.activeElement?.blur());
   await diamkan(2200);
   const b = await baca();
   return b;
@@ -549,6 +570,100 @@ await diamkan(800);
   await foto('04-flip-mode');
 }
 
+
+// ── 8 · SPEC membuka strip data dengan melebarkan mask portal, bukan modal ──
+// Yang dibuktikan di sini bukan "ada panel spesifikasi" — itu bisa lulus dengan modal
+// lama. Yang dibuktikan adalah hubungan DOM↔panggung yang jadi inti idenya: satu variabel
+// CSS menentukan lebar kolom baca DAN tepi kiri portal, jadi (a) mask benar-benar melebar
+// saat strip terbuka, (b) kartunya ikut membesar (bukan hanya kotaknya), (c) tidak ada
+// satu pun teks bab yang jatuh di bawah mask, dan (d) semuanya pulang utuh saat Escape.
+{
+  const ukur = () =>
+    page.evaluate(() => {
+      const strip = document.querySelector('[data-strip]');
+      const kolom = document.querySelector('#chapter-03 > div:nth-of-type(4)');
+      const kanan = [...document.querySelectorAll('#chapter-03 a, #chapter-03 h3')].reduce(
+        (m, el) => Math.max(m, Math.round(el.getBoundingClientRect().right)),
+        0
+      );
+      const cs = strip ? getComputedStyle(strip) : null;
+      return {
+        indeks: strip?.dataset.strip ?? null,
+        kananStrip: strip ? Math.round(strip.getBoundingClientRect().right) : null,
+        dalam: strip
+          ? strip.getBoundingClientRect().top > 0 && strip.getBoundingClientRect().bottom < window.innerHeight
+          : null,
+        kananIsi: kanan,
+        kananKolom: kolom ? Math.round(kolom.getBoundingClientRect().right) : null,
+        lebarKolom: kolom ? Math.round(kolom.getBoundingClientRect().width) : null,
+        modal: !!document.querySelector('[aria-modal="true"], [role="dialog"]'),
+        fixed: cs ? cs.position === 'fixed' || cs.position === 'absolute' : null,
+        fokus: document.activeElement?.dataset?.strip ?? null,
+        objek: window.__render?.objek ?? null,
+      };
+    });
+
+  const f = await page.evaluate(() => {
+    const top = (s) => document.querySelector(s).getBoundingClientRect().top + window.scrollY;
+    const maks = document.body.scrollHeight - window.innerHeight;
+    return (top('#chapter-03') + 0.3 * (top('#chapter-04') - top('#chapter-03'))) / maks;
+  });
+  await parkir(f);
+  const tutup = await tenang();
+  const tertutup = await ukur();
+  cek('spesifikasi diuji di dalam bab 3', tutup.babDari === 3 && tutup.t === 0, true);
+  cek('belum ada strip dan belum ada dialog', tertutup.indeks === null && !tertutup.modal, true);
+
+  const titik = await page.evaluate(() => {
+    const b = [...document.querySelectorAll('button')].find((x) => (x.textContent ?? '').includes('SPEC'));
+    if (!b) return null;
+    const r = b.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2, terlihat: r.top > 100 && r.bottom < window.innerHeight - 20 };
+  });
+  if (!titik?.terlihat) throw new Error('tombol SPEC tidak ada di viewport bab 3 — parkirnya yang salah');
+  await page.mouse.move(titik.x, titik.y);
+  await diamkan(500);
+  await page.mouse.click(titik.x, titik.y);
+  await diamkan(600);
+  const buka = await tenang();
+  const terbuka = await ukur();
+  await foto('05-strip-terbuka');
+
+  cek('strip terbuka di baris yang ditekan', terbuka.indeks !== null && terbuka.dalam === true, true);
+  hasil.push({
+    nama: 'mask portal melebar, bukan bergeser saja',
+    ok: buka.portal[2] - tutup.portal[2] > 100,
+    dapat: `${tutup.portal[2]}px → ${buka.portal[2]}px (harus +>100)`,
+    harus: true,
+  });
+  hasil.push({
+    nama: 'kartu ikut membesar, tidak hanya kotaknya',
+    ok: buka.skala > tutup.skala + 0.05,
+    dapat: `${tutup.skala} → ${buka.skala} (harus naik ≥0,05)`,
+    harus: true,
+  });
+  cek('kolom baca menyempit oleh keadaan yang sama', terbuka.lebarKolom < tertutup.lebarKolom, true);
+  hasil.push({
+    nama: 'tepi kiri mask = 3rem dari tepi kanan kolom baca',
+    ok: Math.abs(buka.portal[0] - terbuka.kananKolom - 48) < 1,
+    dapat: `${buka.portal[0]} − ${terbuka.kananKolom} = ${(buka.portal[0] - terbuka.kananKolom).toFixed(1)}px (harus 48)`,
+    harus: true,
+  });
+  cek('tidak ada teks bab yang jatuh di bawah mask', terbuka.kananIsi <= Math.round(buka.portal[0]), true);
+  cek('strip adalah isi dokumen, bukan lapisan', terbuka.fixed === false, true);
+  cek('tidak ada dialog/aria-modal yang muncul', !terbuka.modal, true);
+  cek('strip mengambil fokus saat dibuka', terbuka.fokus === terbuka.indeks, true);
+  cek('sangkar hover tidak tertinggal setelah barisnya hilang', (terbuka.objek ?? []).includes('sangkar'), false);
+
+  await page.keyboard.press('Escape');
+  await diamkan(600);
+  const kembali = await tenang();
+  const pulang = await ukur();
+  await foto('06-strip-tutup');
+  cek('Escape mengembalikan daftar', pulang.indeks === null, true);
+  cek('mask pulang ke geometri tertutup', Math.abs(kembali.portal[2] - tutup.portal[2]) < 1, true);
+  cek('kolom baca pulang ke lebar semula', pulang.lebarKolom === tertutup.lebarKolom, true);
+}
 
 if (galat.length) console.log('pageerror:', galat.slice(0, 3));
 for (const h of hasil) console.log(`${h.ok ? 'LULUS' : 'GAGAL '} ${h.nama}: dapat ${h.dapat}, harus ${h.harus}`);

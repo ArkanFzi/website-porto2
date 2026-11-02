@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import { ArrowUpRight } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { RepoBerlian } from "@/lib/server/github";
 import { usePortfolioMode } from "@/context/PortfolioModeContext";
 import { DURASI, EASE } from "@/lib/motion";
-import { CaseStudyModal, CaseStudyData } from "@/components/UI/CaseStudyModal";
+import { CaseStudyStrip, CaseStudyData } from "@/components/UI/CaseStudyStrip";
 import MeshPortal from "./MeshPortal";
 import audioEngine from "@/lib/audioEngine";
 
@@ -15,6 +15,27 @@ interface ArchivesProps {
   onHoverProject: (index: number | null) => void;
   hoveredProject: number | null;
 }
+
+/** Lebar kolom baca saat sebuah spesifikasi terbuka. SATU angka untuk dua pemakai:
+ *  `max-width` isi bab dan tepi kiri portal bab 3 (`calc(3rem + var(--strip-lebar) + 3rem)`),
+ *  jadi kartu yang melebar tidak mungkin menutupi stripnya sendiri. Dipakai hanya dari
+ *  `xl` ke atas: di bawah itu kolom tidak boleh dipersempit (baris daftar menahan
+ *  `md:flex-nowrap` dan sudah meluber di 491px), dan strip menutup kartunya sendiri
+ *  dengan latar papannya. */
+const STRIP_LEBAR = "min(700px, 48vw)";
+
+/** Portal tertutup = ceruk di kanan papan. Portal terbuka = ceruk yang sama, tapi melebar
+ *  ke kiri sampai kolom baca menyerahkan sisanya (xl), atau melebar ke kanan dan ke bawah
+ *  di belakang panel strip (di bawah xl). */
+const PORTAL_TUTUP =
+  "left-[56vw] top-[20vh] h-[60vh] w-[23vw] xl:left-[calc(3rem+1000px+3rem)] xl:right-6 xl:w-auto";
+const PORTAL_BUKA =
+  "left-[56vw] top-[14vh] h-[72vh] w-[40vw] xl:left-[calc(3rem+var(--strip-lebar)+3rem)] xl:right-6 xl:w-auto xl:top-[16vh] xl:h-[68vh]";
+
+/** Kelas kolom baca saat strip terbuka — angka yang sama dengan tepi kiri portal di atas,
+ *  dan `xl:mx-0` yang sudah ada di kelas pembungkus membuat keduanya terukur dari tepi
+ *  yang sama. */
+const KOLOM_BUKA = "xl:max-w-[var(--strip-lebar)]";
 
 interface ArchiveItem {
   index: string;
@@ -173,16 +194,26 @@ export const ChapterArchives: React.FC<ArchivesProps> = ({
   hoveredProject,
 }) => {
   const { mode } = usePortfolioMode();
-  const [activeModal, setActiveModal] = useState<CaseStudyData | null>(null);
+  const [activeIndeks, setActiveIndeks] = useState<string | null>(null);
+  const tutupSpec = useCallback(() => setActiveIndeks(null), []);
+  const terbuka = activeIndeks !== null;
+  /** Isi bab diikat ke lebar yang sama dengan yang dibelikan portal, saat terbuka.
+   *  Dua varian (md dan xl) karena kelas `xl:max-w-[1000px]` yang sudah ada menang atas
+   *  satu varian `md:` saja; di bawah `md` split tidak muat dan strip menutupi kartunya
+   *  sendiri dengan latar papannya. */
+  const kelasBaca = terbuka ? KOLOM_BUKA : "";
 
   return (
     <section
       id="chapter-03"
+      style={{ "--strip-lebar": STRIP_LEBAR } as React.CSSProperties}
       className="relative w-full min-h-screen bg-[#0A0A0A] xl:bg-transparent text-[#F7F5F0] pt-36 pb-36 px-6 md:px-12 select-none overflow-hidden transition-colors duration-700"
     >
       {/*
         Papan gelap = batas kiri daftar. Kartu WebGL tidak lagi mengukurnya; ia duduk
         di dalam MeshPortal bab 3 yang kelasnya sengaja dibuat sejajar dengan tepi papan.
+        Saat spesifikasi dibuka kelas portal diganti (PORTAL_BUKA) dan registry mengukur
+        ulang marker itu, jadi mask dan kartu melebar lewat lerp yang sudah ada.
       */}
       <div
         aria-hidden="true"
@@ -190,7 +221,7 @@ export const ChapterArchives: React.FC<ArchivesProps> = ({
       />
       <MeshPortal
         bab={3}
-        className="left-[56vw] top-[20vh] h-[60vh] w-[23vw] xl:left-[calc(3rem+1000px+3rem)] xl:right-6 xl:w-auto"
+        className={terbuka ? PORTAL_BUKA : PORTAL_TUTUP}
         miring={-0.18}
         geyang={0.14}
         rotGeyang={0.06}
@@ -198,7 +229,9 @@ export const ChapterArchives: React.FC<ArchivesProps> = ({
       {/* ── Top Header Tags ── */}
       {/* Header dan daftar wajib berbagi kotak isi yang sama: tanpa pr-8 tepi kanan
           tombol panah jatuh tepat di tepi papan dan setengah lingkarannya hilang di atas kertas. */}
-      <div className="w-full max-w-[1600px] mx-auto xl:max-w-[1000px] xl:mx-0 xl:pr-8 flex items-center justify-between pb-6 border-b border-white/10 mb-16">
+      <div
+        className={`w-full max-w-[1600px] mx-auto xl:max-w-[1000px] xl:mx-0 xl:pr-8 ${kelasBaca} flex items-center justify-between pb-6 border-b border-white/10 mb-16`}
+      >
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-[#D41E12] animate-pulse" />
           <span className="font-mono text-[11px] font-bold tracking-[0.25em] uppercase text-[#D41E12]">
@@ -219,7 +252,9 @@ export const ChapterArchives: React.FC<ArchivesProps> = ({
         </div>
       </div>
 
-      <div className="w-full max-w-[1600px] mx-auto xl:max-w-[1000px] xl:mx-0 xl:pr-8">
+      <div
+        className={`w-full max-w-[1600px] mx-auto xl:max-w-[1000px] xl:mx-0 xl:pr-8 ${kelasBaca}`}
+      >
         
         {/* Section Heading with Motion Transition */}
         <div className="mb-16 max-w-2xl">
@@ -251,8 +286,23 @@ export const ChapterArchives: React.FC<ArchivesProps> = ({
         </div>
 
         {/* ── FULL-WIDTH EDITORIAL INDEX LIST ── */}
+        {/* Baris yang dibuka mengganti dirinya sendiri dengan strip di tempat ia duduk:
+            titik yang baru saja ditekan penonton tidak pernah berpindah, dan daftar tidak
+            pernah ditutup lapisan fixed. Portal membeli ruangnya dari kolom baca, yang
+            selama strip terbuka diikat ke `--strip-lebar` — jadi tidak ada satu pun teks
+            bab ini yang pernah berada di bawah kartu. */}
         <div className="w-full flex flex-col border-t border-white/10">
           {FEATURED_ARCHIVES.map((item, idx) => {
+            if (activeIndeks === item.index) {
+              return (
+                <CaseStudyStrip
+                  key={item.index}
+                  caseStudy={item.caseStudy}
+                  onClose={tutupSpec}
+                />
+              );
+            }
+
             const isHovered = hoveredProject === idx;
 
             // Connect live GitHub repo data if available
@@ -324,11 +374,16 @@ export const ChapterArchives: React.FC<ArchivesProps> = ({
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
+                      aria-label={`Open architecture specification for ${item.title}`}
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
                         audioEngine.playClick(1300, 0.02);
-                        setActiveModal(item.caseStudy);
+                        // Baris yang membuka strip berhenti ada, jadi mouseleave tidak
+                        // pernah datang: hover dilepas lebih dulu supaya sangkar tidak
+                        // tinggal di scene graph.
+                        onHoverProject(null);
+                        setActiveIndeks(item.index);
                       }}
                       className="px-3 py-1.5 rounded-full border border-white/20 hover:border-[#D41E12] bg-white/5 hover:bg-[#D41E12]/20 font-mono text-[9px] font-bold text-white tracking-widest uppercase transition-all duration-300 cursor-pointer"
                       title="Open In-Depth Architecture Specification"
@@ -353,12 +408,6 @@ export const ChapterArchives: React.FC<ArchivesProps> = ({
         </div>
 
       </div>
-
-      {/* Deep-Dive Architecture Modal */}
-      <CaseStudyModal
-        caseStudy={activeModal}
-        onClose={() => setActiveModal(null)}
-      />
     </section>
   );
 };
