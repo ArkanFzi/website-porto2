@@ -14,10 +14,13 @@
 import React from "react";
 import { useFrame } from "@react-three/fiber";
 
+let frame = 0;
+
 export const PengukurRender: React.FC = () => {
   useFrame((state) => {
     const { gl, scene, camera } = state;
     gl.render(scene, camera);
+    frame++;
 
     const info = gl.info.render;
     const objek: string[] = [];
@@ -36,6 +39,15 @@ export const PengukurRender: React.FC = () => {
          *  membedakan objek mana yang menambah call — agregat calls saja tidak menyebut
          *  siapa yang menggambar. */
         objek: string[];
+        /** Jumlah frame yang sudah digambar alat ini sejak modul dimuat. Verifier menghitung
+         *  laju dari selisih dua pembacaan, bukan dari rata-rata yang dilaporkan browser —
+         *  rata-rata browser ikut menghitung frame yang tidak menyentuh kanvas. */
+        frame: number;
+        /** Alokasi yang masih hidup di GPU-side cache three (gl.info.memory). Hitungan,
+         *  bukan byte: three tidak mengekspos ukuran tiap geometri/tekstur, jadi angka MB
+         *  tidak bisa dinyatakan jujur dari sini. */
+        geometri: number;
+        tekstur: number;
       };
       /** Scene yang barusa digambar: verifier yang perlu koordinat dunia sebuah objek
        *  (mis. "kenapa garis ini tidak terlihat di pixel") membacanya dari sini. */
@@ -47,6 +59,9 @@ export const PengukurRender: React.FC = () => {
       titik: info.points,
       garis: info.lines,
       objek,
+      frame,
+      geometri: gl.info.memory.geometries,
+      tekstur: gl.info.memory.textures,
     };
     jendela.__scene = scene;
   }, 1);

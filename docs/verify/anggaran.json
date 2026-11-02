@@ -1,0 +1,89 @@
+{
+  "dibuat": "2026-11-02T08:26:53.182Z",
+  "sumber": "docs/verify/drawcall-probe.mjs --tulis",
+  "jendela_ukur": {
+    "lebar": 1440,
+    "tinggi": 900,
+    "dpr": 1,
+    "perangkat_gambar": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+  },
+  "catatan": [
+    "fps diukur dari selisih counter frame PengukurRender selama 1,5 s jendela ukur, bukan rata-rata browser.",
+    "perangkat_gambar bukan GPU keras: angka dipakai untuk membandingkan antar-run di mesin yang sama, bukan sebagai target 60fps pengguna.",
+    "puncak geometri/tekstur adalah jumlah alokasi yang masih hidup (gl.info.memory), bukan byte — three tidak mengekspos ukuran per alokasi.",
+    "aset_unduhan.mb = encodedBodySize yang diterima browser (termampatkan), jadi lebih kecil dari ukuran file di disk.",
+    "objek = sensus objek yang ikut digambar pada frame tersibuk bab itu.",
+    "puncak null dan frame_terukur 0 berarti kanvas tidak menulis satu pun frame selama 1,5 s jendela ukur — bukan nol alokasi."
+  ],
+  "puncak_aktif_global": 5,
+  "aset_unduhan": [
+    {
+      "nama": "FotoDiriFix.webp",
+      "mb": 0.19
+    },
+    {
+      "nama": "sf26.glb",
+      "mb": 0.82
+    }
+  ],
+  "bab": [
+    {
+      "bab": 1,
+      "frame_terukur": 15,
+      "puncak": {
+        "calls": 5,
+        "segitiga": 18460,
+        "titik": 140,
+        "garis": 2,
+        "geometri": 5,
+        "tekstur": 2
+      },
+      "objek": [
+        "Mesh",
+        "debu",
+        "kompas",
+        "bilah",
+        "jejak"
+      ],
+      "fps": 15.9,
+      "frame_saat_diam": 0
+    },
+    {
+      "bab": 2,
+      "frame_terukur": 0,
+      "puncak": null,
+      "objek": [],
+      "fps": null,
+      "frame_saat_diam": 0
+    },
+    {
+      "bab": 3,
+      "frame_terukur": 0,
+      "puncak": null,
+      "objek": [],
+      "fps": null,
+      "frame_saat_diam": 0
+    },
+    {
+      "bab": 4,
+      "frame_terukur": 15,
+      "puncak": {
+        "calls": 5,
+        "segitiga": 18460,
+        "titik": 140,
+        "garis": 2,
+        "geometri": 5,
+        "tekstur": 2
+      },
+      "objek": [
+        "Mesh",
+        "debu",
+        "kompas",
+        "bilah",
+        "jejak"
+      ],
+      "fps": 17.8,
+      "frame_saat_diam": 0
+    }
+  ]
+}
