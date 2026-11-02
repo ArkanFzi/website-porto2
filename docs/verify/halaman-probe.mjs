@@ -16,7 +16,7 @@
 //   node docs/verify/halaman-probe.mjs [outdir]      butuh `next dev` di FE_URL
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 
 const require = createRequire(new URL('../../nextjs-frontend/package.json', import.meta.url));
 const puppeteer = require('puppeteer');
@@ -448,6 +448,59 @@ hasil.push({
 });
 cek('tidak ada tumpang tindih tautan baru dengan sasaran interaktif', ukurMasuk.overlap, 0);
 await foto(pageUtama, '05-masuk-hud');
+
+// ── 5b · bab penutup: angka nyata atau tanda pisah, bukan ledger yang dikarang ──
+// Di tempat ini pernah ada "VERIFIED DISPATCH LEDGER" dengan dua nomor pesan (#16-89,
+// #16-88) yang tidak pernah dikirim siapa pun, dan catatan laju "5 MSG/HR" yang tidak
+// pernah ada di backend. Yang ditagih sekarang: tidak ada satu pun angka di bab itu yang
+// tidak bersumber, dan hanya satu berkas di seluruh frontend yang memanggil /api/visits.
+const bab04 = await pageUtama.evaluate(() => {
+  const sampel = document.querySelector('[data-bab04-sampel]');
+  const teks = (sampel?.textContent || '').replace(/\s+/g, ' ').trim();
+  const seksi = (document.querySelector('#chapter-04')?.textContent || '').replace(/\s+/g, ' ');
+  const seluruh = document.body.textContent.replace(/\s+/g, ' ');
+  return {
+    ada: !!sampel,
+    teks,
+    laju: seksi.includes('10 BERUNTAS'),
+    karangan: [/#16-\d/, /VERIFIED DISPATCH LEDGER/, /5 MSG\/HR/, /LIVE FEED/].filter((r) =>
+      r.test(seluruh)
+    ).length,
+  };
+});
+console.log('bab04    ', JSON.stringify(bab04));
+cek('bab penutup punya blok sampel yang terukur', bab04.ada, true);
+cek('bab penutup tidak mengarang nomor pesan atau angka laju', bab04.karangan, 0);
+cek('blok sampel menyebut sumber angkanya', bab04.teks.includes('TOTAL KUNJUNGAN'), true);
+cek(
+  'blok sampel mencetak angka nyata atau tanda pisah, bukan nol cadangan',
+  // Teks dua elemen sejajar tersambung tanpa spasi di textContent, jadi yang dicocokkan
+  // karakter pertama sesudah label: angka, atau tanda pisah.
+  /TOTAL KUNJUNGAN[—0-9]/.test(bab04.teks),
+  true
+);
+cek('klaim laju bab penutup sesuai rem di go-backend', bab04.laju, true);
+
+// Satu pemanggil saja: kalau ada komponen yang menambah polling /api/visits sendiri, dua
+// tempat bisa mencetak dua angka pada waktu yang sama.
+const jelajahi = (dir, out = []) => {
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const p = `${dir}/${e.name}`;
+    if (e.isDirectory()) {
+      if (e.name !== 'node_modules' && e.name !== '.next') jelajahi(p, out);
+    } else if (/\.(ts|tsx)$/.test(e.name)) out.push(p);
+  }
+  return out;
+};
+const pemanggilVisits = jelajahi(new URL('../../nextjs-frontend/src', import.meta.url).pathname).filter((f) =>
+  readFileSync(f, 'utf8').includes('fetch("/api/visits"')
+);
+cek('hanya satu berkas yang memanggil GET /api/visits', pemanggilVisits.length, 1);
+cek(
+  'pemanggil tunggal itu adalah store kunjungan',
+  pemanggilVisits[0]?.endsWith('src/lib/bacaKunjungan.ts'),
+  true
+);
 
 // ── 6 · penjaga jalur: apa yang boleh dibaca crawler dan apa yang tidak ──
 // /cv-layout adalah kertas render untuk /api/cv, bukan halaman. robots.txt sudah menolaknya;

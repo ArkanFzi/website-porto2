@@ -1,8 +1,31 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState, useSyncExternalStore } from "react";
 import { ArrowUpRight, Send, CheckCircle2 } from "lucide-react";
 import MeshPortal from "./MeshPortal";
+import {
+  bacaKunjungan,
+  bacaKunjunganSaatSSR,
+  dengarKunjungan,
+  mulaiBacaKunjungan,
+} from "@/lib/bacaKunjungan";
+import {
+  bacaTelemetri,
+  bacaTelemetriSaatSSR,
+  dengarTelemetri,
+  mulaiBacaTelemetri,
+} from "@/lib/bacaTelemetri";
+
+const TANDA = "—";
+
+function BarisSampel({ label, nilai }: { label: string; nilai: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <span className="text-white/40">{label}</span>
+      <span className="text-white/90 tabular-nums">{nilai}</span>
+    </div>
+  );
+}
 
 const SOCIAL_CHANNELS = [
   { name: "GITHUB", url: "https://github.com/ArkanFzi" },
@@ -16,6 +39,16 @@ export const ChapterPaddock: React.FC = () => {
   const [dispatchInput, setDispatchInput] = useState("");
   const [dispatchStatus, setDispatchStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [statusMessage, setStatusMessage] = useState("");
+  // Dua angka yang boleh dicetak di bab ini datang dari store yang sama dengan panel HUD:
+  // tidak ada polling kedua di sini, jadi tidak ada kemungkinan dua tempat menyebut
+  // kunjungan yang berbeda hanya karena waktunya beda.
+  const kunjungan = useSyncExternalStore(dengarKunjungan, bacaKunjungan, bacaKunjunganSaatSSR);
+  const telemetri = useSyncExternalStore(dengarTelemetri, bacaTelemetri, bacaTelemetriSaatSSR);
+
+  useEffect(() => {
+    mulaiBacaKunjungan();
+    mulaiBacaTelemetri();
+  }, []);
 
   const handleQuickDispatch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -134,7 +167,7 @@ export const ChapterPaddock: React.FC = () => {
           <div className="flex items-center gap-2 mb-2">
             <span className="w-1.5 h-1.5 rounded-full bg-white/80" />
             <span className="font-mono text-[9px] tracking-[0.22em] uppercase text-white/80">
-              PIT-TO-CAR COMMAND DISPATCH // LOGS TO POSTGRESQL INBOX
+              PIT-TO-CAR COMMAND DISPATCH // POST /api/contact → contact_messages
             </span>
           </div>
 
@@ -164,7 +197,7 @@ export const ChapterPaddock: React.FC = () => {
 
           {/* Catatan laju pengiriman — tidak ada klaim enkripsi di sini. */}
           <div className="flex items-center justify-end mt-2.5 font-mono text-[9px] text-white/70">
-            <span className="text-white/40">RATE LIMIT: 5 MSG/HR</span>
+            <span className="text-white/40">RATE LIMIT: 10 BERUNTAS · 1 PEMULIHAN/MENIT · PER PROSES</span>
           </div>
 
           {statusMessage && (
@@ -178,18 +211,37 @@ export const ChapterPaddock: React.FC = () => {
             </div>
           )}
 
-          {/* Public Dispatch Ledger Ticker */}
-          <div className="mt-4 p-2.5 rounded bg-black/20 border border-white/10 font-mono text-[9px] text-white/80 space-y-1">
+          {/* Sampel nyata, bukan daftar pesan yang dikarang: yang terukur dicetak, yang
+              tidak terukur tercetak "—". Nomor pesan masuk tidak pernah ditampilkan ke
+              publik karena inbox-nya ada di balik autentikasi admin. */}
+          <div
+            data-bab04-sampel
+            className="mt-4 p-2.5 rounded bg-black/20 border border-white/10 font-mono text-[9px] text-white/80 space-y-1"
+          >
             <div className="flex items-center justify-between text-white/50 text-[8px] uppercase">
-              <span>VERIFIED DISPATCH LEDGER</span>
-              <span className="text-emerald-300">● LIVE FEED</span>
+              <span>DISPATCH SAMPLING</span>
+              {kunjungan ? (
+                <span className="text-emerald-300">● SAMPLING</span>
+              ) : (
+                <span className="text-white/40">{TANDA} TIDAK TERBACA</span>
+              )}
             </div>
-            <div className="truncate">
-              <span className="text-white/40">#16-89:</span> &quot;Enterprise Microservices Consultation&quot; • <span className="text-white/60">3m ago</span> • <span className="text-emerald-300 font-bold">ACK</span>
-            </div>
-            <div className="truncate">
-              <span className="text-white/40">#16-88:</span> &quot;Spatial GLSL Atelier Inquiry&quot; • <span className="text-white/60">24m ago</span> • <span className="text-emerald-300 font-bold">LOGGED</span>
-            </div>
+            <BarisSampel
+              label="TOTAL KUNJUNGAN"
+              nilai={kunjungan ? String(kunjungan.total) : TANDA}
+            />
+            <BarisSampel label="HARI INI" nilai={kunjungan ? String(kunjungan.today) : TANDA} />
+            <BarisSampel
+              label="PENGINAP UNIK 24 JAM"
+              nilai={kunjungan ? String(kunjungan.uniqueLast24h) : TANDA}
+            />
+            <BarisSampel
+              label="KOMIT YANG MELAYANI"
+              nilai={telemetri?.gitCommit ? `#${telemetri.gitCommit.slice(0, 7)}` : TANDA}
+            />
+            {!kunjungan && (
+              <div className="text-white/40">GET /api/visits tidak menjawab — nol bukan angka cadangan.</div>
+            )}
           </div>
         </div>
 

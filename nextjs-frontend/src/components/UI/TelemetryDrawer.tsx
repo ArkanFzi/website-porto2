@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useRef, useSyncExternalStore } from "react";
+import React, { useEffect, useRef, useSyncExternalStore } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { usePortfolioMode } from "@/context/PortfolioModeContext";
 import { X, Activity, Globe, Music, Server } from "lucide-react";
@@ -11,6 +11,12 @@ import {
   bacaTelemetriSaatSSR,
   dengarTelemetri,
 } from "@/lib/bacaTelemetri";
+import {
+  bacaKunjungan,
+  bacaKunjunganSaatSSR,
+  dengarKunjungan,
+  mulaiBacaKunjungan,
+} from "@/lib/bacaKunjungan";
 import {
   isiSlot,
   pecahanTinggi,
@@ -26,15 +32,7 @@ import {
 } from "@/lib/jejakArsitektur";
 import { PEGA } from "@/lib/motion";
 
-// Kontrak GET /api/visits di go-backend: {"total":int,"today":int,"uniqueLast24h":int}.
-interface VisitsPayload {
-  total: number;
-  today: number;
-  uniqueLast24h: number;
-}
-
 const DASH = "—";
-const POLL_MS = 5000;
 const VISIT_KEY = "af-visit-counted";
 
 /** Nama manusia tiap lompatan pada ARCHITECTURE TRACE. Yang boleh disebut di sini hanya
@@ -104,8 +102,15 @@ export const TelemetryDrawer: React.FC = () => {
   // store lib/bacaTelemetri, yang juga menyuapi bilah 3D di panggung. Jadi bilah DOM di bawah
   // dan bilah instans di kanvas pasti menggambar angka yang sama pada saat yang sama.
   const telemetry = useSyncExternalStore(dengarTelemetri, bacaTelemetri, bacaTelemetriSaatSSR);
-  const [visits, setVisits] = useState<VisitsPayload | null>(null);
+  // Kunjungan juga datang dari store, bukan dari polling milik panel: bab penutup membaca
+  // objek yang sama, jadi angka di panel dan angka di bab tidak mungkin beda karena dua
+  // pihak membaca pada waktu yang berbeda.
+  const visits = useSyncExternalStore(dengarKunjungan, bacaKunjungan, bacaKunjunganSaatSSR);
   const globeCanvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    mulaiBacaKunjungan();
+  }, []);
 
   // Close on Escape key
   useEffect(() => {
@@ -147,43 +152,6 @@ export const TelemetryDrawer: React.FC = () => {
         // Backend mati: tidak ada yang bisa dilaporkan, total kunjungan tampil "—" di panel.
       });
   }, []);
-
-  // Penghitung kunjungan di-poll hanya selama drawer terbuka. Ditutup = interval dibersihkan dan
-  // request yang masih berjalan dibatalkan lewat AbortController, jadi tidak ada fetch yang masih
-  // menulis state panel yang sedang tidak dilihat siapa pun. Telemetri tidak lagi ikut di sini:
-  // ritmenya sudah diatur store global, dan panel yang tertutup pun tetap butuh bacaannya.
-  useEffect(() => {
-    if (!telemetryOpen) return;
-
-    const controller = new AbortController();
-    let aktif = true;
-
-    const ambilVisits = async () => {
-      try {
-        const res = await fetch("/api/visits", {
-          signal: controller.signal,
-          cache: "no-store",
-        });
-        if (!res.ok) {
-          if (aktif) setVisits(null);
-          return;
-        }
-        const data = (await res.json()) as VisitsPayload;
-        if (aktif) setVisits(data);
-      } catch {
-        if (aktif) setVisits(null);
-      }
-    };
-
-    void ambilVisits();
-    const interval = setInterval(() => void ambilVisits(), POLL_MS);
-
-    return () => {
-      aktif = false;
-      controller.abort();
-      clearInterval(interval);
-    };
-  }, [telemetryOpen]);
 
   // Procedural 3D Wireframe Globe on 2D Canvas (Lightweight, zero three.js overhead).
   // Ini hiasan belaka: titik ping di bawah diputar oleh matematika, bukan lokasi pengunjung, jadi
