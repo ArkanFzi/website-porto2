@@ -173,7 +173,7 @@ export default async function Baca() {
         <section aria-labelledby="daftar-judul">
           <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
             <h2 id="daftar-judul" className="font-mono text-tag tracking-[0.24em] uppercase text-obsidian">
-              REPOSITORIES — 20 MOST RECENTLY UPDATED
+              REPOSITORIES — NEWEST FIRST
             </h2>
             <p className="font-mono text-[10px] tracking-[0.14em] uppercase text-titanium">
               forks and the profile repo are filtered out at the source
@@ -250,8 +250,10 @@ export default async function Baca() {
               up to that window.
             </li>
             <li>
-              SCOPE — twenty most recently updated, forks excluded. The totals above are computed over a
-              different window (up to 100 repos), which is why they do not add up to this table.
+              SCOPE — the twenty most recently updated repositories, then forks and the profile repo
+              are removed at the source, so this table can hold fewer than twenty rows. The totals
+              above are computed over a different window (up to 100 repos), which is why they do not
+              add up to this table.
             </li>
           </ul>
         </section>
