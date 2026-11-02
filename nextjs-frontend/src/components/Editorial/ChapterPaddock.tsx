@@ -106,7 +106,7 @@ export const ChapterPaddock: React.FC = () => {
       /* Rosso tidak lagi dilukis di sini: latar section selalu melukis di atas kanvas
          (main z-10 menyusul DOM setelah kanvas z-10) sehingga kartu potret tertutup.
          Warnanya sekarang di LatarPaddock, satu lapis di bawah kanvas. */
-      className="relative w-full min-h-screen text-[#F7F5F0] pt-[calc(var(--hud-atas,124px)+2rem)] pb-48 md:pb-56 px-6 md:px-12 select-none overflow-hidden flex flex-col justify-between"
+      className="relative w-full min-h-screen text-[#F7F5F0] pt-[calc(var(--hud-atas,196px)+2rem)] pb-48 md:pb-56 px-6 md:px-12 select-none overflow-hidden flex flex-col justify-between"
     >
       {/* Kartu mundur jauh di bab penutup: `z` tempat ia berhenti, `pas` kedalaman saat
           ia masih mengisi portal — selisih keduanya yang membuat ia mengecil. */}

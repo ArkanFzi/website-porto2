@@ -384,7 +384,8 @@ cek('bingkai HUD tetap fixed (tautan baru tidak mengalir di dokumen)', cs, 'fixe
 cek('halaman utama punya bingkai HUD untuk diuji', masukAwal.header, true);
 
 const ukurMasuk = await pageUtama.evaluate(() => {
-  const tautan = [...document.querySelectorAll('header a[href="/baca"], header a[href="/arsip"]')];
+  // Semua jalan masuk rute dari header, kecuali /api/cv (kertas render, bukan halaman).
+  const tautan = [...document.querySelectorAll('header a[href^="/"]:not([href="/"],[href^="/api/"])')];
   const rect = (e) => e.getBoundingClientRect();
   const potong = (a, b) => {
     const x = Math.min(a.right, b.right) - Math.max(a.left, b.left);
@@ -424,6 +425,7 @@ const ukurMasuk = await pageUtama.evaluate(() => {
   ).filter((n) => n > 0);
   return {
     jumlahTautan: tautan.length,
+    daftar: [...new Set(tautan.map((t) => t.getAttribute('href').replace(/^\//, '')))].sort().join(','),
     sasaran: daftar.length,
     spesifikasi: daftar.filter((d) => d.nama.startsWith('Open architecture')).length,
     tertutupPortal: portal.map((d) => d.nama),
@@ -435,7 +437,12 @@ const ukurMasuk = await pageUtama.evaluate(() => {
   };
 });
 console.log('masuk    ', JSON.stringify(ukurMasuk));
-cek('dua tautan masuk ada di bingkai HUD', ukurMasuk.jumlahTautan, 2);
+cek('tujuh tautan masuk ada di bingkai HUD', ukurMasuk.jumlahTautan, 7);
+cek(
+  'daftar tautan masuk persis tujuh rute yang dijanjikan',
+  ukurMasuk.daftar,
+  'arsip,baca,iris,meja,peta,sangkar,waktu'
+);
 cek('tautan tidak menambah tinggi dokumen', ukurMasuk.sama, true);
 cek('tinggi dokumen terbaca (gerbang di atas tidak hampa)', ukurMasuk.sebelum > 900, true);
 cekMin('sasaran interaktif ikut diuji', ukurMasuk.sasaran, 4);

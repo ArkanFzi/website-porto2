@@ -207,7 +207,7 @@ export const ChapterArchives: React.FC<ArchivesProps> = ({
     <section
       id="chapter-03"
       style={{ "--strip-lebar": STRIP_LEBAR } as React.CSSProperties}
-      className="relative w-full min-h-screen bg-[#0A0A0A] xl:bg-transparent text-[#F7F5F0] pt-36 pb-36 px-6 md:px-12 select-none overflow-hidden transition-colors duration-700"
+      className="relative w-full min-h-screen bg-[#0A0A0A] xl:bg-transparent text-[#F7F5F0] pt-[calc(var(--hud-atas,196px)+2rem)] pb-36 px-6 md:px-12 select-none overflow-hidden transition-colors duration-700"
     >
       {/*
         Papan gelap = batas kiri daftar. Kartu WebGL tidak lagi mengukurnya; ia duduk

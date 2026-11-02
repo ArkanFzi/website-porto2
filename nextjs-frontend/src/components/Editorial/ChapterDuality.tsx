@@ -159,7 +159,7 @@ export const ChapterDuality: React.FC<DualityProps> = ({
   return (
     <section
       id="chapter-02"
-      className="relative w-full min-h-screen pt-36 sm:pt-44 pb-48 px-6 md:px-12 select-none"
+      className="relative w-full min-h-screen pt-[calc(var(--hud-atas,196px)+2rem)] pb-48 px-6 md:px-12 select-none"
     >
       <MeshPortal
         bab={2}

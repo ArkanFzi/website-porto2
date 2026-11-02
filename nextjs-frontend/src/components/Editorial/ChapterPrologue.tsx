@@ -13,7 +13,7 @@ export const ChapterPrologue: React.FC = () => {
   return (
     <section
       id="chapter-01"
-      className="relative w-full min-h-screen flex flex-col justify-between pt-24 sm:pt-28 pb-20 px-6 md:px-12 select-none overflow-hidden"
+      className="relative w-full min-h-screen flex flex-col justify-between pt-[calc(var(--hud-atas,196px)+2rem)] pb-20 px-6 md:px-12 select-none overflow-hidden"
     >
       <MeshPortal
         bab={1}

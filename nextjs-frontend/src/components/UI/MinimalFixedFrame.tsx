@@ -18,6 +18,16 @@ const CHAPTER_LABELS = [
   "THE PADDOCK & DISPATCH",
 ];
 
+// Panggung kedua: lima rute rincian yang berdiri sendiri. Namanya ikut bahasa rute
+// (waktu, sangkar, meja, peta, iris) supaya pil dan URL mengatakan hal yang sama.
+const PANGGUNG_KEDUA = [
+  { href: "/waktu", label: "WAKTU" },
+  { href: "/sangkar", label: "SANGKAR" },
+  { href: "/meja", label: "MEJA" },
+  { href: "/peta", label: "PETA" },
+  { href: "/iris", label: "IRIS" },
+];
+
 export const MinimalFixedFrame: React.FC<FrameProps> = ({ onChapterClick }) => {
   const currentChapter = useBabAktif();
   const {
@@ -157,6 +167,26 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ onChapterClick }) => {
             >
               PIT WALL
             </Link>
+          </nav>
+
+          {/* Lima pil panggung kedua. Sengaja di kolom kiri yang sama dan memflex-wrap
+              dalam max-w-[26ch]: kolom inilah yang sudah lama menerbitkan --hud-atas,
+              jadi bab yang membaca variabel itu ikut menyesuaikan tanpa satu angka pun
+              ditulis ulang di bab-nya. Bar bawah tidak disentuh — ia pernah menelan
+              sasaran interaktif (catatan di pita bawah file ini). */}
+          <nav
+            className="flex flex-wrap items-center gap-1.5 max-w-[26ch]"
+            aria-label="Second stage"
+          >
+            {PANGGUNG_KEDUA.map(({ href, label }) => (
+              <Link
+                key={href}
+                href={href}
+                className={`font-mono text-[9px] tracking-[0.2em] uppercase px-2 py-1 rounded-full border ${borderColor} ${subColor} opacity-60 hover:opacity-100 hover:border-[#D41E12] transition-all`}
+              >
+                {label}
+              </Link>
+            ))}
           </nav>
         </div>
 
