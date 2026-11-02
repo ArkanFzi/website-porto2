@@ -160,6 +160,7 @@ const areaKartu = async () => {
  *  berhenti begitu sapuan menutup, lalu jalan lagi sampai ia membuka. */
 const lewatiBand = async (n) => {
   await klikBab(n);
+  await tungguBab(n);
   const awal = await tungguSikap();
   const terbuka = await areaKartu();
   const langkah = 30;
@@ -291,12 +292,27 @@ const klikBab = async (n) => {
   await page.mouse.click(titik.x, titik.y);
 };
 
+/** Tunggu sampai bab yang dituju memang dilaporkan panggung. Kartu bisa terbaca tenang
+ *  di bab asal selagi gulirannya belum sempat jalan — presisi float tidak bisa
+ *  membedakan "sudah sampai" dari "belum berangkat" — dan dua pembacaan yang
+ *  dibandingkan lalu datang dari dua bab yang berbeda. */
+const tungguBab = async (n, maksMs = 8000) => {
+  const akhir = Date.now() + maksMs;
+  let b = await baca();
+  while (b && b.babDari !== n && Date.now() < akhir) {
+    await diamkan(120);
+    b = await baca();
+  }
+  return b;
+};
+
 /** Sikap kartu di awal sebuah bab, lewat jalur yang dipakai pengunjung (tombol bab →
  *  lenis.scrollTo), jadi dua pembacaan banding pada progress yang benar-benar sama.
  *  Pointer diparkir di titik yang sama karena x dan rotY kartu memang mengandung
  *  parallax pointer. */
 const sikapDiBab = async (n) => {
   await klikBab(n);
+  await tungguBab(n);
   await tungguSikap();
   await page.mouse.move(16, 500);
   return tungguSikap();
@@ -370,6 +386,11 @@ console.log(
   'rel NDC  sebelum:', relSebelum.map((v) => v.toFixed(4)).join(' '),
   '| sesudah:', relSesudah.map((v) => v.toFixed(4)).join(' '),
   '| portal:', JSON.stringify(diam1.portal), '→', JSON.stringify(sesudah3.portal)
+);
+cek(
+  'dua-duanya membaca bab yang sama, jadi perbandingan di bawahnya tidak apel-vs-jeruk',
+  `${diam1.babDari}→${sesudah3.babDari}`,
+  '2→2'
 );
 kisar('skala kartu kembali persis seperti sebelum digulir', Math.abs(sesudah3.skala - diam1.skala), 0, 0.005);
 kisar('posisi kartu kembali seperti sebelum digulir', Math.abs(sesudah3.x - diam1.x), 0, 0.01);
@@ -500,6 +521,14 @@ await diamkan(900);
 // efek itu karena kedua huruf dibaca pada frame yang sama.
 for (const n of [1, 2, 4]) {
   await klikBab(n);
+  // Parkir dulu, baru parkir pointer. `parkirTipografi` menunggu kartu DAN huruf berhenti
+  // berubah, tapi ia tidak tahu bab mana yang sedang dituju: klik bab melepas glide Lenis
+  // yang masih berjalan, dan pada dokumen yang lebih tinggi (celah judul bab 02/03 dilebarkan)
+  // pembacaan "kiri" sempat diambil di tengah penerbangan itu — Δkartu membengkak 4×
+  // (terukur 119,59px vs 30,42px yang sebenarnya) sementara Δhuruf benar, jadi rasio
+  // proyeksinya jatuh ke 0,18. Dua gerbang yang sama sekali tidak menyentuh tipografi.
+  await tungguBab(n);
+  await tungguSikap();
   const kiri = await parkirTipografi(16, 450);
   const kanan = await parkirTipografi(1424, 450);
   const tengah = await parkirTipografi(720, 450);

@@ -210,11 +210,14 @@ export const ChapterDuality: React.FC<DualityProps> = ({
                 transition={{ duration: DURASI.ganti, ease: EASE.keluar }}
                 className="mb-14"
               >
-                <span className="font-mono text-[10px] tracking-[0.25em] uppercase text-[#D41E12] block mb-3">
+                {/* Judul bab ini bergerak sendiri (data-paralaks) sampai ±22px, tetangganya
+                    tidak. Celah di atas dan di bawah harus lebih besar dari perjalanan itu —
+                    sama seperti bab 03, diambil dari angka yang diukur gerbang 5e. */}
+                <span className="font-mono text-[10px] tracking-[0.25em] uppercase text-[#D41E12] block mb-6">
                   {mode === "engineer" ? "THE DISCIPLINE // ENGINEERING" : "THE PHILOSOPHY // CREATIVE CRAFT"}
                 </span>
                 <h2
-                  className="font-serif text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-[#0A0A0A] leading-[1.08] mb-6"
+                  className="font-serif text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-[#0A0A0A] leading-[1.08] mb-8"
                   data-paralaks="-0.5"
                   style={{ translate: "var(--tipografi-x, 0px) var(--tipografi-y, 0px)" }}
                 >

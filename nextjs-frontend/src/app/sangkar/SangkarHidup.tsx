@@ -66,7 +66,10 @@ export default function SangkarHidup() {
           <span className="font-mono text-micro tracking-[0.2em] uppercase text-titanium">
             COMMANDED ATTITUDE · LIMITED TO ±{BATAS_DERAJAT}°
           </span>
-          <p className="font-serif text-title leading-[0.9] tracking-tight tabular-nums text-obsidian">
+          {/* leading-[0.9] membuat kotak baris lebih pendek dari tintanya, jadi bulatan derajat
+              pada angka ini naik sampai menyentuh label di atas dan prosa di bawah. Celahnya
+              diberi margin, bukan dipotong dari tingginya. */}
+          <p className="font-serif text-title leading-[0.9] tracking-tight tabular-nums text-obsidian my-2">
             <span data-sangkar-derajat="">
               {x >= 0 ? "+" : ""}
               {x}° / {y >= 0 ? "+" : ""}

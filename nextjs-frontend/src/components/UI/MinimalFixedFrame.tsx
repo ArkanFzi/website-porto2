@@ -56,19 +56,33 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ onChapterClick }) => {
   // sebagai data-hud-atas supaya verifier bisa membacanya tanpa menghitung ulang.
   const akarRef = useRef<HTMLElement>(null);
   const kolomRef = useRef<HTMLDivElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const akar = akarRef.current;
     const kolom = kolomRef.current;
-    if (!akar || !kolom) return;
+    const bar = barRef.current;
+    if (!akar || !kolom || !bar) return;
     const terbitkan = () => {
       const bawah = Math.round(kolom.getBoundingClientRect().bottom);
+      // Pita bawah diukur dari puncaknya ke tepi bawah viewport: yang dibutuhkan bab adalah
+      // tebal pita, bukan posisi bar, supaya angka itu tetap benar saat tinggi layar berubah.
+      const atas = Math.round(innerHeight - bar.getBoundingClientRect().top);
       document.documentElement.style.setProperty("--hud-atas", `${bawah}px`);
+      document.documentElement.style.setProperty("--hud-bawah", `${atas}px`);
       akar.setAttribute("data-hud-atas", String(bawah));
+      akar.setAttribute("data-hud-bawah", String(atas));
     };
     terbitkan();
     const pengamat = new ResizeObserver(terbitkan);
     pengamat.observe(kolom);
-    return () => pengamat.disconnect();
+    pengamat.observe(bar);
+    // Tinggi viewport tidak mengubah ukuran kedua elemen itu sendiri, jadi ResizeObserver
+    // saja tidak cukup: pita bawah dihitung dari innerHeight.
+    window.addEventListener("resize", terbitkan);
+    return () => {
+      pengamat.disconnect();
+      window.removeEventListener("resize", terbitkan);
+    };
   }, []);
 
   useEffect(() => {
@@ -117,6 +131,10 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ onChapterClick }) => {
   // Bab 03 punya gutter kertas di kanan: pil HUD harus terbaca di atas kertas maupun
   // di atas papan gelap daftar, jadi chip-nya ikut gelap, bukan transparan.
   const atasKertas = isDarkSection && !isRossoSection;
+
+  // Warna pita legibilitas = warna latar section yang sedang aktif, jadi lapisan ini
+  // membaca sebagai kabur kertas/gelap/rosso yang sama, bukan sebagai panel baru.
+  const warnaPita = isRossoSection ? "#D41E12" : isDarkSection ? "#0A0A0A" : "#F7F5F0";
   const chipBg = atasKertas
     ? "bg-[#0A0A0A] hover:bg-[#1A1A1A] hover:border-[#D41E12]"
     : "bg-white/5 hover:border-[#D41E12]";
@@ -126,6 +144,33 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ onChapterClick }) => {
 
   return (
     <header ref={akarRef} className="fixed inset-0 pointer-events-none z-50 p-6 md:p-10 flex flex-col justify-between">
+      {/* ── PITA LEGIBILITAS ──
+          HUD adalah lapisan di atas konten yang berjalan, jadi teks bab suatu saat akan
+          lewat di bawahnya — terukur di 1100x620 dan 1536x840, saat bab diparkir mapun di
+          ujung halaman. Yang tidak boleh terjadi adalah dua tinta bertumpuk. Kedua pita ini
+          melukis ulang warna section di bawah setinggi kolom HUD yang diukur barusan, lalu
+          memudarnya ke transparan, sehingga huruf bab tenggelam sebelum menyentuh instrumen.
+          pointer-events-none: pita tidak pernah ikut menahan hit-test tautan atau pil.
+          z-index -1: di dalam header, anak yang diposisikan bebas melukis DI ATAS konten
+          yang mengalir, jadi tanpa angka ini pita justru menutupi monogram dan pilnya
+          sendiri — terukur pada 1100x620, kolom HUD hilang dari layar. */}
+      <div
+        aria-hidden="true"
+        data-hud-pita=""
+        className="pointer-events-none absolute inset-x-0 top-0 -z-[1] h-[calc(var(--hud-atas,160px)+3rem)]"
+        style={{
+          background: `linear-gradient(to bottom, ${warnaPita} 0 var(--hud-atas, 160px), ${warnaPita}00 100%)`,
+        }}
+      />
+      <div
+        aria-hidden="true"
+        data-hud-pita-bawah=""
+        className="pointer-events-none absolute inset-x-0 bottom-0 -z-[1] h-[calc(var(--hud-bawah,96px)+3rem)]"
+        style={{
+          background: `linear-gradient(to top, ${warnaPita} 0 var(--hud-bawah, 96px), ${warnaPita}00 100%)`,
+        }}
+      />
+
       {/* ── TOP BAR ── */}
       <div className="w-full flex items-center justify-between pointer-events-auto">
         
@@ -317,7 +362,7 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ onChapterClick }) => {
           atas kolom konten, dan setiap sasaran interaktif yang lewat di sana ikut
           tertelan (terukur sampai 2.237px² pada tombol SPEC baris arsip). Pil sekarang
           menempel di belakang indeks bab, koordinat didorong ke tepi kanan lewat ml-auto. */}
-      <div className="w-full flex items-end gap-5 pointer-events-auto">
+      <div ref={barRef} className="w-full flex items-end gap-5 pointer-events-auto">
         
         {/* Bottom-Left: Chapter Index — all four chapters reachable */}
         <nav className="flex items-center gap-2.5" aria-label="Chapter index">

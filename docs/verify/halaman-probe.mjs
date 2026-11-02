@@ -586,6 +586,184 @@ await jeda(1600);
 cek('di bab penutup lapisan rosso menyala penuh', await bacaRosso(), '1');
 await foto(pageUtama, '05b-bab-tanpa-ganjelan');
 
+// ── 5d · pita legibilitas HUD ──
+// Header HUD adalah lapisan fixed di atas konten yang berjalan, jadi huruf bab suatu saat
+// akan lewat di bawahnya. Yang ditagih di sini bukan "tidak ada tumpang tindih kotak" —
+// itu tidak bisa terjadi pada lapisan overlay — melainkan bahwa SETIAP huruf HUD duduk di
+// dalam pita yang menutup konten di belakangnya. Selama itu benar, tidak ada dua tinta yang
+// pernah berbagi piksel yang sama di layar mana pun. Pita diukur pada tiga tinggi viewport
+// karena pita bawah dihitung dari innerHeight, bukan dari isi bar-nya.
+// Dipakai ulang untuk tiap ukuran viewport: fungsi ini dieksekusi di dalam halaman, jadi
+// ia harus berdiri sendiri tanpa closure dari file verifier.
+function pitaDiUjung() {
+  const akar = document.querySelector('header');
+  const gaya = getComputedStyle(document.documentElement);
+  const batasAtas = parseFloat(gaya.getPropertyValue('--hud-atas'));
+  const batasBawah = innerHeight - parseFloat(gaya.getPropertyValue('--hud-bawah'));
+  const daun = [];
+  const jalan = (n) => {
+    for (const e of n.children) {
+      const t = (e.textContent || '').trim() || (e.placeholder || '').trim();
+      if (e.children.length === 0 && t) {
+        const r = e.getBoundingClientRect();
+        if (r.width > 6 && r.height > 6) daun.push({ t, r });
+      } else jalan(e);
+    }
+  };
+  jalan(akar);
+  return daun
+    .filter((d) => !(d.r.bottom <= batasAtas + 1 || d.r.top >= batasBawah - 1))
+    .map((d) => `${d.t.slice(0, 16)}@${Math.round(d.r.top)}-${Math.round(d.r.bottom)}`);
+}
+
+const pita = await pageUtama.evaluate(() => {
+  const akar = document.querySelector('header');
+  const gaya = getComputedStyle(document.documentElement);
+  const atas = parseFloat(gaya.getPropertyValue('--hud-atas'));
+  const bawah = parseFloat(gaya.getPropertyValue('--hud-bawah'));
+  const daun = [];
+  const jalan = (n) => {
+    for (const e of n.children) {
+      const t = (e.textContent || '').trim() || (e.placeholder || '').trim();
+      if (e.children.length === 0 && t) {
+        const r = e.getBoundingClientRect();
+        if (r.width > 6 && r.height > 6) daun.push({ t, r });
+      } else jalan(e);
+    }
+  };
+  jalan(akar);
+  const batasAtas = atas;
+  const batasBawah = innerHeight - bawah;
+  return {
+    variabelAtas: gaya.getPropertyValue('--hud-atas').trim(),
+    variabelBawah: gaya.getPropertyValue('--hud-bawah').trim(),
+    dicetakAtas: akar?.getAttribute('data-hud-atas'),
+    dicetakBawah: akar?.getAttribute('data-hud-bawah'),
+    jumlahPita: document.querySelectorAll('[data-hud-pita], [data-hud-pita-bawah]').length,
+    zPita: (() => {
+      const p = document.querySelector('[data-hud-pita]');
+      return p ? getComputedStyle(p).zIndex : 'tanpa-pita';
+    })(),
+    pitaMenutup: (() => {
+      const p = document.querySelector('[data-hud-pita]');
+      if (!p) return false;
+      const r = p.getBoundingClientRect();
+      return r.top === 0 && r.height >= atas;
+    })(),
+    hurufLepas: daun
+      .filter((d) => !(d.r.bottom <= batasAtas + 1 || d.r.top >= batasBawah - 1))
+      .map((d) => `${d.t.slice(0, 16)}@${Math.round(d.r.top)}-${Math.round(d.r.bottom)}`),
+    hurufDiuji: daun.length,
+  };
+});
+cek('--hud-atas dan --hud-bawah dua-duanya terbit sebagai angka px', /^\d+px$/.test(pita.variabelAtas) && /^\d+px$/.test(pita.variabelBawah), true);
+cek('data-hud-bawah mencetak angka yang sama dengan variabelnya', pita.dicetakBawah, pita.variabelBawah.replace('px', ''));
+cek('dua pita legibilitas terpasang di header', pita.jumlahPita, 2);
+cek(
+  'pita melukis DI BAWAH tinta HUD, bukan di atasnya',
+  pita.zPita,
+  '-1'
+);
+cek('pita atas menutupi seluruh tinggi kolom HUD', pita.pitaMenutup, true);
+cek('di 1440x900 tidak ada huruf HUD yang keluar dari pita', pita.hurufLepas.join(' | '), '');
+
+for (const [lebar, tinggi] of [
+  [1100, 620],
+  [1920, 950],
+]) {
+  await pageUtama.setViewport({ width: lebar, height: tinggi, deviceScaleFactor: 1 });
+  await jeda(900);
+  const ulang = await pageUtama.evaluate(pitaDiUjung);
+  cek(`di ${lebar}x${tinggi} tidak ada huruf HUD yang keluar dari pita`, ulang.join(' | '), '');
+}
+await pageUtama.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
+await jeda(700);
+await foto(pageUtama, '05c-pita-legibilitas');
+
+// ── 5e · judul yang bergerak sendiri menyisakan celah untuk tetangganya ──
+// Elemen [data-paralaks] menggeser dirinya mengikuti pointer; tetangganya mengalir diam.
+// Ini kelas bug yang membuat baris kedua "SYSTEMS ARCHITECTURE" mendarat di atas paragrafnya
+// sendiri di bab 03: margin yang cukup untuk huruf yang EMAS tidak cukup untuk huruf yang
+// meluncur 22px. Yang ditagih bukan "tidak ada tumpang tindih kotak" — tumpang tindish pada
+// sandwich bab 01 justru desainnya — melainkan: geser sejauh apa pun tidak boleh menyentuh
+// tetangga yang di keadaan DIAM tidak tersentuh. Kotak diam direkonstruksi dari kotak
+// sekarang dikurangi geseran yang sedang tertulis, jadi tidak perlu posisi pointer dasar.
+// Tinta juga dikembangkan ke tinggi hurufnya: leading < 1 membuat kotak baris lebih pendek
+// dari tintanya, dan selisih itulah yang pertama kali bersentuhan di layar.
+function celahJudul() {
+  const daun = [];
+  const jalan = (n) => {
+    for (const e of n.children) {
+      const t = (e.textContent || '').trim();
+      if (e.children.length === 0 && t) {
+        const r = e.getBoundingClientRect();
+        if (r.width > 6 && r.height > 6) daun.push({ el: e, t, r });
+      } else jalan(e);
+    }
+  };
+  const sentuh = (a, b) => !(a.right <= b.left + 1 || a.left >= b.right - 1 || a.bottom <= b.top + 1 || a.top >= b.bottom - 1);
+  const keluar = [];
+  for (const judul of document.querySelectorAll('[data-paralaks]')) {
+    const bab = judul.closest('section');
+    if (!bab) continue;
+    const gaya = getComputedStyle(judul);
+    const geserX = parseFloat(gaya.getPropertyValue('--tipografi-x')) || 0;
+    const geserY = parseFloat(gaya.getPropertyValue('--tipografi-y')) || 0;
+    const kini = judul.getBoundingClientRect();
+    const diam = {
+      top: kini.top - geserY,
+      bottom: kini.bottom - geserY,
+      left: kini.left - geserX,
+      right: kini.right - geserX,
+    };
+    const lebih = Math.max(0, (parseFloat(gaya.fontSize) - kini.height) / 2);
+    const tintaDiam = { top: diam.top - lebih, bottom: diam.bottom + lebih, left: diam.left, right: diam.right };
+    const tintaJalan = { top: tintaDiam.top + geserY, bottom: tintaDiam.bottom + geserY, left: tintaDiam.left + geserX, right: tintaDiam.right + geserX };
+    daun.length = 0;
+    jalan(bab);
+    for (const d of daun) {
+      if (d.el === judul || judul.contains(d.el)) continue;
+      if (sentuh(d.r, tintaDiam)) continue;
+      if (sentuh(d.r, tintaJalan)) {
+        keluar.push(`${bab.id} ${judul.tagName} «${judul.textContent.trim().slice(0, 12)}» × «${d.t.slice(0, 16)}» geser=${geserY.toFixed(1)}px`);
+      }
+    }
+  }
+  return keluar;
+}
+
+const sudutAyunan = [
+  [30, 40],
+  [1410, 40],
+  [30, 860],
+  [1410, 860],
+];
+// Tiga tinggi viewport karena celahnya yang bergerak, bukan geserannya: kotak baris
+// ditentukan oleh wrap teks, dan nama raksasa bab 01 baru menyentuh baris MODE di layar
+// pendek. Pointer diparkir di tengah setelah selesai supaya frame berikutnya tenang.
+const temuanAyunan = new Set();
+for (const [lebar, tinggi] of [
+  [1440, 900],
+  [1100, 620],
+  [1920, 950],
+]) {
+  await pageUtama.setViewport({ width: lebar, height: tinggi, deviceScaleFactor: 1 });
+  await jeda(900);
+  for (const [x, y] of sudutAyunan) {
+    await pageUtama.mouse.move(Math.min(x, lebar - 10), Math.min(y, tinggi - 10), { steps: 4 });
+    await jeda(700);
+    for (const t of await pageUtama.evaluate(celahJudul)) temuanAyunan.add(`${lebar}x${tinggi} ${t}`);
+  }
+}
+await pageUtama.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
+await pageUtama.mouse.move(720, 450, { steps: 2 });
+await jeda(500);
+cek(
+  'judul yang bergerak sendiri tidak menabrak tetangga yang diam di tiap sudut pointer dan tiap tinggi layar',
+  [...temuanAyunan].join(' | '),
+  ''
+);
+
 // ── 6 · penjaga jalur: apa yang boleh dibaca crawler dan apa yang tidak ──
 // /cv-layout adalah kertas render untuk /api/cv, bukan halaman. robots.txt sudah menolaknya;
 // gerbang ini memastikan dokumen itu sendiri juga menolak, dan bahwa dua lorong rincian yang
@@ -1067,12 +1245,25 @@ pagePeta.on('pageerror', (e) => galatPeta.push(String(e)));
 await pagePeta.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
 const rPeta = await pagePeta.goto(`${FE}/peta`, { waitUntil: 'domcontentloaded', timeout: 45000 });
 cek('/peta menjawab 200', rPeta.status(), 200);
-await jeda(1600);
-const peta = await bacaPeta(pagePeta);
-console.log('peta     ', peta.baris.length, 'baris', JSON.stringify(peta.peta));
+// Yang ditagih gerbang ini adalah keadaan DUDUK, jadi yang benar adalah menunggu sampai
+// diam dengan batas atas, bukan tidur buta: gerak masuk 700 ms baru dimulai saat kanvas
+// mendapat frame pertama, dan itu terjadi setelah hidrasi — pada 1,6 detik buta ia pernah
+// terbaca di tengah jalan (delapan baris masih nol) tanpa ada yang salah di halaman.
+const bandingTinggi = (x) =>
+  x.baris.length > 0 &&
+  x.baris.every((b, i) => Math.abs((x.peta?.tinggi?.[i] ?? NaN) - b.tinggi) < 0.006);
+let settleMs = 0;
+let peta = await bacaPeta(pagePeta);
+while (!bandingTinggi(peta) && settleMs < 4000) {
+  await jeda(200);
+  settleMs += 200;
+  peta = await bacaPeta(pagePeta);
+}
+console.log('peta     ', peta.baris.length, 'baris, duduk setelah', 1600 + settleMs, 'ms', JSON.stringify(peta.peta));
 cek('jumlah instance sama dengan jumlah baris daftar', peta.peta?.instance ?? 0, peta.baris.length);
 if (peta.baris.length > 0) {
   cek('satu draw call untuk seluruh daftar', peta.render?.calls, 1);
+  cek('gerak masuk duduk dalam empat detik setelah navigasi', settleMs < 4000, true);
   const melenceng = peta.baris.filter(
     (b, i) => !(Math.abs((peta.peta?.tinggi?.[i] ?? NaN) - b.tinggi) < 0.006)
   ).length;

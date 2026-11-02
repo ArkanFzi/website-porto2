@@ -37,16 +37,24 @@ export const ChapterPrologue: React.FC = () => {
         </div>
       </div>
 
-      {/* ── SANDWICH LAYER 1: BACK LAYER (z-0, BEHIND 3D CANVAS z-10) ── */}
+      {/* ── SANDWICH LAYER 1: BACK LAYER (z-0, BEHIND 3D CANVAS z-10) ──
+          Lapisan ini dulu dipusatkan pada SELURUH section sementara lapisan depannya ikut
+          mengalir, jadi di layar pendek tintanya naik ke baris tag bab (terukur 10px di
+          1100x620) atau turun ke baris MODE/SYSTEMS ARCHITECT. Sekarang ia dipusatkan di
+          pita yang sama seperti konten yang mengalir, dan nama raksasanya menyusut saat
+          tingginya di bawah 720px — di 1440x900 dan 1920x950 tidak ada yang berubah.
+          Pita bawahnya ikut dipangkas di layar pendek: di 1100x620 nama belakang masih
+          mendarat 19px di atas baris MODE (terukur kotak hero [390,469] vs MODE [450,465]),
+          jadi ruang pusatannya berhenti setinggi blok subtitle, bukan sampai tepi bawah. */}
       <div
         aria-hidden="true"
-        className="absolute inset-0 z-0 flex flex-col items-center justify-center text-center pointer-events-none select-none overflow-hidden"
+        className="absolute inset-0 z-0 flex flex-col items-center justify-center text-center pointer-events-none select-none overflow-hidden pt-[calc(var(--hud-atas,196px)+5rem)] pb-20 [@media(max-height:720px)]:pb-36"
       >
         <div className="w-full max-w-[1750px] mx-auto px-4 opacity-[0.92]">
-          <span className="font-serif text-[11vw] font-black tracking-tighter uppercase leading-[0.85] text-[#0A0A0A] block whitespace-nowrap">
+          <span className="font-serif text-[11vw] [@media(max-height:720px)]:text-[8.5vw] font-black tracking-tighter uppercase leading-[0.85] text-[#0A0A0A] block whitespace-nowrap">
             M. ARKAN
           </span>
-          <span className="font-serif text-[11vw] font-black tracking-tighter uppercase leading-[0.85] text-[#0A0A0A] block whitespace-nowrap">
+          <span className="font-serif text-[11vw] [@media(max-height:720px)]:text-[8.5vw] font-black tracking-tighter uppercase leading-[0.85] text-[#0A0A0A] block whitespace-nowrap">
             FAUZI
           </span>
         </div>
@@ -63,7 +71,7 @@ export const ChapterPrologue: React.FC = () => {
           style={{ translate: "var(--tipografi-x, 0px) var(--tipografi-y, 0px)" }}
         >
           <span
-            className="font-serif text-[11vw] font-black tracking-tighter uppercase leading-[0.85] text-[#F7F5F0] block whitespace-nowrap opacity-90"
+            className="font-serif text-[11vw] [@media(max-height:720px)]:text-[8.5vw] font-black tracking-tighter uppercase leading-[0.85] text-[#F7F5F0] block whitespace-nowrap opacity-90"
             style={{
               WebkitTextStroke: "1px rgba(247, 245, 240, 0.6)",
             }}
@@ -71,7 +79,7 @@ export const ChapterPrologue: React.FC = () => {
             M. ARKAN
           </span>
           <span
-            className="font-serif text-[11vw] font-black tracking-tighter uppercase leading-[0.85] text-[#F7F5F0] block whitespace-nowrap opacity-90"
+            className="font-serif text-[11vw] [@media(max-height:720px)]:text-[8.5vw] font-black tracking-tighter uppercase leading-[0.85] text-[#F7F5F0] block whitespace-nowrap opacity-90"
             style={{
               WebkitTextStroke: "1px rgba(247, 245, 240, 0.6)",
             }}
