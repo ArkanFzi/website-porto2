@@ -15,7 +15,7 @@
 //
 //   node docs/verify/halaman-probe.mjs [outdir]      butuh `next dev` di FE_URL
 import { createRequire } from 'node:module';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 
 const require = createRequire(new URL('../../nextjs-frontend/package.json', import.meta.url));
 const puppeteer = require('puppeteer');
@@ -56,7 +56,7 @@ await jeda(3000);
 cek('/baca menjawab 200', respBaca.status(), 200);
 
 const baca = await pageBaca.evaluate(() => {
-  const baris = [...document.querySelectorAll('tbody tr')].map((tr) => {
+  const baris = [...document.querySelectorAll('[data-baca-repos] tbody tr')].map((tr) => {
     const td = [...tr.querySelectorAll('td')];
     const a = td[0]?.querySelector('a');
     return {
@@ -68,13 +68,31 @@ const baca = await pageBaca.evaluate(() => {
       forks: Number((td[3]?.textContent ?? '').trim()),
     };
   });
-  const teks = document.body?.innerText ?? '';
+  // Hukum "tidak ada tanggal karangan" hanya berlaku untuk tabel repo: sumber GitHub tidak
+  // mengirim field tanggal sama sekali. Trail commit punya tanggal sendiri karena git memang
+  // mengirimnya, jadi wilayahnya diukur terpisah lewat data-baca-riwayat.
+  const teksRepo = document.querySelector('[data-baca-repos]')?.textContent ?? '';
+  // innerText mengenakan text-transform (uppercase pada label), jadi angka trail dibaca dari
+  // textContent supaya hash dan jumlah yang dibandingkan memang yang dikirim komponen.
+  const meta = document.querySelector('[data-baca-riwayat] p')?.textContent ?? '';
+  const riwayat = [...document.querySelectorAll('[data-baca-riwayat] tbody tr')].map((tr) => {
+    const td = [...tr.querySelectorAll('td')].map((e) => e.textContent.replace(/\s+/g, ' ').trim());
+    return { commit: td[0], tanggal: td[1], tipe: td[2], ringkasan: td[3] };
+  });
+  const kepala = meta.match(/head ([0-9a-f]{7,40})/)?.[1] ?? null;
+  const totalTercetak = Number(meta.match(/^(\d+) commits/)?.[1] ?? NaN);
+  const keranjang = [...document.querySelectorAll('[data-baca-riwayat] li')].map((e) => e.textContent.replace(/\s+/g, ' ').trim());
   return {
     baris,
+    riwayat,
+    kepala,
+    totalTercetak,
+    keranjang,
     judul: document.querySelector('h1')?.textContent?.trim() ?? '',
     canonical: document.querySelector('link[rel="canonical"]')?.getAttribute('href') ?? null,
     og: document.querySelector('meta[property="og:url"]')?.getAttribute('content') ?? null,
-    tanggal: (teks.match(/\b\d{4}-\d{2}-\d{2}\b/g) ?? []).length,
+    tanggal: (teksRepo.match(/\b\d{4}-\d{2}-\d{2}\b/g) ?? []).length,
+    tanggalRiwayat: riwayat.filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.tanggal)).length,
     linkArsip: !!document.querySelector('a[href="/arsip"]'),
   };
 });
@@ -116,6 +134,55 @@ if (Array.isArray(api)) {
   hasil.push({ nama: 'setiap baris /baca cocok dengan respons API-nya', ok: false, dapat: 'API tidak menjawab', harus: '0 selisih' });
 }
 cek('/baca menawarkan jalan ke /arsip', baca.linkArsip, true);
+
+// ── 1b · trail commit: yang tercetak harus sama dengan modul yang dikompilasi ──
+// Sumber angkanya bukan API, jadi yang ditagih di sini adalah salinannya: halaman tidak boleh
+// menambah, membuang, atau memutar baris dibanding riwayatCommit.ts yang ikut dibundel.
+const modulRiwayat = (() => {
+  try {
+    const sumber = readFileSync(new URL('../../nextjs-frontend/src/data/riwayatCommit.ts', import.meta.url), 'utf8');
+    const ambil = (p) => sumber.match(p)?.[1] ?? null;
+    return {
+      kepala: ambil(/export const KEPALA_COMMIT = "([^"]+)"/),
+      total: Number(ambil(/export const TOTAL_COMMIT = (\d+)/)),
+      perTipe: JSON.parse(ambil(/export const PER_TIPE = ([\s\S]*?) as const;/)),
+      entri: JSON.parse(ambil(/export const RIWAYAT_COMMIT: EntriRiwayat\[\] = ([\s\S]*?);\n/)),
+    };
+  } catch (e) {
+    return { galat: String(e).slice(0, 140) };
+  }
+})();
+if (modulRiwayat.galat) {
+  hasil.push({ nama: 'modul snapshot riwayat commit terbaca', ok: false, dapat: modulRiwayat.galat, harus: 'terbaca' });
+} else {
+  cek('jumlah baris trail sama dengan entri modul', baca.riwayat.length, modulRiwayat.entri.length);
+  const beda = modulRiwayat.entri
+    .map((e, i) => {
+      const b = baca.riwayat[i];
+      if (!b) return `baris ${i} hilang`;
+      const salah = [];
+      if (b.commit !== e.commit) salah.push(`commit ${b.commit} ≠ ${e.commit}`);
+      if (b.tanggal !== e.tanggal) salah.push(`tanggal ${b.tanggal} ≠ ${e.tanggal}`);
+      const tipe = e.scope ? `${e.tipe}(${e.scope})` : e.tipe;
+      if (b.tipe !== tipe) salah.push(`tipe "${b.tipe}" ≠ "${tipe}"`);
+      const ringkas = e.ringkasan.replace(/\s+/g, ' ').trim();
+      if (b.ringkasan !== ringkas) salah.push(`subjek "${b.ringkasan}" ≠ "${ringkas}"`);
+      return salah.length ? `${e.commit}: ${salah.join(' | ')}` : null;
+    })
+    .filter(Boolean);
+  hasil.push({
+    nama: 'setiap baris trail cocok dengan modul snapshot',
+    ok: beda.length === 0,
+    dapat: beda.length ? beda.slice(0, 3).join(' ;; ') : 'semua baris cocok',
+    harus: '0 selisih',
+  });
+  cek('hash kepala yang tercetak sama dengan kepala modul', baca.kepala, modulRiwayat.kepala);
+  cek('total commit yang tercetak sama dengan total modul', baca.totalTercetak, modulRiwayat.total);
+  cek('keranjang tipe di modul menutup total commit', modulRiwayat.perTipe.reduce((a, t) => a + t.jumlah, 0), modulRiwayat.total);
+  const chips = baca.keranjang.map((k) => Number(k.match(/(\d+)$/)?.[1] ?? NaN));
+  cek('keranjang yang tercetak di halaman juga menutup total', chips.reduce((a, b) => a + b, 0), modulRiwayat.total);
+  cek('setiap tanggal trail tercetak sebagai ISO', baca.tanggalRiwayat, baca.riwayat.length);
+}
 await foto(pageBaca, '01-baca');
 
 // ── 2 · /arsip hidup: angka yang dilukis datang dari respons yang benar-benar dibaca ──

@@ -2,6 +2,15 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ambilMetrikGitHub, daftarReposGitHub, type MetrikGitHub, type RepoGitHub } from "@/lib/server/github";
 import { GITHUB_PROFILE, GITHUB_USERNAME } from "@/data/github";
+import {
+  DICATAT,
+  KEPALA_COMMIT,
+  PER_TIPE,
+  RENTANG_COMMIT,
+  RIWAYAT_COMMIT,
+  TOTAL_COMMIT,
+  type EntriRiwayat,
+} from "@/data/riwayatCommit";
 
 // Halaman ini sengaja server component: angkanya dibaca dari modul server yang sama dengan
 // halaman utama (`lib/server/github`), jadi tidak ada satu pun pemanggilan /api baru dari
@@ -11,7 +20,7 @@ export const revalidate = 600;
 export const metadata: Metadata = {
   title: "THE READING ROOM — full repository index // M. Arkan Fauzi",
   description:
-    "Every public repository behind the editorial archive, listed from the same GitHub fields the front page reads: name, description, language, stars, forks. No dates, because the payload does not carry any.",
+    "Every public repository behind the editorial archive, listed from the same GitHub fields the front page reads: name, description, language, stars, forks. No repo dates, because the payload does not carry any. Includes a dated snapshot of this repository's own commit history.",
   alternates: { canonical: "/baca" },
   openGraph: {
     url: "/baca",
@@ -83,6 +92,28 @@ function Baris({ repo, indeks }: { repo: RepoGitHub; indeks: number }) {
             live ↗
           </a>
         ) : null}
+      </td>
+    </tr>
+  );
+}
+
+function BarisRiwayat({ entri }: { entri: EntriRiwayat }) {
+  return (
+    <tr className="swiss-border-b align-top hover:bg-stone/40 transition-colors">
+      <td className="py-3 pr-4 whitespace-nowrap">
+        <span className={ANGKA}>{entri.commit}</span>
+      </td>
+      <td className="py-3 pr-4 whitespace-nowrap">
+        <span className={ANGKA + " text-titanium"}>{entri.tanggal}</span>
+      </td>
+      <td className="py-3 pr-4 whitespace-nowrap">
+        <span className="font-mono text-[10px] tracking-[0.16em] uppercase text-obsidian">
+          {entri.tipe}
+          {entri.scope ? <span className="text-titanium">({entri.scope})</span> : null}
+        </span>
+      </td>
+      <td className="py-3">
+        <p className="font-sans text-body leading-snug text-obsidian/80">{entri.ringkasan}</p>
       </td>
     </tr>
   );
@@ -170,7 +201,7 @@ export default async function Baca() {
         </section>
 
         {/* ── DAFTAR ── */}
-        <section aria-labelledby="daftar-judul">
+        <section data-baca-repos aria-labelledby="daftar-judul">
           <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
             <h2 id="daftar-judul" className="font-mono text-tag tracking-[0.24em] uppercase text-obsidian">
               REPOSITORIES — NEWEST FIRST
@@ -224,6 +255,54 @@ export default async function Baca() {
           )}
         </section>
 
+        {/* ── RIWAYAT COMMIT ── */}
+        <section className="mt-12" data-baca-riwayat aria-labelledby="riwayat-judul">
+          <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
+            <h2 id="riwayat-judul" className="font-mono text-tag tracking-[0.24em] uppercase text-obsidian">
+              COMMIT TRAIL — LOCAL SNAPSHOT
+            </h2>
+            <p className="font-mono text-[10px] tracking-[0.14em] uppercase text-titanium">
+              {TOTAL_COMMIT} commits · {RENTANG_COMMIT.awal} → {RENTANG_COMMIT.akhir} · head {KEPALA_COMMIT}
+            </p>
+          </div>
+          <p className="font-mono text-micro leading-relaxed text-titanium mb-4 max-w-[70ch]">
+            Read from the local repository by{" "}
+            <code className="text-obsidian">tools/ci/riwayat-commit.mjs</code> on {DICATAT.slice(0, 10)} and
+            compiled into this page. The deployed image carries no <code className="text-obsidian">.git</code>,
+            so this trail is a copy with a capture date, not a live feed.
+          </p>
+
+          <ul className="flex flex-wrap gap-1.5 mb-6" aria-label="Commit type distribution over the whole snapshot">
+            {PER_TIPE.map((t) => (
+              <li key={t.tipe} className="px-2 py-1 swiss-border font-mono text-[10px] tracking-[0.16em] uppercase text-obsidian">
+                {t.tipe} <span className={`${ANGKA} text-rosso`}>{t.jumlah}</span>
+              </li>
+            ))}
+          </ul>
+
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-left">
+              <caption className="sr-only">
+                The {RIWAYAT_COMMIT.length} most recent commits in the snapshot, newest first, with the
+                author date and the conventional-commit type printed exactly as they appear in git log.
+              </caption>
+              <thead>
+                <tr className="swiss-border-b text-titanium">
+                  <th scope="col" className="py-2 pr-4 font-mono text-[10px] uppercase tracking-[0.18em] font-normal text-left whitespace-nowrap">Commit</th>
+                  <th scope="col" className="py-2 pr-4 font-mono text-[10px] uppercase tracking-[0.18em] font-normal text-left whitespace-nowrap">Author date</th>
+                  <th scope="col" className="py-2 pr-4 font-mono text-[10px] uppercase tracking-[0.18em] font-normal text-left whitespace-nowrap">Type(scope)</th>
+                  <th scope="col" className="py-2 font-mono text-[10px] uppercase tracking-[0.18em] font-normal text-left">Subject</th>
+                </tr>
+              </thead>
+              <tbody>
+                {RIWAYAT_COMMIT.map((e) => (
+                  <BarisRiwayat key={e.commit} entri={e} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
         {/* ── CARA BACA ── */}
         <section className="mt-12 px-5 py-6 swiss-border bg-stone/30" aria-labelledby="cara-baca">
           <h2 id="cara-baca" className="font-mono text-tag tracking-[0.24em] uppercase text-rosso mb-4">
@@ -254,6 +333,12 @@ export default async function Baca() {
               are removed at the source, so this table can hold fewer than twenty rows. The totals
               above are computed over a different window (up to 100 repos), which is why they do not
               add up to this table.
+            </li>
+            <li>
+              TRAIL — the commit table and the type chips read a different source than the repos: a{" "}
+              <code className="text-obsidian">git log</code> taken on the machine that writes this
+              snapshot. Those dates are real because git supplies them; the repository table above
+              still shows none, because GitHub gave this page no date to show.
             </li>
           </ul>
         </section>
