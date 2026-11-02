@@ -1090,6 +1090,42 @@ if (peta.baris.length > 0) {
     true
   );
   cek('nol bintang tetap nol tinggi, tidak diberi stub', peta.baris.every((b) => (b.bintang === 0 ? b.tinggi === 0 : b.tinggi > 0)), true);
+
+  // Gerak masuk selesai sebelum angka dibaca (tinggi = yang dicetak, bukan yang direncanakan),
+  // dan hover hanya mengubah warna satu instance: matriks serta penanda rosso tidak boleh ikut.
+  cek('tidak ada baris terpilih sebelum pengunjung menunjuk', peta.peta?.pilih, -1);
+  // Akun ini punya banyak repo dengan jumlah bintang yang sama, jadi semua yang bersitars
+  // bertanda puncak. Baris tanpa bintang justru pengujian terbaik: dipilih = warnanya ikut,
+  // tingginya tetap nol.
+  const target = peta.baris.findIndex((b) => !b.tertinggi);
+  const puncakIdx = peta.baris.findIndex((b) => b.tertinggi);
+  if (target >= 0 && puncakIdx >= 0) {
+    await pagePeta.hover(`[data-peta-baris]:nth-of-type(${target + 1})`);
+    await jeda(300);
+    const terpiih = await bacaPeta(pagePeta);
+    console.log('peta-pilih', target, JSON.stringify(terpiih.peta?.pilih), 'merah', terpiih.peta?.merah);
+    cek('baris yang disentuh menjadi indeks yang digambar', terpiih.peta?.pilih, target);
+    cek('hover tidak mengubah jumlah batang rosso', terpiih.peta?.merah, peta.peta?.merah);
+    const bergeser = terpiih.baris.filter(
+      (b, i) => !(Math.abs((terpiih.peta?.tinggi?.[i] ?? NaN) - b.tinggi) < 0.006)
+    ).length;
+    cek('hover tidak menyentuh matriks tinggi', bergeser, 0);
+    await pagePeta.hover(`[data-peta-baris]:nth-of-type(${puncakIdx + 1})`);
+    await jeda(300);
+    const diPuncak = await bacaPeta(pagePeta);
+    cek(
+      'puncak yang dipilih tetap dihitung rosso, tidak berganti jadi warna pilihan',
+      diPuncak.peta?.merah,
+      peta.peta?.merah
+    );
+    cek('indeks terpilih pindah ke baris puncak', diPuncak.peta?.pilih, puncakIdx);
+    await pagePeta.mouse.move(4, 4);
+    await jeda(300);
+    const lepas = await bacaPeta(pagePeta);
+    cek('melepas pointer mengembalikan pilihan ke nol', lepas.peta?.pilih, -1);
+  } else {
+    cek('daftar punya baris non-puncak untuk disentuh', target >= 0, true);
+  }
 } else {
   cek('tanpa data GitHub halaman menandai keadaan kosong', peta.kosong, true);
   cek('tanpa data GitHub tidak ada instance', !!peta.peta, false);

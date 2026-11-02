@@ -1,14 +1,12 @@
 import type { Metadata } from "next";
-import PanggungKecil from "@/components/Three/panggung/PanggungKecil";
-import PetaInstans, { type BatangPeta } from "@/components/Three/panggung/PetaInstans";
+import PetaHidup from "./PetaHidup";
+import { type BatangPeta } from "@/components/Three/panggung/PetaInstans";
 import { daftarReposGitHub } from "@/lib/server/github";
 import {
   Aturan,
   Bagian,
   Bingkai,
-  BingkaiKanvas,
   CatatanPenutup,
-  GridPanggung,
   KakiPanggung,
   Prolog,
   SundulPanggung,
@@ -31,8 +29,6 @@ export const metadata: Metadata = {
 
 // Halaman yang menghitung pecahan, dan hanya mengirim hasilnya ke kanvas. Kalau rumusnya
 // pindah ke komponen WebGL, verifier tidak lagi membandingkan dua sumber yang independen.
-const TINGGI_BINGKAI_PUBLIK = 2;
-
 export default async function Peta() {
   const repos = await daftarReposGitHub().catch(() => null);
   const daftar = repos ?? [];
@@ -78,58 +74,7 @@ export default async function Peta() {
         </div>
       )}
 
-      {ada && (
-        <GridPanggung>
-          <BingkaiKanvas>
-            <PanggungKecil className="w-full h-full" kamera={[0, 0, 3.4]} fov={42}>
-              <PetaInstans bars={batang} />
-            </PanggungKecil>
-          </BingkaiKanvas>
-
-          <ol className="flex flex-col max-h-[52vh] min-h-[380px] overflow-y-auto" data-peta-daftar>
-            {batang.map((b) => (
-              <li
-                key={b.nama}
-                data-peta-baris=""
-                data-peta-tertinggi={b.tertinggi ? "true" : undefined}
-                className={`flex items-baseline gap-3 py-1.5 swiss-border-b ${
-                  b.tertinggi ? "border-l-2 border-rosso pl-3" : ""
-                }`}
-              >
-                <a
-                  href={b.tautan}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-mono text-tag uppercase tracking-[0.2em] truncate text-obsidian hover:text-rosso transition-colors"
-                >
-                  {b.nama}
-                </a>
-                <span
-                  data-peta-bintang
-                  className="ml-auto font-mono text-tag tabular-nums text-titanium"
-                >
-                  {b.bintang}★
-                </span>
-                <span
-                  data-peta-tinggi
-                  className="font-mono text-tag tabular-nums text-obsidian w-[42px] text-right"
-                >
-                  {(b.tinggi * TINGGI_BINGKAI_PUBLIK).toFixed(2)}
-                </span>
-              </li>
-            ))}
-          </ol>
-        </GridPanggung>
-      )}
-
-      {ada && (
-        <p className="mt-6 font-mono text-micro leading-relaxed text-titanium max-w-[70ch]">
-          The last column is the bar height in world units: star count divided by the peak ({puncak}
-          ), times the {TINGGI_BINGKAI_PUBLIK}-unit frame. A repository with zero stars gets a height
-          of zero and is still listed as a row — an invisible bar with a printed number is honest, a
-          stub that looks like a minimum is not.
-        </p>
-      )}
+      {ada && <PetaHidup batang={batang} puncak={puncak} />}
 
       <Bagian id="cara-ukur-peta" judul="HOW THIS PAGE IS BUILT">
         <Aturan
@@ -149,8 +94,12 @@ export default async function Peta() {
           isi="The list beside the canvas is not a caption: it is the same measurement in a form that survives no-WebGL, screen readers and a printed page. Nothing is only visible as geometry."
         />
         <Aturan
-          judul="NO MOTION AT ALL"
-          isi="The mesh is written once when the data arrives. There is no useFrame here, so the idle law has nothing to switch off: the canvas paints a single frame and stops."
+          judul="MOTION SPENT ON TWO THINGS"
+          isi="The mesh is written once at mount, once as a 700 ms entrance that scales every instance from zero to the height its own row prints, and then once per row the pointer or keyboard actually selects. No idle loop: after the entrance the canvas paints only on a command, and the verifier reads the drawn height, not the planned one."
+        />
+        <Aturan
+          judul="SELECTION IS NOT A SECOND DATA"
+          isi="A hovered row paints that instance stone-grey, never rosso, because rosso already means highest star count. The peak keeps its colour while selected, and the debug object carries the selected index so the claim is checkable."
         />
       </Bagian>
 
