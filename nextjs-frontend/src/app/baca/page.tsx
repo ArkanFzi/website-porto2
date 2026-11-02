@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ambilMetrikGitHub, daftarReposGitHub, type MetrikGitHub, type RepoGitHub } from "@/lib/server/github";
 import { GITHUB_PROFILE, GITHUB_USERNAME } from "@/data/github";
+import { ESAI, menitBaca } from "@/data/esai";
 import {
   COMMIT_LEWAT_PR,
   COMMIT_NON_MERGE,
@@ -451,6 +452,40 @@ export default async function Baca() {
               </tbody>
             </table>
           </div>
+        </section>
+
+        {/* ── ESAI ── */}
+        <section className="mt-12" data-baca-esai aria-labelledby="esai-judul">
+          <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
+            <h2 id="esai-judul" className="font-mono text-tag tracking-[0.24em] uppercase text-obsidian">
+              ESSAYS — THE DECISIONS BEHIND THE NUMBERS
+            </h2>
+            <p className="font-mono text-[10px] tracking-[0.14em] uppercase text-titanium">
+              {ESAI.length} texts, written into the bundle rather than a database
+            </p>
+          </div>
+          <ul className="flex flex-col gap-3">
+            {ESAI.map((e) => (
+              <li key={e.slug}>
+                <Link
+                  href={`/baca/esai/${e.slug}`}
+                  className="group block px-4 py-5 swiss-border hover:border-rosso transition-colors"
+                  aria-label={`Read ${e.judul}`}
+                >
+                  <span className="font-serif text-item leading-none text-obsidian group-hover:text-rosso transition-colors">
+                    {e.judul}
+                  </span>
+                  <span className="block font-sans text-body leading-snug text-obsidian/80 mt-2">
+                    {e.ringkas}
+                  </span>
+                  <span className="block font-mono text-[10px] tracking-[0.16em] uppercase text-titanium mt-2.5">
+                    {e.slug} · written {e.ditulis} · about {menitBaca(e)} min · {e.tubuh.length} paragraphs ·{" "}
+                    {e.bukti.length} files cited
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
         </section>
 
         {/* ── CARA BACA ── */}

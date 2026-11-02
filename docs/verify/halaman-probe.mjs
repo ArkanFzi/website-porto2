@@ -15,7 +15,8 @@
 //
 //   node docs/verify/halaman-probe.mjs [outdir]      butuh `next dev` di FE_URL
 import { createRequire } from 'node:module';
-import { mkdirSync, readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 
 const require = createRequire(new URL('../../nextjs-frontend/package.json', import.meta.url));
 const puppeteer = require('puppeteer');
@@ -467,6 +468,69 @@ const sm = await ambil('/sitemap.xml');
 cek('sitemap memuat /baca', sm.teks.includes('/baca'), true);
 cek('sitemap memuat /arsip', sm.teks.includes('/arsip'), true);
 cek('sitemap tidak memuat /cv-layout', sm.teks.includes('/cv-layout'), false);
+
+// ── 7 · esai: setiap berkas yang dikutip naskah harus benar-benar ada ──
+// Naskah longest-form di situs ini mengklaim hal teknis dan menyebut jalur berkas sebagai
+// buktinya. Gerbangnya bukan "tulisannya ada", tapi "buktinya bisa dibuka": setiap jalur yang
+// tercetak di blok WHAT THIS TEXT POINTS AT diuji terhadap isi repositori, dan hash yang
+// tercetak diuji terhadap sejarah git. Satu jalur yang salah tulis membuat halaman ini gagal.
+const AKAR = new URL('../../', import.meta.url);
+const SLUG_DARI_DATA = [
+  ...readFileSync(new URL('../../nextjs-frontend/src/data/esai.ts', import.meta.url), 'utf8').matchAll(/^ {4}slug: "([a-z0-9-]+)",$/gm),
+].map((m) => m[1]);
+const tautanEsai = await pageBaca.evaluate(() =>
+  [...document.querySelectorAll('[data-baca-esai] a[href^="/baca/esai/"]')].map((a) => a.getAttribute('href'))
+);
+cek('daftar /baca memuat satu tautan per esai di modul', tautanEsai.length, SLUG_DARI_DATA.length);
+cek(
+  'tautan esai di /baca sama dengan slug yang ada di modul',
+  [...tautanEsai].map((h) => h.split('/').pop()).sort().join(','),
+  [...SLUG_DARI_DATA].sort().join(',')
+);
+
+const naskah = [];
+for (const href of tautanEsai) {
+  const r = await pageBaca.goto(FE + href, { waitUntil: 'domcontentloaded', timeout: 45000 });
+  const isi = await pageBaca.evaluate(() => ({
+    judul: document.querySelector('h1')?.textContent?.trim() ?? '',
+    paragraf: document.querySelectorAll('[data-esai-tubuh] p').length,
+    kutipan: [...document.querySelectorAll('[data-esai-tubuh] ~ section li, section[aria-labelledby="bukti-judul"] li')].map((e) => e.textContent.trim()),
+    canonical: document.querySelector('link[rel="canonical"]')?.getAttribute('href') ?? '',
+    ogType: document.querySelector('meta[property="og:type"]')?.getAttribute('content') ?? '',
+  }));
+  naskah.push({ href, status: r.status(), ...isi });
+}
+for (const n of naskah) {
+  cek(`${n.href} menjawab 200`, n.status, 200);
+  cek(`${n.href} canonical menunjuk ke jalurnya sendiri`, n.canonical.endsWith(n.href), true);
+  cekMin(`${n.href} punya isi lebih dari satu layar`, n.paragraf, 5);
+  cekMin(`${n.href} menyebut berkas yang bisa dibuka`, n.kutipan.length, 3);
+  const hilang = n.kutipan.filter((p) => {
+    if (/^[0-9a-f]{7,40}$/.test(p)) {
+      try {
+        return execFileSync('git', ['-C', decodeURIComponent(AKAR.pathname), 'cat-file', '-t', p], { encoding: 'utf8' }).trim() !== 'commit';
+      } catch {
+        return true;
+      }
+    }
+    return !existsSync(new URL(p, AKAR));
+  });
+  hasil.push({
+    nama: `setiap bukti yang dikutip ${n.href} ada di repositori`,
+    ok: hilang.length === 0,
+    dapat: hilang.length ? hilang.join(' | ') : `${n.kutipan.length} bukti terverifikasi`,
+    harus: '0 jalur mati',
+  });
+  hasil.push({
+    nama: `${n.href} tercetak sebagai artikel, bukan halaman biasa`,
+    ok: n.ogType === 'article',
+    dapat: n.ogType || '(kosong)',
+    harus: 'article',
+  });
+}
+const asing = await pageBaca.goto(`${FE}/baca/esai/slug-yang-tidak-ada`, { waitUntil: 'domcontentloaded', timeout: 45000 });
+cek('slug esai asing menjawab 404', asing.status(), 404);
+cek('sitemap memuat setiap URL esai', tautanEsai.every((h) => sm.teks.includes(h)), true);
 
 await browser.close();
 for (const h of hasil) console.log(`${h.ok ? 'LULUS' : 'GAGAL'}  ${h.nama}: dapat ${h.dapat}, harus ${h.harus}`);

@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { SITE_URL } from "@/lib/site";
+import { ESAI } from "@/data/esai";
 
 // Halaman editorial adalah titik masuknya; /baca dan /arsip adalah lorong rincian yang berdiri
 // sendiri (tanpa canvas, tanpa state halaman utama). lastModified sengaja tidak diisi: nilainya
@@ -9,5 +10,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${SITE_URL}/` },
     { url: `${SITE_URL}/baca` },
     { url: `${SITE_URL}/arsip` },
+    ...ESAI.map((e) => ({ url: `${SITE_URL}/baca/esai/${e.slug}` })),
   ];
 }
