@@ -81,6 +81,52 @@ const DIBUKA_UNTUK = [
   },
 ];
 
+/** Rute panggung kedua. Setiap baris di sini adalah kanvas per-route yang berdiri sendiri:
+ *  tidak menyentuh holder panggung utama, dan tiap-tiapnya dibawa oleh satu angka yang bisa
+ *  ditunjuk. `hukum` adalah invariant yang diuji probe, bukan slogan. */
+const PANGGUNG = [
+  {
+    jalur: "/waktu",
+    judul: "Jendela Waktu",
+    ringkas:
+      "One figure — the p95 frame time visitors report — painted twice at once: as a square in the DOM and as line geometry in WebGL, both from the same height function, both gone the moment the reading is missing.",
+    objek: "1 line-segments scene",
+    hukum: "zero frames when still, one draw call",
+  },
+  {
+    jalur: "/sangkar",
+    judul: "Sangkar Terbuka",
+    ringkas:
+      "The archive hover cage lifted out of its choreography and given a route of its own: a wireframe roll cage you tilt by dragging or arrow keys, within the same ±12 degree limit the portrait obeys, printed from the same store the canvas reads.",
+    objek: "1 line-segments scene",
+    hukum: "one rotation store, zero frames when still",
+  },
+  {
+    jalur: "/meja",
+    judul: "Meja Tipografi",
+    ringkas:
+      "The portrait's chiaroscuro material with its chapter machine removed: six keyboard-operable knobs that each write one uniform, printing the commanded value and the uniform value side by side while the front page's shared wipe holders stay at zero.",
+    objek: "1 shaded plane",
+    hukum: "one frame per command, holders untouched",
+  },
+  {
+    jalur: "/peta",
+    judul: "Peta Proyek",
+    ringkas:
+      "Every non-fork repository the GitHub API returns, drawn as one InstancedMesh — a matrix per repository, a bar height that is the star count divided by the peak, and a text row carrying the same figure so nothing exists only as geometry.",
+    objek: "1 instanced mesh",
+    hukum: "instance count equals row count, no per-frame work",
+  },
+  {
+    jalur: "/iris",
+    judul: "Iris",
+    ringkas:
+      "Navigation as an aperture instead of a button pair: one native slider closes a paper quad over the page, the two texts swap sides only while the screen is fully shut, and both paragraphs stay in the DOM at every value.",
+    objek: "1 curtain quad",
+    hukum: "cut happens closed, stage shader untouched",
+  },
+];
+
 function Bintang({ n }: { n: number }) {
   return <span className={`${ANGKA} text-rosso`}>{n}</span>;
 }
@@ -481,6 +527,39 @@ export default async function Baca() {
                   <span className="block font-mono text-[10px] tracking-[0.16em] uppercase text-titanium mt-2.5">
                     {e.slug} · written {e.ditulis} · about {menitBaca(e)} min · {e.tubuh.length} paragraphs ·{" "}
                     {e.bukti.length} files cited
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        {/* ── PANGGUNG KEDUA ── */}
+        <section className="mt-12" data-baca-panggung aria-labelledby="panggung-judul">
+          <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
+            <h2 id="panggung-judul" className="font-mono text-tag tracking-[0.24em] uppercase text-obsidian">
+              SECOND STAGE — SMALL WEBGL ROUTES WITH ONE MEASURED INPUT
+            </h2>
+            <p className="font-mono text-[10px] tracking-[0.14em] uppercase text-titanium">
+              {PANGGUNG.length} routes, each with its own canvas
+            </p>
+          </div>
+          <ul className="flex flex-col gap-3">
+            {PANGGUNG.map((p) => (
+              <li key={p.jalur}>
+                <Link
+                  href={p.jalur}
+                  className="group block px-4 py-5 swiss-border hover:border-rosso transition-colors"
+                  aria-label={`Open ${p.judul}`}
+                >
+                  <span className="font-serif text-item leading-none text-obsidian group-hover:text-rosso transition-colors">
+                    {p.judul}
+                  </span>
+                  <span className="block font-sans text-body leading-snug text-obsidian/80 mt-2">
+                    {p.ringkas}
+                  </span>
+                  <span className="block font-mono text-[10px] tracking-[0.16em] uppercase text-titanium mt-2.5">
+                    {p.jalur} · {p.objek} · {p.hukum}
                   </span>
                 </Link>
               </li>

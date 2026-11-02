@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Suspense, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import React, { Suspense, useEffect, useState, useSyncExternalStore } from "react";
 import { Canvas } from "@react-three/fiber";
 import { PerformanceMonitor } from "@react-three/drei";
 import { AktorPotret, type AktorProps } from "./stage/AktorPotret";
@@ -15,6 +15,7 @@ import { RollCage } from "./stage/ekstra/RollCage";
 import { PengukurRender } from "./stage/PengukurRender";
 import { mulai, mulaiLapor, setDprKanvas } from "@/lib/perfStats";
 import { mulaiBacaTelemetri } from "@/lib/bacaTelemetri";
+import { useDiamKanvas } from "@/lib/diamKanvas";
 import {
   bacaKurangiGerak,
   bacaKurangiGerakSaatSSR,
@@ -22,33 +23,11 @@ import {
 } from "@/lib/motion";
 
 
-type Frameloop = "always" | "demand" | "never";
-
 interface CanvasProps {
   scrollProgressRef: React.RefObject<number>;
   hoveredProject: number | null;
   scrollVelocityRef: React.RefObject<number>;
 }
-
-// Ambiens shader hanya hidup selama pengunjung masih bergerak. Setelah itu loop
-// dihentikan (demand = nol frame) supaya laptop iGPU tidak dibakar untuk gerakan
-// yang tidak dilihat; satu event pointer/scroll/ketik mengembalikannya seketika.
-// pointerup, focusin, focusout ikut terdaftar karena mesin kartu mengubah KEADAAN
-// pada peristiwa itu — seret dilepas (reticle pulang ke pointer), kontrol reticle
-// difokus/dilepas — dan keadaan yang tidak meminta frame akan tertinggal satu
-// tindakan di belakang layarnya.
-const IDLE_MS = 4000;
-const AKTIVITAS = [
-  "scroll",
-  "pointermove",
-  "pointerdown",
-  "pointerup",
-  "focusin",
-  "focusout",
-  "keydown",
-  "wheel",
-  "touchstart",
-];
 
 const DPR_MIN = 1;
 const DPR_MAKS = 1.5;
@@ -60,43 +39,20 @@ export const GlobalEditorialCanvas: React.FC<CanvasProps> = ({
   hoveredProject,
   scrollVelocityRef,
 }) => {
-  const [putaran, setPutaran] = useState<Frameloop>("always");
   const [dpr, setDpr] = useState<number>(DPR_AWAL);
   const reduceMotion = useSyncExternalStore(
     dengarKurangiGerak,
     bacaKurangiGerak,
     bacaKurangiGerakSaatSSR
   );
-  const idleTimer = useRef<number | undefined>(undefined);
   // Semua aktor panggung memakai kontrak props yang sama; objeknya sendiri yang
   // memutuskan kapan ia terpasang.
   const aktor: AktorProps = { scrollProgressRef, scrollVelocityRef, hoveredProject };
 
-  // Pengunjung yang minta gerakan dikurangi tidak pernah menggerakkan shader,
-  // jadi frame terakhir hasil mount sudah cukup dan loop-nya dibiarkan diam.
-  const frameloop: Frameloop = reduceMotion ? "demand" : putaran;
-
-  useEffect(() => {
-    if (reduceMotion) return;
-
-    const wake = () => {
-      if (document.hidden) return;
-      setPutaran((f) => (f === "always" ? f : "always"));
-      window.clearTimeout(idleTimer.current);
-      idleTimer.current = window.setTimeout(() => setPutaran("demand"), IDLE_MS);
-    };
-
-    const lihatLagi = () => setPutaran(document.hidden ? "never" : "always");
-
-    AKTIVITAS.forEach((evt) => window.addEventListener(evt, wake, { passive: true }));
-    document.addEventListener("visibilitychange", lihatLagi);
-    wake();
-    return () => {
-      window.clearTimeout(idleTimer.current);
-      AKTIVITAS.forEach((evt) => window.removeEventListener(evt, wake));
-      document.removeEventListener("visibilitychange", lihatLagi);
-    };
-  }, [reduceMotion]);
+  // Hukum diam tinggal di lib/diamKanvas: panggung kedua memakainya tanpa menyalin angkanya.
+  // Pengunjung yang minta gerakan dikurangi tidak pernah menggerakkan shader, jadi loop-nya
+  // dibiarkan diam.
+  const frameloop = useDiamKanvas(!reduceMotion);
 
   // Pengukur ritme frame halaman + pelapor ke /api/telemetry, sekali per mount.
   // Loop-nya berhenti sendiri saat tab tersembunyi (lihat lib/perfStats.ts).

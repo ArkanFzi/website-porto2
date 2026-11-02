@@ -532,6 +532,573 @@ const asing = await pageBaca.goto(`${FE}/baca/esai/slug-yang-tidak-ada`, { waitU
 cek('slug esai asing menjawab 404', asing.status(), 404);
 cek('sitemap memuat setiap URL esai', tautanEsai.every((h) => sm.teks.includes(h)), true);
 
+// ── 8 · panggung kedua: /waktu harus punya angka dulu baru punya bentuk ──
+// Rute ini kanvas per-route (PanggungKecil), jadi tagihannya sama dengan halaman utama dan
+// diukur dengan alat yang sama (window.__render dari stage/PengukurRender):
+//   · satu draw call untuk seluruh adegan,
+//   · nol frame setelah pengunjung diam,
+//   · sisi bukaan WebGL === lebar persegi DOM (satu hukum, dua lukisan),
+//   · dan tanpa clientFrames keduanya hilang, bukan mengecil jadi hiasan.
+const P95_UJI = 66;const payloadRitme = (tambahan = {}) => ({
+  ...payloadKosong(tambahan),
+  clientFrames: {
+    laporan: 7,
+    frame: 1200,
+    medianMs: 16.7,
+    p95Ms: P95_UJI,
+    fpsTerendah: 24,
+    shareLambatPct: 9.4,
+    resolusiTeratas: [{ resolusi: '1440x900', laporan: 4 }],
+    buket: [],
+    sejak: new Date(Date.now() - 120000).toISOString(),
+  },
+});
+
+const bacaWaktu = (p) =>
+  p.evaluate(() => {
+    const bukaan = document.querySelector('[data-waktu-bukaan]');
+    const panggung = document.querySelector('[data-panggung-kecil]');
+    return {
+      angka: document.querySelector('[data-waktu-angka="p95"]')?.textContent?.replace(/\s+/g, ' ').trim() ?? null,
+      lebarDom: bukaan ? Number.parseFloat(bukaan.style.width) / 100 : null,
+      kosong: !!document.querySelector('[data-waktu-kosong]'),
+      posisi: panggung ? getComputedStyle(panggung).position : null,
+      jendela: window.__jendela ? { ...window.__jendela } : null,
+      render: window.__render ? { calls: window.__render.calls, frame: window.__render.frame } : null,
+    };
+  });
+
+// Jalur masuknya: panggung kedua diumumkan di /baca dan setiap tautan yang tercetak di sana
+// harus benar-benar menjawab — halaman indeks yang menjanjikan rute mati lebih buruk dari
+// tidak menjanjikan apa pun.
+await pageBaca.goto(`${FE}/baca`, { waitUntil: 'domcontentloaded', timeout: 45000 });
+const tautanPanggung = await pageBaca.evaluate(() =>
+  [...document.querySelectorAll('[data-baca-panggung] a[href]')].map((a) => a.getAttribute('href'))
+);
+cekMin('/baca mengumumkan panggung kedua', tautanPanggung.length, 1);
+cek('/baca menautkan /waktu', tautanPanggung.includes('/waktu'), true);
+for (const href of tautanPanggung) {
+  const r = await fetch(FE + href);
+  cek(`tautan panggung ${href} menjawab 200`, r.status, 200);
+  cek(`tautan panggung ${href} ada di sitemap`, sm.teks.includes(href), true);
+}
+
+const pageWaktu = await browser.newPage();
+const galatWaktu = [];
+pageWaktu.on('pageerror', (e) => galatWaktu.push(String(e)));
+await pageWaktu.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
+await pageWaktu.setRequestInterception(true);
+pageWaktu.on('request', (req) => {
+  if (!req.url().includes('/api/telemetry')) return req.continue();
+  return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(payloadRitme()) });
+});
+const rWaktu = await pageWaktu.goto(`${FE}/waktu`, { waitUntil: 'domcontentloaded', timeout: 45000 });
+cek('/waktu menjawab 200', rWaktu.status(), 200);
+await jeda(2500);
+const awalWaktu = await bacaWaktu(pageWaktu);
+console.log('waktu    ', JSON.stringify(awalWaktu));
+
+cek('/waktu canonical menunjuk ke jalurnya sendiri', (await pageWaktu.evaluate(() => document.querySelector('link[rel="canonical"]')?.getAttribute('href') ?? '')).endsWith('/waktu'), true);
+cek('panggung kedua duduk di aliran dokumen, bukan fixed di belakang isi', awalWaktu.posisi, 'relative');
+cek('satu adegan = satu draw call', awalWaktu.render?.calls, 1);
+cek('angka p95 yang tercetak adalah angka respons', !!awalWaktu.angka?.startsWith(String(P95_UJI)), true);
+cek('bukaan WebGL benar-benar tergambar', !!awalWaktu.jendela, true);
+cek('rasio bukaan = p95 dibagi ambang 33 ms', awalWaktu.jendela?.rasio, P95_UJI / 33);
+cek(
+  'sisi bukaan tidak pernah menembus bingkainya',
+  awalWaktu.jendela ? awalWaktu.jendela.sisi <= awalWaktu.jendela.bingkai : false,
+  true
+);
+const bedaLukisan =
+  awalWaktu.jendela && Number.isFinite(awalWaktu.lebarDom)
+    ? Math.abs(awalWaktu.lebarDom - awalWaktu.jendela.sisi / awalWaktu.jendela.bingkai)
+    : NaN;
+hasil.push({
+  nama: 'DOM dan WebGL melukis pecahan yang sama dari satu angka',
+  ok: Number.isFinite(bedaLukisan) && bedaLukisan < 0.001,
+  dapat: Number.isFinite(bedaLukisan) ? bedaLukisan.toFixed(6) : '(tidak terukur)',
+  harus: '< 0.001',
+});
+
+// Hukum diam: kedua sampel diambil SETELAH IDLE_MS (4000 ms) lewat. Mengukur delta dari
+// sampel yang masih jatuh di fase "always" akan menghitung frame yang seharusnya jalan —
+// kanvas berhenti melukis ±1,5 s setelah bacaan pertama, bukan sejak mount.
+await jeda(3500);
+const diam1 = await bacaWaktu(pageWaktu);
+await jeda(3000);
+const diam2 = await bacaWaktu(pageWaktu);
+console.log('waktu-diam', JSON.stringify({ a: diam1.render?.frame, b: diam2.render?.frame }));
+cek(
+  'nol frame saat pengunjung diam',
+  (diam2.render?.frame ?? -1) - (diam1.render?.frame ?? -1),
+  0
+);
+await foto(pageWaktu, '08-waktu-hidup');
+
+// Sumber diam → tidak ada bentuk sama sekali.
+await pageWaktu.setRequestInterception(true);
+pageWaktu.removeAllListeners('request');
+pageWaktu.on('request', (req) => {
+  if (!req.url().includes('/api/telemetry')) return req.continue();
+  return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(payloadKosong()) });
+});
+await pageWaktu.reload({ waitUntil: 'domcontentloaded', timeout: 45000 });
+await jeda(3500);
+const waktuKosong = await bacaWaktu(pageWaktu);
+console.log('waktu-null', JSON.stringify(waktuKosong));
+cek('tanpa clientFrames tidak ada geometri', !!waktuKosong.jendela, false);
+cek('tanpa clientFrames tidak ada draw call', waktuKosong.render?.calls, 0);
+cek('tanpa clientFrames halaman menulis "—"', waktuKosong.angka?.includes('—'), true);
+cek('tanpa clientFrames ada tempat kosong yang eksplisit', waktuKosong.kosong, true);
+cek('/waktu tidak melempar error', galatWaktu.length, 0);
+cek('sitemap memuat /waktu', sm.teks.includes('/waktu'), true);
+
+// ── 9 · /sangkar: sudut yang sama, dibaca dari dua tempat ──
+// Rute ini tidak punya angka telemetri: angkanya adalah perintah pengunjung. Yang ditagih:
+//   · satu draw call dan satu store putaran (lib/putaran.ts) — DOM dan WebGL harus menyebut
+//     angka yang sama, kalau tidak, halaman ini punya dua kebenaran;
+//   · batas ±12 derajat ditegakkan lewat seret maupun panah, dan melepas mengembalikan ke 0;
+//   · hukum diam panggung kedua tetap berlaku.
+const bacaSangkar = (p) =>
+  p.evaluate(() => {
+    const el = document.querySelector('[data-sangkar-derajat]');
+    return {
+      dom: el ? el.textContent.replace(/\s+/g, ' ').trim() : null,
+      sangkar: window.__sangkar ? { ...window.__sangkar } : null,
+      render: window.__render ? { calls: window.__render.calls, frame: window.__render.frame } : null,
+    };
+  });
+
+const pageSangkar = await browser.newPage();
+const galatSangkar = [];
+pageSangkar.on('pageerror', (e) => galatSangkar.push(String(e)));
+await pageSangkar.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
+const rSangkar = await pageSangkar.goto(`${FE}/sangkar`, { waitUntil: 'domcontentloaded', timeout: 45000 });
+cek('/sangkar menjawab 200', rSangkar.status(), 200);
+await jeda(1200);
+const sangkarAwal = await bacaSangkar(pageSangkar);
+console.log('sangkar  ', JSON.stringify(sangkarAwal));
+cek('sangkar tergambar sebagai satu draw call', sangkarAwal.render?.calls, 1);
+cek('verifier sudut terpasang', !!sangkarAwal.sangkar, true);
+cek('batas sudut datang dari modul, bukan dari halaman', sangkarAwal.sangkar?.batasDerajat, 12);
+cek('sangkar diparkir pada yaw 45 derajat', Math.round(((sangkarAwal.sangkar?.yawAwal ?? 0) * 180) / Math.PI), 45);
+
+// Seret 100 px ke kanan: JANGKAUAN_PX 200 untuk 12 derajat, jadi ini ±6 derajat.
+const kotak = await pageSangkar.evaluate(() => {
+  const r = document.querySelector('[data-panggung-kecil]')?.getBoundingClientRect();
+  return r ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null;
+});
+cek('kanvas panggung kedua punya wilayah seret', !!kotak, true);
+if (kotak) {
+  await pageSangkar.mouse.move(kotak.x, kotak.y);
+  await pageSangkar.mouse.down();
+  await pageSangkar.mouse.move(kotak.x + 100, kotak.y, { steps: 6 });
+  await jeda(700);
+  const diseret = await bacaSangkar(pageSangkar);
+  console.log('seret    ', JSON.stringify(diseret.sangkar));
+  cek('seret menghasilkan sudut yang benar-benar berubah', diseret.sangkar?.derajatX, 6);
+  cek(
+    'DOM menyebut derajat yang sama dengan yang dipakai kanvas',
+    !!diseret.dom?.startsWith('+6°'),
+    true
+  );
+  await pageSangkar.mouse.move(kotak.x + 900, kotak.y, { steps: 4 });
+  await jeda(500);
+  const dijepit = await bacaSangkar(pageSangkar);
+  cek('batas 12 derajat ditegakkan lewat jepit, bukan lewat klaim', dijepit.sangkar?.derajatX, 12);
+  await pageSangkar.mouse.up();
+  await jeda(700);
+  const dilepas = await bacaSangkar(pageSangkar);
+  cek('melepas seret mengembalikan sudut ke nol', dilepas.sangkar?.derajatX, 0);
+  cek('DOM ikut kembali ke nol', !!dilepas.dom?.startsWith('+0°'), true);
+}
+
+// Panah keyboard: satu langkah = empat derajat, dua langkah = delapan.
+await pageSangkar.focus('[data-sangkar-kontrol]');
+await pageSangkar.keyboard.press('ArrowRight');
+await pageSangkar.keyboard.press('ArrowRight');
+await jeda(700);
+const denganPanah = await bacaSangkar(pageSangkar);
+console.log('panah    ', JSON.stringify(denganPanah.sangkar));
+cek('dua langkah panah = delapan derajat', denganPanah.sangkar?.derajatX, 8);
+cek('kontrol keyboard dan kanvas membaca store yang sama', !!denganPanah.dom?.startsWith('+8°'), true);
+await pageSangkar.keyboard.press('Escape');
+await jeda(500);
+const lepasKeyboard = await bacaSangkar(pageSangkar);
+cek('Escape mengembalikan ke nol', lepasKeyboard.sangkar?.derajatX, 0);
+
+// Sampel diambil setelah IDLE_MS lewat dari aktivitas terakhir (Escape membangunkan loop),
+// jadi keduanya berada di fase demand.
+await pageSangkar.evaluate(() => window.scrollTo(0, 0));
+await jeda(5200);
+const sangkarDiam1 = await bacaSangkar(pageSangkar);
+await jeda(3000);
+const sangkarDiam2 = await bacaSangkar(pageSangkar);
+cek(
+  'nol frame saat pengunjung diam di /sangkar',
+  (sangkarDiam2.render?.frame ?? -1) - (sangkarDiam1.render?.frame ?? -1),
+  0
+);
+cek('/sangkar tidak melempar error', galatSangkar.length, 0);
+cek('sitemap memuat /sangkar', sm.teks.includes('/sangkar'), true);
+cek('/baca menautkan /sangkar', tautanPanggung.includes('/sangkar'), true);
+await foto(pageSangkar, '09-sangkar');
+
+// ── 10 · /meja: knob menulis uniform, dan holder panggung utama tidak ikut tersentuh ──
+// Dua hal yang ditagih di rute ini:
+//   · angka yang DICETAK DOM = angka yang ADA DI MATERIAL — kalau tidak, halaman ini hanya
+//     menjual ilustrasi;
+//   · SAPU_IRIS dan SILANG_MOBIL (holder module-level yang dibagi antar objek di halaman
+//     utama) harus tetap nol walaupun knob iris digas sampai satu. Ini kondisi keras: begitu
+//     rute eksperimen bisa menulis holder itu, "satu kanvas satu mobil" berhenti berlaku.
+const bacaMeja = (p) =>
+  p.evaluate(() => {
+    const angka = {};
+    document.querySelectorAll('[data-meja-angka]').forEach((el) => {
+      angka[el.getAttribute('data-meja-angka')] = el.textContent.trim();
+    });
+    const maskEl = document.querySelector('[data-meja-mask]');
+    return {
+      angka,
+      mask: maskEl ? maskEl.textContent.replace(/\s+/g, ' ').trim() : null,
+      meja: window.__meja ? JSON.parse(JSON.stringify(window.__meja)) : null,
+      render: window.__render ? { calls: window.__render.calls, frame: window.__render.frame } : null,
+    };
+  });
+
+// Range input berjalan dengan panah keyboard: satu tekan = satu `step`. Jadi gerbang ini
+// memakai jalur pengunjung sungguhan, bukan nilai yang disuntik lewat setter.
+const putarKnob = async (p, kunci, tekanannya, arah = 'ArrowRight') => {
+  await p.focus(`[data-meja-knob="${kunci}"]`);
+  for (let i = 0; i < tekanannya; i++) await p.keyboard.press(arah);
+  await jeda(600);
+};
+
+const pageMeja = await browser.newPage();
+const galatMeja = [];
+pageMeja.on('pageerror', (e) => galatMeja.push(String(e)));
+await pageMeja.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
+const rMeja = await pageMeja.goto(`${FE}/meja`, { waitUntil: 'domcontentloaded', timeout: 45000 });
+cek('/meja menjawab 200', rMeja.status(), 200);
+cek('/meja mendeklarasikan canonical sendiri', (rMeja.headers()['content-type'] || '').includes('text/html'), true);
+await jeda(1600);
+const mejaAwal = await bacaMeja(pageMeja);
+console.log('meja-awal', JSON.stringify(mejaAwal.meja));
+cek('verifier meja terpasang', !!mejaAwal.meja, true);
+cek('meja tergambar sebagai satu draw call', mejaAwal.render?.calls, 1);
+cek('kartu meja hanya dua segitiga', mejaAwal.meja?.segitiga, 2);
+cek('bidang kartunya empat vertex', mejaAwal.meja?.vertex, 4);
+// DOM mencetak dengan dua desimal, uniform menyimpan float: yang ditagih bukan string yang
+// sama persis, tapi bahwa keduanya menunjuk angka yang sama.
+const dekat = (a, b) => typeof a === 'number' && typeof b === 'number' && Math.abs(a - b) < 0.006;
+cek(
+  'angka DOM dan angka uniform menyebut persona yang sama',
+  dekat(mejaAwal.meja?.persona, Number(mejaAwal.angka?.persona)),
+  true
+);
+cek('fokus awal duduk di jarak kamera sehingga kartu tajam', mejaAwal.meja?.fokus, 5);
+cek('potong awal tidak menghapus apa pun', mejaAwal.meja?.mask?.[0], -1);
+cek('sapuan awal terbuka', mejaAwal.meja?.iris === 0 && mejaAwal.meja?.mobil === 0, true);
+
+// Gas iris sampai satu (20 langkah x 0,05). Holder lokal harus ikut; holder bersama tidak.
+await putarKnob(pageMeja, 'iris', 20);
+const mejaIris = await bacaMeja(pageMeja);
+console.log('meja-iris', JSON.stringify(mejaIris.meja), mejaIris.angka.iris);
+cek('knob iris menulis uniform material sampai satu', (mejaIris.meja?.iris ?? 0) >= 0.999, true);
+cek('DOM menyebut angka yang sama dengan uniform', mejaIris.angka?.iris, '1.00');
+cek('SAPU_IRIS panggung utama tetap nol', mejaIris.meja?.globalIris, 0);
+cek('SILANG_MOBIL panggung utama tetap nol', mejaIris.meja?.globalMobil, 0);
+cek('uMobil rute ini tetap nol (tidak ada mobil di sini)', mejaIris.meja?.mobil, 0);
+
+// Potong 0,25 dari tiap tepi = mask [-0.50, 0.50] dalam NDC. Rumusnya tinggal satu fungsi,
+// jadi yang diuji adalah apakah kanvas benar-benar memakai rumus yang dicetak DOM.
+await putarKnob(pageMeja, 'potong', 25);
+const mejaPotong = await bacaMeja(pageMeja);
+console.log('meja-potong', JSON.stringify(mejaPotong.meja?.mask), mejaPotong.mask);
+cek('knob potong menghasilkan kotak mask yang dihitung rumus', mejaPotong.meja?.mask?.[0], -0.5);
+cek('tepi kanan mask simetris', mejaPotong.meja?.mask?.[1], 0.5);
+cek('DOM mencetak mask yang sama dengan uniform', !!mejaPotong.mask?.includes('-0.50'), true);
+
+// Bidang fokus: turun 0,5 satuan berarti kartu (yang diam di 5) kabur penuh. Panah kiri,
+// karena menaikkan fokus justru menjauh dari kartu.
+await putarKnob(pageMeja, 'fokus', 25, 'ArrowLeft');
+const mejaFokus = await bacaMeja(pageMeja);
+cek('knob fokus bergerak dalam satuan dunia', mejaFokus.meja?.fokus, 4.5);
+cek('kekuatan kabur ikut yang diperintahkan', mejaFokus.meja?.kabur, 0.6);
+cek(
+  'sumber kabur adalah salinan ¼-res yang benar-benar dibangun',
+  !!mejaFokus.meja?.salinanKabur && mejaFokus.meja.salinanKabur[0] <= 224,
+  true
+);
+
+// Reset lewat tombol, lalu buktikan loop benar-benar diam setelah IDLE_MS.
+await pageMeja.click('[data-meja-reset]');
+await jeda(600);
+const mejaReset = await bacaMeja(pageMeja);
+cek('reset mengembalikan iris ke nol', mejaReset.meja?.iris, 0);
+cek('reset mengembalikan potong ke nol', mejaReset.meja?.mask?.[0], -1);
+await pageMeja.evaluate(() => window.scrollTo(0, 0));
+// Sampel pertama harus jatuh SETELAH IDLE_MS dari aktivitas terakhir (klik reset di atas
+// ikut membangunkan loop), jadi jendelanya dibuka 5,2 detik — kalau tidak, yang diukur
+// adalah sisa fase "always", bukan keadaan diamnya.
+await jeda(5200);
+const mejaDiam1 = await bacaMeja(pageMeja);
+await jeda(3000);
+const mejaDiam2 = await bacaMeja(pageMeja);
+cek(
+  'nol frame saat pengunjung diam di /meja',
+  (mejaDiam2.render?.frame ?? -1) - (mejaDiam1.render?.frame ?? -1),
+  0
+);
+cek('/meja tidak melempar error', galatMeja.length, 0);
+cek('sitemap memuat /meja', sm.teks.includes('/meja'), true);
+cek('/baca menautkan /meja', tautanPanggung.includes('/meja'), true);
+await foto(pageMeja, '10-meja');
+
+// ── 11 · /peta: instance = baris, tinggi = angka yang dicetak ──
+// Rute ini bergantung pada API GitHub di sisi server, yang bisa gagal karena plafon 60
+// request/jam. Keadaan kosongnya więc ikut diuji: tanpa data tidak ada mesh, tidak ada draw
+// call, dan tidak ada angka — bukan batang nol yang karangan.
+const bacaPeta = (p) =>
+  p.evaluate(() => {
+    const baris = [...document.querySelectorAll('[data-peta-baris]')].map((el) => ({
+      nama: el.textContent.replace(/\s+/g, ' ').trim().slice(0, 40),
+      bintang: Number(el.querySelector('[data-peta-bintang]')?.textContent.replace(/[^\d]/g, '') || 0),
+      tinggi: Number(el.querySelector('[data-peta-tinggi]')?.textContent || NaN),
+      tertinggi: el.getAttribute('data-peta-tertinggi') === 'true',
+    }));
+    return {
+      baris,
+      kosong: !!document.querySelector('[data-peta-kosong]'),
+      peta: window.__peta ? JSON.parse(JSON.stringify(window.__peta)) : null,
+      render: window.__render ? { calls: window.__render.calls, frame: window.__render.frame } : null,
+    };
+  });
+
+const pagePeta = await browser.newPage();
+const galatPeta = [];
+pagePeta.on('pageerror', (e) => galatPeta.push(String(e)));
+await pagePeta.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
+const rPeta = await pagePeta.goto(`${FE}/peta`, { waitUntil: 'domcontentloaded', timeout: 45000 });
+cek('/peta menjawab 200', rPeta.status(), 200);
+await jeda(1600);
+const peta = await bacaPeta(pagePeta);
+console.log('peta     ', peta.baris.length, 'baris', JSON.stringify(peta.peta));
+cek('jumlah instance sama dengan jumlah baris daftar', peta.peta?.instance ?? 0, peta.baris.length);
+if (peta.baris.length > 0) {
+  cek('satu draw call untuk seluruh daftar', peta.render?.calls, 1);
+  const melenceng = peta.baris.filter(
+    (b, i) => !(Math.abs((peta.peta?.tinggi?.[i] ?? NaN) - b.tinggi) < 0.006)
+  ).length;
+  cek(
+    'matriks instance membawa tinggi yang dicetak barisnya',
+    melenceng,
+    0
+  );
+  const tertinggi = peta.baris.filter((b) => b.tertinggi).length;
+  cek('jumlah batang rosso sama dengan baris berpenanda puncak', peta.peta?.merah, tertinggi);
+  const puncak = Math.max(...peta.baris.map((b) => b.bintang));
+  cek(
+    'batang puncak memenuhi bingkai dan yang lain di bawahnya',
+    peta.baris.every((b) => (b.bintang === puncak ? Math.abs(b.tinggi - 2) < 0.006 : b.tinggi <= 2)),
+    true
+  );
+  cek('nol bintang tetap nol tinggi, tidak diberi stub', peta.baris.every((b) => (b.bintang === 0 ? b.tinggi === 0 : b.tinggi > 0)), true);
+} else {
+  cek('tanpa data GitHub halaman menandai keadaan kosong', peta.kosong, true);
+  cek('tanpa data GitHub tidak ada instance', !!peta.peta, false);
+  cek('tanpa data GitHub tidak ada draw call', peta.render?.calls, 0);
+}
+cek('/peta tidak melempar error', galatPeta.length, 0);
+cek('sitemap memuat /peta', sm.teks.includes('/peta'), true);
+cek('/baca menautkan /peta', tautanPanggung.includes('/peta'), true);
+await foto(pagePeta, '11-peta');
+
+// ── 12 · /iris: navigasi diafragma, dan shader panggung tetap tertutup ──
+const bacaIris = (p) =>
+  p.evaluate(() => {
+    const teks = [...document.querySelectorAll('[data-iris-teks]')].map((el) => ({
+      sisi: el.getAttribute('data-iris-teks'),
+      opacity: getComputedStyle(el).opacity,
+      huruf: (el.textContent || '').trim().length,
+    }));
+    const angka = (sel) => Number(document.querySelector(sel)?.textContent || NaN);
+    return {
+      teks,
+      sisi: document.querySelector('[data-iris-sisi]')?.textContent?.trim() ?? null,
+      tutup: angka('[data-iris-tutup]'),
+      buka: angka('[data-iris-buka]'),
+      nilai: Number(document.querySelector('[data-iris-slider]')?.value ?? NaN),
+      role: document.querySelector('[data-iris-slider]')?.getAttribute('type') ?? null,
+      iris: window.__iris ? { ...window.__iris } : null,
+      render: window.__render ? { calls: window.__render.calls, frame: window.__render.frame } : null,
+    };
+  });
+
+const pageIris = await browser.newPage();
+const galatIris = [];
+pageIris.on('pageerror', (e) => galatIris.push(String(e)));
+await pageIris.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
+const rIris = await pageIris.goto(`${FE}/iris`, { waitUntil: 'domcontentloaded', timeout: 45000 });
+cek('/iris menjawab 200', rIris.status(), 200);
+await jeda(1600);
+
+// Rata-rata luma sebuah klip, diukur dari screenshot sungguhan yang didekode halaman sendiri.
+// Yang ditagih: kertas diafragma benar-benar menutupi huruf, bukan hanya mengirim angka ke
+// uniform. Sudut kiri-atas bingkai dipilih karena pada tutup 0,5 ia pasti berada di luar
+// diafragma, sementara hurufnya memang tinggal di sana.
+const wadahIris = await pageIris.evaluate(() => {
+  const r = document.querySelector('[data-iris-wadah]')?.getBoundingClientRect();
+  return r ? { x: r.x, y: r.y, width: r.width, height: r.height } : null;
+});
+cek('bingkai diafragma punya wilayah terukur', !!wadahIris, true);
+// Klip dihitung ulang tiap pengukuran dan dalam koordinat DOKUMEN: memfokus slider bisa
+// menggulir halaman, dan koordinat viewport yang dipakai di dua waktu berbeda akan sampling
+// dua tempat yang berbeda — lalu yang merah adalah gerbangnya, bukan diafragmanya.
+const lumaSudut = async () => {
+  const klip = await pageIris.evaluate(() => {
+    const el = document.querySelector('[data-iris-wadah]');
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return {
+      x: r.x + window.scrollX,
+      y: r.y + window.scrollY,
+      width: r.width * 0.2,
+      height: r.height * 0.25,
+    };
+  });
+  if (!klip) return NaN;
+  const b64 = await pageIris.screenshot({ clip: klip, encoding: 'base64' });
+  return pageIris.evaluate(async (data) => {
+    const img = new Image();
+    await new Promise((res, rej) => {
+      img.onload = res;
+      img.onerror = rej;
+      img.src = `data:image/png;base64,${data}`;
+    });
+    const c = document.createElement('canvas');
+    c.width = img.width;
+    c.height = img.height;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    const d = ctx.getImageData(0, 0, c.width, c.height).data;
+    let jumlah = 0;
+    for (let i = 0; i < d.length; i += 4) jumlah += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    return jumlah / (d.length / 4);
+  }, b64);
+};
+// Sudut yang sama diukur tiga kali: terbuka, setengah, dan tertutup penuh. Angka penutup
+// penuh jadi kertas rujukan — bingkainya punya garis tepi dan warna halaman sendiri, jadi
+// yang ditagih adalah "setengah = sekertas penutup penuh", bukan konstanta yang dikira-kira.
+const lumaTerbuka = await lumaSudut();
+console.log('iris-luma', lumaTerbuka.toFixed(1));
+cek('di ujung terbuka huruf di sudut ikut tergambar', lumaTerbuka < 240, true);
+
+const irisAwal = await bacaIris(pageIris);
+console.log('iris-awal', JSON.stringify(irisAwal.iris), JSON.stringify(irisAwal.teks));
+cek('diafragma hanya satu draw call', irisAwal.render?.calls, 1);
+cek('verifier diafragma terpasang', !!irisAwal.iris, true);
+cek('mulai di ujung terbuka, sisi A', [irisAwal.iris?.tutup, irisAwal.iris?.sisi].join('|'), '0|A');
+cek(
+  'navigasinya benar-benar slider, bukan div berpakaian',
+  irisAwal.role,
+  'range'
+);
+cek('dua teks ada di DOM saat halaman baru terbuka', irisAwal.teks.length, 2);
+cek(
+  'dua-duanya berisi paragraf, bukan kerangka kosong',
+  irisAwal.teks.every((t) => t.huruf > 40),
+  true
+);
+cek('teks A terlihat, teks B belum', [irisAwal.teks[0]?.opacity, irisAwal.teks[1]?.opacity].join('|'), '1|0');
+
+// Naikkan 25 langkah (0,25): diafragma masih menutup setengah, A separuh terlihat.
+await pageIris.focus('[data-iris-slider]');
+for (let i = 0; i < 25; i++) await pageIris.keyboard.press('ArrowRight');
+await jeda(700);
+const irisSetengah = await bacaIris(pageIris);
+console.log('iris-0.25', JSON.stringify(irisSetengah.iris), JSON.stringify(irisSetengah.teks));
+cek('posisi 0,25 masih di sisi A', irisSetengah.iris?.sisi, 'A');
+cek('tutup mengikuti rumus 1 - |2x - 1|', irisSetengah.iris?.tutup, 0.5);
+cek(
+  'radius seragam = bukaan yang dicetak DOM × jari maksimum',
+  Math.abs(
+    (irisSetengah.iris?.buka ?? -1) - (irisSetengah.iris?.jariMaks ?? 0) * (1 - irisSetengah.tutup)
+  ) < 0.002,
+  true
+);
+cek(
+  'DOM menyebut tutup yang sama dengan uniform',
+  irisSetengah.tutup,
+  Number(irisSetengah.iris?.tutup?.toFixed(2))
+);
+cek('teks A ikut separuh', irisSetengah.teks[0]?.opacity, '0.5');
+const lumaSetengah = await lumaSudut();
+console.log('iris-luma-0.25', lumaSetengah.toFixed(1), 'tutup', irisSetengah.iris?.tutup);
+
+// Tepat di tengah: tertutup penuh, kedua teks sedang tidak terlihat — tapi tetap ada.
+for (let i = 0; i < 25; i++) await pageIris.keyboard.press('ArrowRight');
+await jeda(700);
+const irisTutup = await bacaIris(pageIris);
+cek('di tengah sumbu diafragma menutup penuh', irisTutup.iris?.tutup, 1);
+cek('radius seragam turun ke nol', irisTutup.iris?.buka, 0);
+cek(
+  'tepi potong terjadi dalam keadaan tertutup, bukan di atas dua eksposur',
+  [irisTutup.teks[0]?.opacity, irisTutup.teks[1]?.opacity].join('|'),
+  '0|0'
+);
+cek('kedua teks tetap ada di DOM saat tertutup', irisTutup.teks.every((t) => t.huruf > 40), true);
+const lumaKertas = await lumaSudut();
+console.log('iris-luma-tutup', lumaKertas.toFixed(1));
+cek(
+  'kertas diafragma menutupi huruf di sudut, bukan hanya angka di uniform',
+  lumaSetengah > lumaTerbuka + 5 && Math.abs(lumaSetengah - lumaKertas) < 2,
+  true
+);
+await foto(pageIris, '12b-iris-tutup');
+
+// Lanjut ke ujung kanan: B terbuka, A hilang, dan angka DOM = angka uniform.
+for (let i = 0; i < 50; i++) await pageIris.keyboard.press('ArrowRight');
+await jeda(700);
+const irisUjung = await bacaIris(pageIris);
+console.log('iris-ujung', JSON.stringify(irisUjung.iris), JSON.stringify(irisUjung.teks));
+cek('ujung kanan adalah sisi B', irisUjung.iris?.sisi, 'B');
+cek('di ujung sumbu diafragma terbuka lagi', irisUjung.iris?.tutup, 0);
+cek('hanya teks B yang terlihat di ujung', [irisUjung.teks[0]?.opacity, irisUjung.teks[1]?.opacity].join('|'), '0|1');
+cek('DOM menyebut sisi yang sama dengan kanvas', irisUjung.sisi, 'B');
+
+// Gerbang sumber: rute ini tidak boleh menyentuh mesin panggung. Komentar dokumentasinya
+// Justru menyebut nama holder itu, jadi yang dibuang dulu baru yang dicocokkan.
+const sumberIris = [
+  'nextjs-frontend/src/app/iris/IrisHidup.tsx',
+  'nextjs-frontend/src/app/iris/page.tsx',
+  'nextjs-frontend/src/components/Three/panggung/KurvaIris.tsx',
+]
+  .map((f) => readFileSync(new URL(f, AKAR), 'utf8'))
+  .join('\n')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/\/\/[^\n]*/g, '');
+cek(
+  '/iris tidak mengimpor material panggung atau holder sapuannya',
+  /chiaroscuroMaterial|usePanggung|SAPU_IRIS|SILANG_MOBIL/.test(sumberIris.replace(/\/\/[^\n]*$/gm, '')),
+  false
+);
+
+await pageIris.evaluate(() => window.scrollTo(0, 0));
+await jeda(5200);
+const irisDiam1 = await bacaIris(pageIris);
+await jeda(3000);
+const irisDiam2 = await bacaIris(pageIris);
+cek(
+  'nol frame saat pengunjung diam di /iris',
+  (irisDiam2.render?.frame ?? -1) - (irisDiam1.render?.frame ?? -1),
+  0
+);
+cek('/iris tidak melempar error', galatIris.length, 0);
+cek('sitemap memuat /iris', sm.teks.includes('/iris'), true);
+cek('/baca menautkan /iris', tautanPanggung.includes('/iris'), true);
+await foto(pageIris, '12-iris');
+
 await browser.close();
 for (const h of hasil) console.log(`${h.ok ? 'LULUS' : 'GAGAL'}  ${h.nama}: dapat ${h.dapat}, harus ${h.harus}`);
 const gagal = hasil.filter((h) => !h.ok).length;
