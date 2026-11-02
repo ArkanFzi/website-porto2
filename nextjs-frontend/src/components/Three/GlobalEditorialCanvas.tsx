@@ -4,6 +4,7 @@ import React, { Suspense, useEffect, useRef, useState, useSyncExternalStore } fr
 import { Canvas } from "@react-three/fiber";
 import { PerformanceMonitor } from "@react-three/drei";
 import { AktorPotret, type AktorProps } from "./stage/AktorPotret";
+import { AktorSF26 } from "./stage/ekstra/AktorSF26";
 import { BenangRosso } from "./stage/ekstra/BenangRosso";
 import { BilahTelemetri } from "./stage/ekstra/BilahTelemetri";
 import { Debu } from "./stage/ekstra/Debu";
@@ -120,7 +121,9 @@ export const GlobalEditorialCanvas: React.FC<CanvasProps> = ({
         Visual pada halaman ini adalah potret hitam-putih penulis dalam bingkai
         persegi panjang. Bingkai berpindah sisi mengikuti gulir: berada di tengah
         pada bagian pembuka, di kiri pada bagian dua identitas, di kanan pada bagian
-        arsip proyek, lalu memudar pada bagian penutup. Tidak ada informasi yang
+        arsip proyek, lalu memudar pada bagian penutup. Pada bagian arsip, satu baris
+        proyek yang sedang ditunjuk mouse menggantikan potret dengan model mobil balap
+        tiga dimensi berwarna grafit. Tidak ada informasi yang
         hanya tersedia di visual ini; seluruh isi bacaan ada di teks halaman.
       </p>
       <div
@@ -161,6 +164,9 @@ export const GlobalEditorialCanvas: React.FC<CanvasProps> = ({
             {/* Roda paddock: satu-satunya objek yang sudutnya dijumlahkan dari velositas,
                 dan hanya ada di bab penutup. */}
             <RodaPaddock {...aktor} />
+            {/* Mobil baris /01: satu-satunya objek yang mengambil tempat kartu. Asetnya
+                diunduh saat bab arsip mendekat, dan objeknya lepas saat silang habis. */}
+            <AktorSF26 {...aktor} />
           </Suspense>
           {/* Alat ukur, bukan bagian isi panggung: write-only, tidak memengaruhi render. */}
           {process.env.NODE_ENV !== "production" && <PengukurRender />}

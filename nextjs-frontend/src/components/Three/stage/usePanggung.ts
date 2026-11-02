@@ -16,8 +16,13 @@ import {
 import { bacaTarget, bacaFokusKartu, laporKotakKartu } from "@/lib/putaran";
 
 import type { PortfolioMode } from "@/context/PortfolioModeContext";
-import { buatUniformPanggung, RASIO_POTRET } from "./chiaroscuroMaterial";
-import { sikap, type Sikap } from "./koreografi";
+import {
+  buatUniformPanggung,
+  RASIO_POTRET,
+  SAPU_IRIS,
+  SILANG_MOBIL,
+} from "./chiaroscuroMaterial";
+import { sikap, mobilDipanggil, type Sikap } from "./koreografi";
 import {
   tulisParalaksTipografi,
   useParalaksTipografi,
@@ -85,6 +90,10 @@ export interface PembacaanPanggung {
   /** Iris potong pada kotak portal: 0 = terbuka penuh, 1 = tertutup habis. Hanya bukan
    *  nol selama kartu benar-benar berpindah bab. */
   wipe: number;
+  /** Silang potret→mobil: 0 kartu penuh, 1 mobil punya tempatnya. AktorSF26 memakai
+   *  angka yang sama untuk alpha-nya, jadi verifier membandingkan dua objek dari satu
+   *  sumber. */
+  mobil: number;
 }
 
 const bundar = (n: number) => Math.round(n * 1e4) / 1e4;
@@ -100,6 +109,7 @@ interface BacaanTambahan {
   dolly: number;
   kamera: [number, number];
   wipe: number;
+  mobil: number;
 }
 
 const tulisPanggungDebug = (
@@ -110,7 +120,7 @@ const tulisPanggungDebug = (
   kotak: PortalKotak,
   tambahan: BacaanTambahan
 ) => {
-  const { putar, jejak, balik, persona, kursor, dolly, kamera, wipe } = tambahan;
+  const { putar, jejak, balik, persona, kursor, dolly, kamera, wipe, mobil } = tambahan;
   const jendela = window as unknown as { __panggung?: PembacaanPanggung };
   jendela.__panggung = {
     p: bundar(p),
@@ -134,6 +144,7 @@ const tulisPanggungDebug = (
     dolly: bundar(dolly),
     kamera: kamera.map(bundar) as [number, number],
     wipe: bundar(wipe),
+    mobil: bundar(mobil),
   };
 };
 
@@ -346,6 +357,20 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
     const k = sikap(p, portal.current);
     if (!k) return;
 
+    // Kartu menyerahkan tempatnya ke mobil HANYA kalau mobilnya memang dipanggil —
+    // aturannya satu sumber (mobilDipanggil) supaya tidak ada bab yang kehilangan potret
+    // tanpa pengganti. Angkanya dibagikan ke AktorSF26 lewat SILANG_MOBIL, jadi tidak ada
+    // penghalusan kedua yang bisa tertinggal satu frame di antaranya.
+    const targetMobil = mobilDipanggil(k.babDari, hoveredProject, kurangiGerak) ? 1.0 : 0.0;
+    mat.uniforms.uMobil.value = THREE.MathUtils.lerp(mat.uniforms.uMobil.value, targetMobil, 0.1);
+    // Holder module-level ditulis ULANG, bukan dipercaya sudah ditulis: R3F menyalin setiap
+    // entri props `uniforms` ke objek baru saat memasang <shaderMaterial uniforms=…>
+    // (@react-three/fiber applyProps: uniforms[name] = { ...uniform }), jadi
+    // mat.uniforms.uMobil BUKAN SILANG_MOBIL. Yang dibagikan ke AktorSF26 adalah angka ini,
+    // satu lerp, satu frame — mobil membaca holder-nya sendiri lewat material yang dibuat
+    // imperatif (di sana tidak ada applyProps, identitasnya utuh).
+    SILANG_MOBIL.value = mat.uniforms.uMobil.value;
+
     const layarX = size.width;
     const layarY = size.height;
     // world per pixel pada bidang z = 0, dari fov DASAR. Rumerusnya sama dengan
@@ -384,6 +409,8 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
     );
     const wipe = kurangiGerak || k.babDari === k.babKe ? 0 : buka;
     mat.uniforms.uWipe.value = wipe;
+    // Sama seperti uMobil: kartu punya salinan sendiri, mobil membaca holder ini.
+    SAPU_IRIS.value = wipe;
 
     // Putaran flip dilicinkan di kedua ujungnya (smoothstep) supaya kartu selalu
     // berhenti tepat pada yaw sikap bab-nya, tidak pernah di tengah putaran.
@@ -431,6 +458,7 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
       Math.abs(perintah.x - pusing.current.x) > 1e-4 ||
       Math.abs(perintah.y - pusing.current.y) > 1e-4 ||
       Math.abs((mat.uniforms.uPersona.value as number) - targetPersona) > 1e-3 ||
+      Math.abs((mat.uniforms.uMobil.value as number) - targetMobil) > 1e-3 ||
       Math.abs(sisaDolly) > 1e-4 ||
       sisaSikap > 1e-3
     )
@@ -535,6 +563,7 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
         jejak: [hidup, bundar(rentang)],
         balik: balik.current,
         persona: mat.uniforms.uPersona.value as number,
+        mobil: mat.uniforms.uMobil.value as number,
         kursor: [uv.x, uv.y, dipegang ? 1 : 0, mat.uniforms.uReveal.value as number],
         dolly,
         kamera: [lensa?.fov ?? fovDasar.current, camera.position.z],

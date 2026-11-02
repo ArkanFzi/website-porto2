@@ -19,7 +19,7 @@ const TITIK_BENANG = 24; // harus sama dengan TITIK di BenangRosso.tsx
 const SISI_SANGKAR = 12; // EdgesGeometry balok = 12 segmen
 const SEG_KOMPAS = 2; // jarum + ekor
 const PARTIKEL_DEBU = 140;
-const EKSTRA = ['bilah', 'benang', 'debu', 'jejak', 'kompas', 'roda', 'sangkar'];
+const EKSTRA = ['bilah', 'benang', 'debu', 'jejak', 'kompas', 'roda', 'sangkar', 'sf26-ban', 'sf26-pelek', 'sf26-sasis'];
 
 const browser = await puppeteer.launch({
   executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome',
@@ -676,6 +676,239 @@ cekMin('gulir saat reduce-motion tetap berpindah', Math.abs(tanpaGerak.jarak), 6
 cek('reduce-motion menghapus roda', tanpaGerak.ada, 0);
 await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }]);
 await new Promise((r) => setTimeout(r, 700));
+
+// ── 10. SF-26 (ide 21): mobil mengambil tempat kartu saat baris /01 dipanggil ──
+// Satu angka, dua objek: usePanggung menulis SILANG_MOBIL ke alpha kartu dan AktorSF26
+// membaca OBJEK YANG SAMA untuk alpha-nya sendiri. Gerbang yang membandingkan bacaan kartu
+// dengan bacaan mobil karena itu membuktikan satu sumber — dua penghalusan terpisah akan
+// tertinggal satu frame dan perpindahan terbaca sebagai dua kejadian.
+const TRI_BULAT = [40000, 60000]; // anggaran ±50.000 triangle per frame hasil pipeline
+
+const bacaMobil = () =>
+  page.evaluate(() => {
+    const m = window.__sf26;
+    const p = window.__panggung;
+    const objek = window.__render?.objek ?? [];
+    return {
+      silang: p?.mobil ?? null,
+      sf26: m?.silang ?? null,
+      sudut: m?.sudut ?? null,
+      putaran: m?.putaran ?? null,
+      bab: p?.babDari ?? null,
+      t: p?.t ?? null,
+      objek,
+      ada: objek.filter((n) => n.startsWith('sf26-')).length,
+      calls: window.__render?.calls ?? null,
+      segitiga: window.__render?.segitiga ?? null,
+      jumlahObjek: objek.length,
+    };
+  });
+
+// Baris /01 = [data-magnetic] PERTAMA di #chapter-03 (ChapterArchives.tsx:326, idx 0), dan
+// hover-nya yang memasang hoveredProject === BARIS_FERRARI.
+const bacaBarisFerrari = () =>
+  page.evaluate(() => {
+    const el = document.querySelector('#chapter-03 [data-magnetic]');
+    if (!el) return null;
+    const b = el.getBoundingClientRect();
+    const ATAS = 90;
+    const BAWAH = window.innerHeight - 90;
+    const terlihat = Math.min(b.bottom, BAWAH) - Math.max(b.top, ATAS);
+    if (terlihat <= 24) return null;
+    return {
+      judul: el.textContent?.trim().slice(0, 24) ?? '?',
+      // Baris ini harus baris FERRARI: judul yang ditampilkan di DOM terpotong di 24 karakter
+      // untuk log, jadi identitasnya dibaca dari teks penuh, bukan dari cuplikan itu.
+      ferrari: /ferrari/i.test(el.textContent ?? ''),
+      x: b.left + b.width / 2,
+      y: Math.max(ATAS, Math.min(BAWAH, (b.top + b.bottom) / 2)),
+    };
+  });
+
+/** Parkir di bab arsip: kartu duduk tepat pada kunci bab 3, dan itu yang mengizinkan mobil
+ *  dipanggil (usePanggung:359 memakai k.babDari). "Duduk tepat pada kunci" bukan berarti
+ *  babDari === babKe: sikap() hanya mengembalikan pasangan bab yang sama di ujung pertama dan
+ *  ujung terakhir dokumen, sementara di tengah bab ia mengembalikan babDari=3, babKe=4, t=0.
+ *  Jadi gerbangnya babDari === 3 && t === 0. Pecahan dibaca sebagai percobaan, bukan asumsi —
+ *  batas tiap bab datang dari posisi section di dokumen dan bisa bergeser kalau isi bab
+ *  berubah. Sweep 0.40–0.84 memberi pita 0.62–0.76 dengan keadaan itu. */
+const cariBabArsip = async () => {
+  for (const fr of [0.66, 0.62, 0.7, 0.64, 0.72, 0.68]) {
+    await parkir(fr);
+    const b = await page.evaluate(() => window.__panggung ?? null);
+    const baris = await bacaBarisFerrari();
+    if (b?.babDari === 3 && b?.t === 0 && baris) return { fr, baris, b };
+  }
+  return null;
+};
+
+/** Tunggu penghalusan sampai ke ujung. Pointer digeser 2px tiap baca: di frameloop demand
+ *  tidak ada frame berarti tidak ada lerp, dan menunggu tanpa membangunkan loop akan
+ *  membaca angka yang sama selamanya. */
+const tungguSilang = async (arah, titik) => {
+  const akhir = Date.now() + 12000;
+  let kini = await bacaMobil();
+  let i = 0;
+  while (Date.now() < akhir) {
+    if (titik) await page.mouse.move(titik.x + (i % 2 ? 2 : -2), titik.y);
+    kini = await bacaMobil();
+    if (arah === 'penuh' && (kini.silang ?? 0) >= 0.98) return kini;
+    if (arah === 'habis' && (kini.silang ?? 1) <= 0.001) return kini;
+    await new Promise((r) => setTimeout(r, 120));
+    i++;
+  }
+  return kini;
+};
+
+const parkir3 = await cariBabArsip();
+const titik = parkir3?.baris ?? null;
+await lepasHover();
+const habisSebelum = await tungguSilang('habis', null);
+const tanpa = await serap(300);
+console.log(
+  'sf26     ',
+  'fr=' + (parkir3?.fr ?? null),
+  JSON.stringify(parkir3?.baris?.judul ?? null),
+  'bab=' + habisSebelum.bab,
+  'tanpa hover:',
+  JSON.stringify(tanpa.nama),
+  'calls=' + tanpa.puncak.calls,
+  'tri=' + tanpa.puncak.segitiga
+);
+cek('panggung parkir di bab arsip saat mobil diuji', parkir3?.b?.babDari ?? null, 3);
+cek('baris /01 adalah baris Ferrari', parkir3?.baris?.ferrari ?? false, true);
+cek('mobil tidak ada tanpa hover', habisSebelum.ada, 0);
+
+await page.mouse.move(titik?.x ?? 8, titik?.y ?? 8);
+const penuh = await tungguSilang('penuh', titik);
+const dengan = await serap(400);
+console.log(
+  'sf26 hover',
+  'silang kartu=' + penuh.silang,
+  'silang mobil=' + penuh.sf26,
+  'ada=' + penuh.ada,
+  'calls=' + penuh.calls,
+  'tri=' + penuh.segitiga,
+  'objek=' + JSON.stringify(penuh.objek)
+);
+await foto('11-bab3-mobil');
+// Sangkar (RollCage) ikut bangun oleh hover yang sama dan ia LineSegments: satu call,
+// nol triangle. Delta mentah akan menuduh mobil punya empat draw call dan mobil nol
+// triangle kalau angka totalnya dibaca apa adanya — jadi keduanya dipisah.
+const objekBaru = (dengan.nama ?? []).filter((n) => !tanpa.nama.includes(n));
+const mobilBaru = objekBaru.filter((n) => n.startsWith('sf26-'));
+const sangkarBaru = objekBaru.includes('sangkar') ? 1 : 0;
+cek('mobil menambah tepat tiga objek', mobilBaru.length, 3);
+cek('mobil terpasang saat baris /01 di-hover', penuh.ada, 3);
+cek(
+  'tiga objek mobil = tiga draw call',
+  dengan.puncak.calls - tanpa.puncak.calls - sangkarBaru,
+  3
+);
+cek(
+  'mobil membawa ±50.000 triangle',
+  dengan.puncak.segitiga - tanpa.puncak.segitiga >= TRI_BULAT[0] &&
+    dengan.puncak.segitiga - tanpa.puncak.segitiga <= TRI_BULAT[1],
+  true
+);
+cek('calls = jumlah objek pada frame yang sama (mobil)', penuh.calls === penuh.jumlahObjek, true);
+cek('silang kartu mencapai penuh', (penuh.silang ?? 0) >= 0.98, true);
+cek('kartu dan mobil membaca angka yang sama', Math.abs((penuh.silang ?? -1) - (penuh.sf26 ?? -2)) < 0.002, true);
+
+// Hukum roda: sama seperti RodaPaddock — sudut DIJUMLAH dari velositas, dan membeku saat
+// loop demand tidur. Notches kecil (3 × 60 px) supaya pointer tetap jatuh di atas baris
+// yang sama; kalau baris lepas dari pointer, hover hilang dan mobil justru harus mundur.
+const ghiRoda = async (deltaY) => {
+  const awal = await bacaMobil();
+  for (let i = 0; i < 3; i++) {
+    await page.mouse.wheel({ deltaY });
+    await new Promise((r) => setTimeout(r, 120));
+  }
+  const catatan = [];
+  for (let i = 0; i < 8; i++) {
+    await page.mouse.move((titik?.x ?? 0) + (i % 2 ? 2 : -2), titik?.y ?? 0);
+    await new Promise((r) => setTimeout(r, 90));
+    catatan.push(await bacaMobil());
+  }
+  const akhir = await bacaMobil();
+  const nilai = catatan.map((b) => b.putaran).filter((v) => v !== null);
+  const arah = Math.sign(deltaY);
+  return {
+    awal,
+    akhir,
+    catatan,
+    delta: (akhir.putaran ?? 0) - (awal.putaran ?? 0),
+    balik: nilai.slice(1).filter((d, i) => Math.sign(d - nilai[i]) === -arah && Math.abs(d - nilai[i]) > 0.002)
+      .length,
+    bab: akhir.bab,
+  };
+};
+
+await new Promise((r) => setTimeout(r, 900));
+const maju = await ghiRoda(60);
+const mundur = await ghiRoda(-60);
+console.log(
+  'sf26 roda',
+  `maju=${maju.delta.toFixed(4)} balik=${maju.balik} bab=${maju.bab}`,
+  JSON.stringify({ maju: maju.delta, mundur: mundur.delta })
+);
+cek('gulir memutar roda mobil', Math.abs(maju.delta) >= 0.02, true);
+cek(
+  'gulir arah berlawanan memutar roda arah berlawanan',
+  Math.sign(maju.delta) === -Math.sign(mundur.delta),
+  true
+);
+cek('sudut roda tidak pernah berbalik melawan arah gulir', maju.balik + mundur.balik, 0);
+
+// Membeku: dua bacaan terpisah 900 ms tanpa peristiwa apa pun di antaranya. Velositas Lenis
+// sudah habis, jadi tidak ada langkah baru yang boleh dijumlah.
+await new Promise((r) => setTimeout(r, 2200));
+const beku1 = await bacaMobil();
+await new Promise((r) => setTimeout(r, 900));
+const beku2 = await bacaMobil();
+console.log('sf26 beku', JSON.stringify({ sebelum: beku1.sudut, sesudah: beku2.sudut, silang: beku2.silang }));
+cek('roda membeku saat gulir diam', Math.abs((beku2.sudut ?? NaN) - (beku1.sudut ?? NaN)) < 1e-6, true);
+
+// Hover dilepas: mobil baru boleh lepas SETELAH silang habis — kartunya menahan alpha pada
+// angka yang sama, jadi lepas lebih awal meninggalkan portal kosong satu detik.
+await page.mouse.move(8, 8);
+const pulang = await tungguSilang('habis', null);
+// Sensusnya tungguSilang belum boleh ditagih untuk dua alasan: mobil baru boleh lepas SETELAH
+// silang habis (jadi frame terakhir itu memang masih memuatnya), dan sensus hanya ditulis pada
+// frame yang benar-benar digambar — begitu silang sampai nol tidak ada lagi yang membangunkan
+// loop, jadi bacaan berikutnya adalah frame TERAKHIR sebelum tidur. Pointer digeser di sudut
+// kosong: satu peristiwa, loop bangun lagi, frame baru mencatat scene yang sudah dilepas.
+for (let i = 0; i < 3; i++) {
+  await page.mouse.move(8 + i * 3, 8);
+  await new Promise((r) => setTimeout(r, 90));
+}
+const lepas = await serap(300);
+const tersisa = ['sf26-ban', 'sf26-pelek', 'sf26-sasis'].filter((n) => ada(lepas.nama, n));
+console.log('sf26 pulang', 'silang=' + pulang.silang, 'tersisa=' + JSON.stringify(tersisa), 'calls=' + lepas.puncak.calls, JSON.stringify(lepas.nama));
+cek('silang kembali ke nol setelah hover lepas', (pulang.silang ?? 1) <= 0.001, true);
+cek('mobil lepas setelah silang habis', tersisa.length, 0);
+cek('panggil-lepas kembali ke anggaran tanpa hover', lepas.puncak.calls, tanpa.puncak.calls);
+
+// Reduce-motion: mobil dipasang LEBIH DULU (hover lagi), lalu aba-aba menyala. Urutan ini
+// penting: kalau aba-aba menyala saat mobil belum pernah ada, "tidak ada mobil" juga akan
+// dihasilkan oleh hover yang tidak pernah sampai.
+await page.mouse.move(titik?.x ?? 8, titik?.y ?? 8);
+await tungguSilang('penuh', titik);
+await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
+await new Promise((r) => setTimeout(r, 1200));
+const tanpaGerakMobil = await bacaMobil();
+console.log('sf26 reduce', 'ada=' + tanpaGerakMobil.ada, 'silang=' + tanpaGerakMobil.silang, JSON.stringify(tanpaGerakMobil.objek));
+cek('reduce-motion menghapus mobil', tanpaGerakMobil.ada, 0);
+// Bacaan 1,2 s di atas bisa saja masih di tengah penghalusan — itu bukan kegagalan, tapi
+// juga bukan bukti. Kartu tidak boleh dibiarkan redup permanen: mobil dilepas, jadi silang
+// harus pulang ke nol dengan sendirinya, tanpa satu pun peristiwa pointer yang
+// membangunkan loop.
+const pulangReduce = await tungguSilang('habis', null);
+console.log('sf26 reduce pulang', 'silang=' + pulangReduce.silang, 'objek=' + JSON.stringify(pulangReduce.objek));
+cek('reduce-motion mengembalikan kartu penuh', (pulangReduce.silang ?? 1) <= 0.001, true);
+await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }]);
+await new Promise((r) => setTimeout(r, 700));
+await page.mouse.move(8, 8);
 
 await browser.close();
 if (galat.length) console.log('pageerror:', galat.slice(0, 5));

@@ -9,6 +9,31 @@ export const RASIO_POTRET = 1.64;
  *  terakhir pada 24fps; lebih dari itu hanya memperbesar loop fragment tanpa terbaca. */
 export const JUMLAH_JEJAK = 12;
 
+/** Silang potret↔mobil: satu angka, dua pemakai. usePanggung menulisnya ke uniform
+ *  kartu (uMobil) sementara AktorSF26 membacanya untuk alpha sendiri — dua penghalusan
+ *  terpisah akan saling tertinggal satu frame dan perpindahan terbaca sebagai dua
+ *  kejadian. Nilainya 0 di luar hover baris /01, jadi kartu diam tidak berubah. */
+export const SILANG_MOBIL = { value: 0 };
+
+/** Iris antar bab, dipakai bersama kartu dan mobil dengan alasan yang sama seperti
+ *  SILANG_MOBIL: keduanya menutup pada ambang yang sama, dan dua angka yang tertinggal
+ *  satu frame akan terlihat sebagai dua sapuan. usePanggung yang menulis nilainya;
+ *  mobil hanya ikut. */
+export const SAPU_IRIS = { value: 0 };
+
+/** Satu hukum potong untuk semua objek panggung: bentuk apa pun dipotong pada kotak
+ *  portal DOM yang sama, jadi tidak ada objek yang pernah menutupi teks. Butuh
+ *  `vClip` (NDC), `uMask`, `uNdcPerPx`, `uWipe`, dan `alpha` dalam scope. */
+export const glslPotongPortal = /* glsl */ `
+    float tepiX = min(vClip.x - uMask.x, uMask.y - vClip.x) / uNdcPerPx.x;
+    float tepiY = min(vClip.y - uMask.z, uMask.w - vClip.y) / uNdcPerPx.y;
+    float jarak = min(tepiX, tepiY);
+    float jari =
+      min((uMask.y - uMask.x) / uNdcPerPx.x, (uMask.w - uMask.z) / uNdcPerPx.y) * 0.5;
+    float tutup = uWipe * (jari + 1.5) - 1.5;
+    alpha *= smoothstep(tutup - 1.5, tutup + 1.5, jarak);
+`;
+
 export const vertexShader = /* glsl */ `
   uniform float uTime;
   uniform vec2 uMouse;
@@ -70,6 +95,8 @@ export const fragmentShader = /* glsl */ `
    *  dari bidang jarak yang sama dengan potongan portal, jadi wipe tidak membawa bentuk
    *  baru ke kartu — ia hanya menarik tepi potong yang sudah ada ke dalam. */
   uniform float uWipe;
+  /** 0 = kartu potret penuh, 1 = kartu menyerahkan tempatnya ke mobil baris /01. */
+  uniform float uMobil;
 
   varying vec2 vUv;
   varying vec3 vNormal;
@@ -197,13 +224,12 @@ export const fragmentShader = /* glsl */ `
     // bingkai yang sama, bukan bentuk baru. Pada uWipe = 0 hasilnya IDENTIK dengan potongan
     // saja: ramp 1.5px di kedua sisi membuat (-3,0) jatuh tepat seperti potongan lunak
     // 3px yang lama, dan kartu diam tidak kehilangan satu pixel pun di tepinya.
-    float tepiX = min(vClip.x - uMask.x, uMask.y - vClip.x) / uNdcPerPx.x;
-    float tepiY = min(vClip.y - uMask.z, uMask.w - vClip.y) / uNdcPerPx.y;
-    float jarak = min(tepiX, tepiY);
-    float jari =
-      min((uMask.y - uMask.x) / uNdcPerPx.x, (uMask.w - uMask.z) / uNdcPerPx.y) * 0.5;
-    float tutup = uWipe * (jari + 1.5) - 1.5;
-    alpha *= smoothstep(tutup - 1.5, tutup + 1.5, jarak);
+    // Potong + wipe ada di glslPotongPortal karena mobil baris /01 memotong pada kotak
+    // yang sama; dua salinan hukum akan segera berbeda perilakunya.
+${glslPotongPortal}
+    // Kartu menyerahkan pixelnya ke mobil, bukan pindah tempat: alpha yang mati menjaga
+    // potongan portal tetap sama dan tidak menyisakan bayangan tepi.
+    alpha *= 1.0 - uMobil;
 
     gl_FragColor = vec4(finalColor, alpha);
   }
@@ -225,6 +251,7 @@ export interface UniformsPanggung {
   uMask: { value: THREE.Vector4 };
   uNdcPerPx: { value: THREE.Vector2 };
   uWipe: { value: number };
+  uMobil: { value: number };
 }
 
 /** Ditambah index signature supaya bisa disuapkan ke prop `uniforms` milik
@@ -251,5 +278,9 @@ export const buatUniformPanggung = (
   uMask: { value: new THREE.Vector4(-1, 1, -1, 1) },
   uNdcPerPx: { value: new THREE.Vector2(2 / 1440, 2 / 900) },
   // Terbuka: kartu penuh sampai panggung memutuskan bahwa ia sedang berpindah bab.
-  uWipe: { value: 0 },
+  // Holder module-level di sini hanya NILAI AWAL: R3F menyalin tiap entri props uniforms ke
+  // objek baru, jadi usePanggung yang menulis tiap frame juga menulis SAPU_IRIS/SILANG_MOBIL
+  // secara eksplisit — mobil (material imperatif) membaca holder itu.
+  uWipe: SAPU_IRIS,
+  uMobil: SILANG_MOBIL,
 });

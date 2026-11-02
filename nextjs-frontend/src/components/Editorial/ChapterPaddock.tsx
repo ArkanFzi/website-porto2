@@ -235,6 +235,46 @@ export const ChapterPaddock: React.FC = () => {
         </div>
 
       </div>
+
+      {/* Kredit model: geometri dan tekstur SF-26 di canvas bukan buatan sendiri, dan
+          lisensinya (CC-BY-4.0) MENUNTUN nama penulis disebut di halaman yang sama
+          dengan karyanya, bukan hanya di berkas. Teks sr-only mengulang atribusi yang
+          sama supaya pembaca layar tidak menerima klaim "CAR #16" tanpa sumber. */}
+      <p className="w-full max-w-[1600px] mx-auto z-20 mb-6 font-mono text-[9px] tracking-[0.18em] uppercase text-white/40">
+        3D model:{" "}
+        <a
+          href="https://sketchfab.com/3d-models/2026-ferrari-sf-26-e5ca6cecdc42449283f4bed27360f2a7"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-white/70 hover:text-white underline decoration-white/30 underline-offset-2"
+        >
+          2026 Ferrari SF-26
+        </a>{" "}
+        by{" "}
+        <a
+          href="https://sketchfab.com/Tyler_Dave"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-white/70 hover:text-white underline decoration-white/30 underline-offset-2"
+        >
+          Dave Love
+        </a>{" "}
+        —{" "}
+        <a
+          href="http://creativecommons.org/licenses/by/4.0/"
+          target="_blank"
+          rel="license noopener noreferrer"
+          className="text-white/70 hover:text-white underline decoration-white/30 underline-offset-2"
+        >
+          CC-BY-4.0
+        </a>
+        <span className="sr-only">
+          {" "}
+          Model mobil balap pada halaman ini adalah karya Dave Love berjudul 2026
+          Ferrari SF-26, dipakai ulang dengan lisensi Creative Commons Attribution 4.0.
+          Nama dan identitas Ferrari bukan bagian dari lisensi tersebut.
+        </span>
+      </p>
     </section>
   );
 };

@@ -16,6 +16,22 @@ import type { PortalKotak } from "./usePortalRegistry";
  *  tanpa bezier supaya tidak ada solver per frame di jalur render. */
 export type Ease = "linear" | "halus" | "keluar";
 
+/** Indeks baris arsip yang memanggil mobil ke panggung (baris "01 — Ferrari Ubuntu
+ *  Architecture" di ChapterArchives). Dua pemakai: usePanggung (kartu mundur) dan
+ *  AktorSF26 (mobil terpasang). Angka ini hidup di satu tempat supaya kartu tidak bisa
+ *  mundur untuk baris yang salah. */
+export const BARIS_FERRARI = 0;
+
+/** Bab yang punya mobil: arsip proyek (chapter-03). */
+export const BAB_ARSIP = 3;
+
+/** Satu aturan, dua pemakai — usePanggung (kartu mundur) dan AktorSF26 (mobil terpasang).
+ *  Duluakan di sini supaya keduanya tidak bisa berbeda putusan: kartu yang memudar untuk
+ *  mobil yang tidak pernah datang adalah layar kosong, dan mobil di luar bab arsip adalah
+ *  objek yang menutupi teks bab lain. */
+export const mobilDipanggil = (bab: number, hovered: number | null, kurangiGerak: boolean) =>
+  !kurangiGerak && hovered === BARIS_FERRARI && bab === BAB_ARSIP;
+
 export interface Kunci {
   bab: number;
   /** Kotak portal dalam pixel CSS, hasil ukur DOM. */
