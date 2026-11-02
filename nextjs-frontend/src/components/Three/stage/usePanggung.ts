@@ -17,7 +17,9 @@ import { bacaTarget, bacaFokusKartu, laporKotakKartu } from "@/lib/putaran";
 
 import type { PortfolioMode } from "@/context/PortfolioModeContext";
 import {
+  buatSalinanKabur,
   buatUniformPanggung,
+  FOKUS_RENTANG,
   RASIO_POTRET,
   SAPU_IRIS,
   SILANG_MOBIL,
@@ -53,6 +55,19 @@ const SAPUAN_INTI = 0.08;
  *  gulir lebar, dan potret yang hilang sepanjang itu terbaca sebagai gangguan, bukan
  *  sebagai perpindahan. */
 const SAPUAN_RAMPA = 0.18;
+
+/** Plafon kekuatan kabur. Bukan 1: kartu yang kehilangan seluruh detaknya terbaca
+ *  sebagai gambar yang salah render, bukan sebagai lensa. Sisa detail masih membuat
+ *  potret dikenali sebagai potret. */
+const KABUR_PLAFON = 0.6;
+
+/** Batas atas jarak kartu ke bidang fokus, dalam PECAHAN rentang fokus, di bawah mana
+ *  efeknya ditutup seluruhnya supaya sembilan tap tidak dibayar untuk kabur yang lebih
+ *  halus dari satu pixel. 0,06 rentang = 0,03 satuan dunia. Angka ini juga harus berada
+ *  di atas sisa pegas sikap: kartu yang parkir tertinggal ±0,015 satuan dari bidang
+ *  fokusnya (lurp asimtotik, dan loop demand tidur 4 detik sebelum benar-benar sampai),
+ *  jadi ambang yang lebih kecil akan menyalakan kabur pada kartu yang diam. */
+const KABUR_AMBANG = 0.06;
 
 /** Bentuk window.__panggung — dibaca verifier, tidak pernah dipakai kode produksi. */
 export interface PembacaanPanggung {
@@ -94,9 +109,22 @@ export interface PembacaanPanggung {
    *  angka yang sama untuk alpha-nya, jadi verifier membandingkan dua objek dari satu
    *  sumber. */
   mobil: number;
+  /** Kekaburan terbesar yang boleh terlihat frame ini: jarak pusat kartu ke bidang fokus
+   *  ditambah tepi yang tersohong oleh sudutnya, dikali plafon yang sedang aktif. Nol
+   *  berarti shader sama sekali tidak mengambil tap kabur. */
+  kabur: number;
+  /** Dimensi salinan yang jadi sumber kabur: [lebar, tinggi, lebarSumber, tinggiSumber].
+   *  Keempatnya nol kalau salinannya tidak berhasil dibangun, dan kabur akan ikut nol. */
+  kaburSalinan: [number, number, number, number];
 }
 
 const bundar = (n: number) => Math.round(n * 1e4) / 1e4;
+
+/** Dimensi sumber tekstur dalam pixel; tipenya {} di three, jadi dibaca lewat cast. */
+const ukuranTekstur = (t: THREE.Texture | null): [number, number] => {
+  const gambar = t?.image as { width?: number; height?: number } | undefined;
+  return [gambar?.width ?? 0, gambar?.height ?? 0];
+};
 
 /** Bacaan yang hanya ada untuk verifier; sisanya adalah sikap kartu yang juga dibaca
  *  shader. Dikumpulkan dalam satu objek supaya daftar posisi tidak terus memanjang. */
@@ -110,6 +138,8 @@ interface BacaanTambahan {
   kamera: [number, number];
   wipe: number;
   mobil: number;
+  kabur: number;
+  kaburSalinan: [number, number, number, number];
 }
 
 const tulisPanggungDebug = (
@@ -120,7 +150,19 @@ const tulisPanggungDebug = (
   kotak: PortalKotak,
   tambahan: BacaanTambahan
 ) => {
-  const { putar, jejak, balik, persona, kursor, dolly, kamera, wipe, mobil } = tambahan;
+  const {
+    putar,
+    jejak,
+    balik,
+    persona,
+    kursor,
+    dolly,
+    kamera,
+    wipe,
+    mobil,
+    kabur,
+    kaburSalinan,
+  } = tambahan;
   const jendela = window as unknown as { __panggung?: PembacaanPanggung };
   jendela.__panggung = {
     p: bundar(p),
@@ -145,6 +187,8 @@ const tulisPanggungDebug = (
     kamera: kamera.map(bundar) as [number, number],
     wipe: bundar(wipe),
     mobil: bundar(mobil),
+    kabur: bundar(kabur),
+    kaburSalinan,
   };
 };
 
@@ -174,7 +218,33 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
     bacaKurangiGerak,
     bacaKurangiGerakSaatSSR
   );
-  const uniforms = useMemo(() => buatUniformPanggung(texture), [texture]);
+  /** Salinan ¼-res yang menjadi sumber kabur, dibangun dalam memo yang sama dengan
+   *  uniform-nya supaya serah-terimanya terjadi sekali dan tidak perlu menulis ulang
+   *  uniform di luar loop render. Null berarti salinan tidak bisa dibangun (gambar
+   *  belum siap); plafon kabur ikut nol sehingga kartu tetap tajam dan jujur tentang
+   *  alasannya. */
+  const { uniforms, salinanKabur, salinanUkuran } = useMemo(() => {
+    const u = buatUniformPanggung(texture);
+    const salinan = buatSalinanKabur(texture);
+    if (salinan) u.uKaburPeta.value = salinan;
+    const [ls, ts] = ukuranTekstur(salinan);
+    const [ld, td] = ukuranTekstur(texture);
+    // [lebarSalinan, tinggiSalinan, lebarSumber, tinggiSumber] — bahan gerbang verifier
+    // bahwa yang dikaburkan memang seperempat potret, bukan salinan seukuran sumber.
+    return {
+      uniforms: u,
+      salinanKabur: salinan,
+      salinanUkuran: [salinan ? ls : 0, salinan ? ts : 0, ld, td] as [
+        number,
+        number,
+        number,
+        number
+      ],
+    };
+  }, [texture]);
+
+  useEffect(() => () => salinanKabur?.dispose(), [salinanKabur]);
+
   /** Simpul tipografi yang boleh bergeser bersama kartu (lihat useParalaksTipografi). */
   const tipografi = useParalaksTipografi();
 
@@ -445,6 +515,35 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
     pusing.current.y += (perintah.y - pusing.current.y) * 0.15;
     meshRef.current.rotation.y = dasar.current.rotY + pusing.current.x + sudutBalik;
     meshRef.current.rotation.x = dasar.current.rotX + pusing.current.y;
+
+    // ── FOKUS ──
+    // Bidang fokus = kedalaman tempat kartu ini seharusnya duduk (k.pas), bukan ambang
+    // yang dikarang per bab. Yang keluar fokus hanyalah bagian yang benar-benar berpindah
+    // kedalaman: tepi kartu saat ia miring di tengah perpindahan atau saat diseret, dan
+    // seluruh kartu pada bab penutup yang memang mundur 2,1 satuan.
+    //
+    // Ditulis SETELAH lurp sikap dan rotasi supaya gerbangnya menilai geometri frame ini,
+    // bukan frame kemarin. Batasnya adalah jarak TERJAUH kartu ke bidang fokus dalam pecahan
+    // rentang: pusat yang sudah dilurp, ditambah tepi yang tersohong oleh sudut yang benar-
+    // benar terpasang pada mesh. Di bawah ambang uKabur = 0 dan shader tidak mengambil
+    // sembilan tap itu sama sekali — bukan hanya "tidak terpakai". Kartu yang diam di
+    // kotaknya tertinggal 0,015 satuan dari bidang fokusnya (lurp asimtotik + loop yang
+    // tidur 4 detik), jadi ambangnya harus berada di atas sisa itu supaya efek tidak
+    // menyala untuk kabur yang lebih halus dari satu pixel.
+    const pusat = Math.abs(meshRef.current.position.z - k.pas) / FOKUS_RENTANG;
+    const tepi = Math.max(
+      ((skala * RASIO_POTRET * 0.5) / FOKUS_RENTANG) *
+        Math.abs(Math.sin(meshRef.current.rotation.y)),
+      ((skala * 0.5) / FOKUS_RENTANG) * Math.abs(Math.sin(meshRef.current.rotation.x))
+    );
+    mat.uniforms.uFokus.value = camera.position.z - k.pas;
+    mat.uniforms.uKabur.value =
+      pusat + tepi < KABUR_AMBANG || kurangiGerak || !salinanKabur ? 0 : KABUR_PLAFON;
+    // Kekaburan TERBESAR yang boleh terlihat frame ini: pusat kartu plus tepi terjauh,
+    // dibatasi plafon yang sedang aktif. Batas atas yang sama yang dipakai gerbang di atas,
+    // jadi verifier membaca angka yang sama dengan yang memutuskan shader.
+    const kaburTertinggi =
+      Math.min(pusat + tepi, 1) * (mat.uniforms.uKabur.value as number);
     // Loop "demand" mati 4 detik setelah halaman diam. Tanpa meminta frame berikut
     // sendiri, pegas kembali, langkah panah, flip MODE, dan silang wajah berhenti di
     // tengah jalan — pada reduce-motion silang wajah adalah satu-satunya yang tersisa.
@@ -568,8 +667,9 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
         dolly,
         kamera: [lensa?.fov ?? fovDasar.current, camera.position.z],
         wipe,
+        kabur: kaburTertinggi,
+        kaburSalinan: salinanUkuran,
       });
-
     }
   });
 

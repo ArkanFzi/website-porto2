@@ -910,6 +910,96 @@ await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-pr
 await new Promise((r) => setTimeout(r, 700));
 await page.mouse.move(8, 8);
 
+// ── 11. Kabur karena jarak (ide 10): potret tajam + salinan ¼-res, tanpa pass pasca-proses ──
+// Klaimnya empat angka yang bisa dibantah, bukan "kelihatan blur": salinan yang dipakai
+// memang seperempat sumber, kartu yang diam di rumah tidak mengambil satu tap pun, tepi yang
+// tersohong di tengah perpindahan mengambil SEBAGIAN, dan kartu penutup yang mundur 2,1 satuan
+// mengambil plafonnya. Semuanya dibaca dari __panggung — yang hanya ditulis pada frame yang
+// benar-benar digambar, jadi setiap bacaan didahului lompatan 1 px.
+const PLAFON_KABUR = 0.6; // harus sama dengan KABUR_PLAFON di usePanggung.ts
+const FOKUS_RENTANG = 0.5; // harus sama dengan FOKUS_RENTANG di chiaroscuroMaterial.ts
+const AMBANG_KABUR = 0.06; // harus sama dengan KABUR_AMBANG di usePanggung.ts
+
+const bacaFokus = () =>
+  page.evaluate(() => {
+    const p = window.__panggung;
+    return p && { kabur: p.kabur, salinan: p.kaburSalinan, z: p.z, rotY: p.rotY, bab: p.babKe };
+  });
+
+/** Bacaan diam yang benar-benar diam. Dua hal diperlukan dan keduanya pernah membuat gerbang
+ *  ini salah menuduh: (1) pointer di TENGAH layar — geyang pointer menohong tepi kartu sampai
+ *  ±12°, dan kartu yang tersohong memang keluar fokus, jadi membaca di sudut layar akan
+ *  menuntut nol pada keadaan yang bukan "kartu di rumahnya"; (2) waktu pulang yang panjang —
+ *  lurp posisi 0,08 per frame butuh ±6 s untuk menempuh 2,5 satuan, dan frame terakhir sebelum
+ *  loop tidur adalah frame yang dilaporkan. Karena itu z ikut dibaca dan ditagih dekat nol. */
+const bacaDiam = async (y) => {
+  await page.mouse.move(720, 450);
+  await diamDi(y);
+  await new Promise((r) => setTimeout(r, 5000));
+  const s = await sensusDiam();
+  return { f: await bacaFokus(), s };
+};
+
+const maksY = await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight);
+const diPenutup = await bacaDiam(Math.round(maksY * 0.995));
+console.log('dof penutup', JSON.stringify(diPenutup.f), JSON.stringify(diPenutup.s.nama));
+cek(
+  'sumber kabur adalah salinan seperempat potret',
+  diPenutup.f?.salinan[0] === Math.floor(diPenutup.f.salinan[2] / 4) &&
+    diPenutup.f?.salinan[1] === Math.floor(diPenutup.f.salinan[3] / 4) &&
+    (diPenutup.f?.salinan[0] ?? 0) > 0,
+  true
+);
+cek('salinan bukan sumbernya sendiri', (diPenutup.f?.salinan[0] ?? 0) < (diPenutup.f?.salinan[2] ?? 0), true);
+cek('kartu yang mundur penuh kabur sampai plafon', diPenutup.f?.kabur, PLAFON_KABUR);
+cek(
+  'kabur tidak menambah draw call',
+  diPenutup.s.terakhir ? diPenutup.s.terakhir.calls === diPenutup.s.terakhir.objek.length : null,
+  true
+);
+
+const diTengah = await bacaDiam(Math.round(maksY * 0.3));
+console.log('dof tengah', JSON.stringify(diTengah.f));
+cek('bacaan tengah diambil setelah kartu mendarat', Math.abs(diTengah.f?.z ?? 1) <= 0.01, true);
+cek('kartu yang diam di bab tengah tidak kabur', diTengah.f?.kabur, 0);
+
+// Bab 2 dan 3 duduk pada kedalaman yang sama, jadi di antara keduanya pusat kartu tidak
+// pernah berpindah dari bidang fokusnya: satu-satunya yang bisa menggerakkan angka ini adalah
+// tepi yang tersohong oleh kemiringan koreografi. Kalau efek ini konstanta yang dikarang per
+// bab, pembacaan di bawah akan tetap nol — dan plafon akan berarti ia tidak membaca geometri.
+let sebagian = null;
+let liar = 0;
+await page.mouse.move(720, 450);
+for (let i = 0; i <= 8; i++) {
+  const f = 0.46 + i * 0.02;
+  await diamDi(Math.round(maksY * f));
+  await sensusDiam();
+  const b = await bacaFokus();
+  if (b && b.kabur > 0 && b.kabur < PLAFON_KABUR && Math.abs(b.rotY) > 0.01) sebagian = sebagian ?? b;
+  if (b && b.kabur > PLAFON_KABUR + 1e-9) liar++;
+}
+console.log('dof perpindahan', JSON.stringify(sebagian), 'lewatPlafon=' + liar);
+cek('kemiringan di tengah perpindahan mengaburkan sebagian tepi', !!sebagian, true);
+cek('kabur tidak pernah melewati plafonnya', liar, 0);
+
+// Reduce-motion: tidak ada perpindahan yang boleh dilihat, jadi kabur — yang seluruhnya
+// datang dari jarak — ikut mati meski kartunya berdiri di bab penutup.
+await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
+const diReduce = await bacaDiam(Math.round(maksY * 0.995));
+// Gerbang di bawah bisa menang karena alasan yang salah: kalau kartu reduce-motion diam tepat
+// di bidang fokusnya, "kabur = 0" akan dihasilkan geometri, bukan oleh aba-aba. Jarak bacaan
+// ini ke fokus kunci bab penutup (data-pas, angka yang dibaca panggung sendiri) jadi ditagih
+// lebih dulu — di atas ambang, jadi nol yang dilaporkan memang keputusan, bukan kebetulan.
+const pasPenutup = await page.evaluate(() => Number(document.querySelector('[data-portal="4"]')?.dataset.pas));
+console.log('dof reduce-motion', JSON.stringify(diReduce.f), 'pas=' + pasPenutup);
+cek(
+  'reduce-motion masih jauh dari bidang fokusnya (gerbang berikutnya tidak kosong)',
+  Math.abs((diReduce.f?.z ?? 0) - pasPenutup) / FOKUS_RENTANG > AMBANG_KABUR,
+  true
+);
+cek('reduce-motion mematikan kabur', diReduce.f?.kabur, 0);
+await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }]);
+
 await browser.close();
 if (galat.length) console.log('pageerror:', galat.slice(0, 5));
 console.log('foto di', OUT);

@@ -34,6 +34,14 @@ export const glslPotongPortal = /* glsl */ `
     alpha *= smoothstep(tutup - 1.5, tutup + 1.5, jarak);
 `;
 
+/** Jarak dari bidang fokus, dalam satuan dunia, yang sudah berarti kabur penuh. Separuh
+ *  satuan dipilih dari geometri yang ada, bukan dari rasa: kartu penutup mundur 2,1 satuan
+ *  (melewati ini jauh) sementara tepi kartu yang miring 12 derajat bergeser ±0,25 satuan
+ *  (kabur separuh plafon di satu sisi, tetap tajam di sisi lainnya). Disisipkan ke shader
+ *  sebagai angka — GLSL tidak mengenal konstanta TypeScript — dan dibaca lagi oleh panggung
+ *  saat melaporkan kekuatan kabur, jadi keduanya tidak bisa lepas. */
+export const FOKUS_RENTANG = 0.5;
+
 export const vertexShader = /* glsl */ `
   uniform float uTime;
   uniform vec2 uMouse;
@@ -97,11 +105,36 @@ export const fragmentShader = /* glsl */ `
   uniform float uWipe;
   /** 0 = kartu potret penuh, 1 = kartu menyerahkan tempatnya ke mobil baris /01. */
   uniform float uMobil;
+  /** Depth of field palsu, tanpa pass pasca-proses: yang dikaburkan adalah potret itu
+   *  sendiri lewat salinan ¼-res (uKaburPeta) yang dibangun sekali di CPU. uFokus =
+   *  jarak bidang fokus dari kamera dalam satuan dunia, uKabur = plafon efeknya
+   *  (0 = mati). Kuat kabur per pixel datang dari jarak pixel itu ke bidang fokus —
+   *  geometri yang sudah dipakai kartu, bukan ambang yang dikarang di shader. */
+  uniform sampler2D uKaburPeta;
+  uniform float uFokus;
+  uniform float uKabur;
 
   varying vec2 vUv;
   varying vec3 vNormal;
   varying vec3 vViewPosition;
   varying vec2 vClip;
+
+  /** Sembilan tap pada salinan ¼-res: titik tengah plus wacana Poisson yang sudah
+   *  dikenal. Radius nol = tap tumpang tindih, jadi jalur tajam tidak pernah membayar
+   *  lebih dari satu pengambilan ketika uKabur = 0. */
+  vec3 kaburkan(vec2 uv, float ren) {
+    vec2 sk = ren * vec2(1.0, ${(1 / RASIO_POTRET).toFixed(4)}); // 1 / rasio kartu 1:1,64
+    vec3 h = texture2D(uKaburPeta, uv).rgb;
+    h += texture2D(uKaburPeta, uv + sk * vec2(-0.326, -0.406)).rgb;
+    h += texture2D(uKaburPeta, uv + sk * vec2(-0.840, -0.074)).rgb;
+    h += texture2D(uKaburPeta, uv + sk * vec2(-0.696,  0.457)).rgb;
+    h += texture2D(uKaburPeta, uv + sk * vec2(-0.203,  0.626)).rgb;
+    h += texture2D(uKaburPeta, uv + sk * vec2( 0.967, -0.408)).rgb;
+    h += texture2D(uKaburPeta, uv + sk * vec2( 0.447, -0.293)).rgb;
+    h += texture2D(uKaburPeta, uv + sk * vec2( 0.720,  0.626)).rgb;
+    h += texture2D(uKaburPeta, uv + sk * vec2( 0.072,  0.260)).rgb;
+    return h / 9.0;
+  }
 
   void main() {
     vec2 uv = vUv;
@@ -115,6 +148,17 @@ export const fragmentShader = /* glsl */ `
     float g = texture2D(uTexture, uv).g;
     float b = texture2D(uTexture, uv - dir * aberration).b;
     vec3 baseColor = vec3(r, g, b);
+
+    // ── KABUR KARENA JARAK, BUKAN KARENA BAB ──
+    // vViewPosition.z adalah jarak pixel ini ke kamera. Kartu yang diam duduk tepat di
+    // bidang fokusnya sendiri sehingga selisihnya nol dan jalur ini tidak mengambil apa
+    // pun tambahan; yang bergerak hanyalah pixel yang benar-benar bergeser dari bidang
+    // itu — sudut yang miring saat diseret, dan kartu yang mundur pada bab penutup.
+    if (uKabur > 0.001) {
+      float geser = abs(vViewPosition.z - uFokus);
+      float kuat = min(geser / ${FOKUS_RENTANG.toFixed(2)}, 1.0) * uKabur;
+      if (kuat > 0.002) baseColor = mix(baseColor, kaburkan(uv, kuat * 0.018), kuat);
+    }
 
     // Precision Leica Monochrom luminance calculation (Clean, natural black-and-white base)
     float lum = dot(baseColor, vec3(0.299, 0.587, 0.114));
@@ -211,10 +255,6 @@ export const fragmentShader = /* glsl */ `
     // Fade out in Chapter 4
     float alpha = cardAlpha * (1.0 - ch4Factor * 0.85);
 
-    // ── POTONG PORTAL ──
-    // Kartu boleh lebih lebar dari kotaknya (parallax pointer, gelombang, miring);
-    // sisanya dipotong pada batas kotak DOM bab, supaya kartu tidak pernah menutupi
-    // teks. Tepi dibuat lunak ~3px agar tidak terlihat sebagai garis bergerigi.
     // ── POTONG PORTAL + WIPE ANTAR BAB ──
     // Satu bidang jarak, satu ambang. jarak = jarak bertanda ke tepi kotak portal dalam
     // pixel: positif di dalam (sampai setengah dimensi terkecil di tengah), nol di tepi,
@@ -252,7 +292,46 @@ export interface UniformsPanggung {
   uNdcPerPx: { value: THREE.Vector2 };
   uWipe: { value: number };
   uMobil: { value: number };
+  uKaburPeta: { value: THREE.Texture };
+  uFokus: { value: number };
+  uKabur: { value: number };
 }
+
+/** Seperempat dimensi potret. Sumber yang benar-benar dimuat ukurannya 893x1464 (bukan
+ *  1200x2150 seperti nama berkasnya menyiratkan), jadi salinannya 223x366 — ±0,3 MB RGBA. */
+export const KABUR_PEMBAGIAN = 4;
+
+/** Guratan pada salinan, dalam pixel SALINAN. Dua pixel salinan = delapan pixel sumber,
+ *  dan shader masih menambahkan tap di atasnya, jadi total sapuannya terbaca sebagai
+ *  lensa yang tidak fokus, bukan sebagai gambar yang di-bururkan. */
+const KABUR_GURATAN = 2;
+
+/** Salinan ¼-res yang jadi sumber kabur. Dibangun sekali di CPU saat tekstur siap:
+ *  tidak ada render target, tidak ada pass per frame, tidak ada EffectComposer.
+ *  Mengembalikan null kalau sumbernya belum bisa digambar (SSR atau gambar rusak) —
+ *  pemanggilnya lalu cukup membiarkan uKabur pada nol. */
+export const buatSalinanKabur = (texture: THREE.Texture): THREE.CanvasTexture | null => {
+  const sumber = texture.image as { width?: number; height?: number } | undefined;
+  const sw = sumber?.width ?? 0;
+  const sh = sumber?.height ?? 0;
+  if (!sw || !sh || typeof document === "undefined") return null;
+  const lebar = Math.max(1, Math.round(sw / KABUR_PEMBAGIAN));
+  const tinggi = Math.max(1, Math.round(sh / KABUR_PEMBAGIAN));
+  const kanvas = document.createElement("canvas");
+  kanvas.width = lebar;
+  kanvas.height = tinggi;
+  const ctx = kanvas.getContext("2d");
+  if (!ctx) return null;
+  // ctx.filter belum ada di semua mesin; mengecilkan saja sudah merata-ratakan
+  // KABUR_PEMBAGIAN² pixel sumber, dan tap shader di atasnya tetap bekerja.
+  const bisaGurat = ctx as CanvasRenderingContext2D & { filter?: string };
+  if ("filter" in bisaGurat) bisaGurat.filter = `blur(${KABUR_GURATAN}px)`;
+  ctx.drawImage(texture.image as CanvasImageSource, 0, 0, sw, sh, 0, 0, lebar, tinggi);
+  const peta = new THREE.CanvasTexture(kanvas);
+  peta.colorSpace = texture.colorSpace;
+  peta.needsUpdate = true;
+  return peta;
+};
 
 /** Ditambah index signature supaya bisa disuapkan ke prop `uniforms` milik
  *  <shaderMaterial>, yang tipenya record string -> IUniform. */
@@ -283,4 +362,10 @@ export const buatUniformPanggung = (
   // secara eksplisit — mobil (material imperatif) membaca holder itu.
   uWipe: SAPU_IRIS,
   uMobil: SILANG_MOBIL,
+  // Sumber kabur sementara potret tajam: selama uKabur = 0 cabang di shader tidak
+  // pernah mengambil bagian ini, jadi salinan yang gagal dibangun tidak berbahaya.
+  uKaburPeta: { value: texture },
+  // Kamera duduk di z = 5 dan kartu diam di z = 0, jadi lima satuan adalah fokus awal.
+  uFokus: { value: 5 },
+  uKabur: { value: 0 },
 });
