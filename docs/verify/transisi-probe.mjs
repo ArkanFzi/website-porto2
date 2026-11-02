@@ -188,7 +188,16 @@ const lewatiBand = async (n) => {
     // selesai dan sisanya adalah ruang diam di dalam bab tujuan.
     if (b.wipe <= 0.05) break;
   }
-  const akhir = await tungguSikap();
+  // Sapuan membuka kembali jauh sebelum pita selesai: pada wipe 0,05 kartu masih di
+  // tengah perjalanan (t 0,83) dan kotaknya adalah kotak bab tujuan yang belum ia tempati.
+  // "Setelah mendarat" jadi wajib diukur pada keadaan babDari sudah pindah — tanpa itu yang
+  // merah adalah gerbangnya, sementara kartunya memang belum sampai.
+  let akhir = await tungguSikap();
+  for (let i = 0; i < batas * 3 && akhir && akhir.babDari < n + 1; i++) {
+    await page.mouse.wheel({ deltaY: langkah });
+    await diamkan(90);
+    akhir = await tungguSikap();
+  }
   const mendarat = await areaKartu();
   const semua = [...naik, tenang, ...turun].filter(Boolean);
   return {
@@ -408,6 +417,9 @@ cek(
   true
 );
 cek('setelah mendarat kartu terbuka kembali', sapu.akhir.wipe <= 0.02 && sapu.mendarat.pecah >= 0.5, true);
+// Prasyarat gerbang di atas ikut ditagih, bukan diasumsikan: kalau pitanya belum selesai,
+// angka 0,5 itu mengukur kartu yang masih terbang.
+cek('pita selesai sebelum keadaan mendarat diukur', (sapu.akhir?.babDari ?? 0) >= 3, true);
 
 // ── 5 · prefers-reduced-motion: kamera tidak boleh didolly, kartu tidak disapu ──
 await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
