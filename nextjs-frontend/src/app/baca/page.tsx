@@ -3,8 +3,11 @@ import Link from "next/link";
 import { ambilMetrikGitHub, daftarReposGitHub, type MetrikGitHub, type RepoGitHub } from "@/lib/server/github";
 import { GITHUB_PROFILE, GITHUB_USERNAME } from "@/data/github";
 import {
+  COMMIT_LEWAT_PR,
+  COMMIT_NON_MERGE,
   DICATAT,
   KEPALA_COMMIT,
+  PENULIS,
   PER_TIPE,
   RENTANG_COMMIT,
   RIWAYAT_COMMIT,
@@ -33,6 +36,49 @@ export const metadata: Metadata = {
 };
 
 const ANGKA = "font-mono text-micro tabular-nums";
+
+/** Isi workbench: apa yang sedang dikerjakan repositori ini, dan pekerjaan seperti apa yang
+ *  dibuka untuk kolaborasi. Butirnya menunjuk berkas yang bisa dibaca sendiri supaya setiap
+ *  klaim bisa dibantah, dan tidak ada angka yang diketik tangan di sini — yang berubah-ubah
+ *  datang dari modul snapshot. */
+const SEDANG_DIKERJAKAN = [
+  {
+    judul: "One canvas, kept under its budget",
+    tubuh:
+      "The whole editorial page is drawn by a single WebGL canvas. A dev-only meter writes the frame's draw calls, triangles and live allocations, and the verifier fails the page when that canvas is still painting seven seconds after the last scroll.",
+    bukti: ["docs/verify/drawcall-probe.mjs", "src/components/Three/stage/PengukurRender.tsx"],
+  },
+  {
+    judul: "Pages that report their own condition",
+    tubuh:
+      "The pit wall subscribes to the same store the HUD reads and polls it every twenty seconds. A hop with no number is printed as a name and an em-dash, never as a guess, and the whole page still stands when the endpoint stops answering.",
+    bukti: ["src/lib/bacaTelemetri.ts", "src/app/arsip/ArsipHidup.tsx"],
+  },
+  {
+    judul: "Verifiers that read pixels instead of assertions",
+    tubuh:
+      "The probes drive a headless browser over the running page: they fail when a printed number has no source response behind it, when a link is covered by another element, or when a card lands outside the box it was parked in.",
+    bukti: ["docs/verify/halaman-probe.mjs", "docs/verify/interaksi-probe.mjs"],
+  },
+];
+
+const DIBUKA_UNTUK = [
+  {
+    judul: "Front ends with a number attached",
+    tubuh:
+      "React and Next.js work that has a performance figure written down before it ships — a WebGL layer, a frame budget, a page that still has to be readable at sixty hertz on hardware that is not a development machine.",
+  },
+  {
+    judul: "Making a product measurable",
+    tubuh:
+      "Telemetry, budgets in the pipeline, dashboards that show their own gaps. The useful part is rarely the chart; it is deciding which number the chart is allowed to claim.",
+  },
+  {
+    judul: "Editorial motion that carries information",
+    tubuh:
+      "Scroll choreography, parallax and transitions that report state — where a chapter is, how far a card has landed, how late the last frame was — rather than decorating a page that already says nothing.",
+  },
+];
 
 function Bintang({ n }: { n: number }) {
   return <span className={`${ANGKA} text-rosso`}>{n}</span>;
@@ -303,6 +349,110 @@ export default async function Baca() {
           </div>
         </section>
 
+        {/* ── WORKBENCH ── */}
+        <section className="mt-12" data-baca-workbench aria-labelledby="workbench-judul">
+          <h2 id="workbench-judul" className="font-mono text-tag tracking-[0.24em] uppercase text-obsidian mb-5">
+            WORKBENCH — IN FLIGHT AND OPEN
+          </h2>
+          <div className="grid lg:grid-cols-2 gap-3">
+            <div className="flex flex-col gap-3">
+              <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-rosso">
+                What this repository is busy with
+              </span>
+              {SEDANG_DIKERJAKAN.map((b) => (
+                <article key={b.judul} className="px-4 py-5 swiss-border bg-paper/60">
+                  <h3 className="font-serif text-item leading-none text-obsidian">{b.judul}</h3>
+                  <p className="font-sans text-body leading-snug text-obsidian/80 mt-2">{b.tubuh}</p>
+                  <ul className="mt-3 flex flex-col gap-1">
+                    {b.bukti.map((jalur) => (
+                      <li key={jalur} className="font-mono text-[10px] tracking-[0.1em] text-titanium">
+                        {jalur}
+                      </li>
+                    ))}
+                  </ul>
+                </article>
+              ))}
+            </div>
+            <div className="flex flex-col gap-3">
+              <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-rosso">
+                Open for collaboration
+              </span>
+              {DIBUKA_UNTUK.map((b) => (
+                <article key={b.judul} className="px-4 py-5 swiss-border bg-stone/30">
+                  <h3 className="font-serif text-item leading-none text-obsidian">{b.judul}</h3>
+                  <p className="font-sans text-body leading-snug text-obsidian/80 mt-2">{b.tubuh}</p>
+                </article>
+              ))}
+              <p className="font-mono text-[10px] leading-relaxed tracking-[0.06em] text-titanium">
+                The dispatch console on the front page is the way in; it writes to the same inbox this
+                repository administers.
+              </p>
+            </div>
+          </div>
+
+          <h3 className="font-mono text-tag tracking-[0.24em] uppercase text-obsidian mt-12 mb-4">
+            WHO WROTE THIS REPOSITORY
+          </h3>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6" aria-label="Authorship figures from the same snapshot">
+            <Metrik
+              label="COMMITS, NO MERGES"
+              nilai={String(COMMIT_NON_MERGE)}
+              keterangan="Rev-list of HEAD with merges dropped — the rows below add up to exactly this."
+            />
+            <Metrik
+              label="LANDED VIA PR"
+              nilai={String(COMMIT_LEWAT_PR)}
+              keterangan="Subjects ending with a pull-request reference such as (#50) — a solo repository run through the same review door."
+            />
+            <Metrik
+              label="GIT IDENTITIES"
+              nilai={String(PENULIS.length)}
+              keterangan="Name+address pairs git reports, including the bot. Identities are configuration, not people."
+            />
+            <Metrik
+              label="HUMAN ADDRESSES"
+              nilai={String(new Set(PENULIS.filter((p) => !p.bot).map((p) => p.email)).size)}
+              keterangan="Distinct addresses behind the non-bot identities. An address is not a person: one author with two machines appears twice here."
+            />
+          </div>
+          <div className="overflow-x-auto" data-baca-penulis>
+            <table className="w-full border-collapse text-left">
+              <caption className="sr-only">
+                Every git identity that authored a non-merge commit in this repository, with its commit
+                count. A bot account is listed as a bot rather than folded into the human total.
+              </caption>
+              <thead>
+                <tr className="swiss-border-b text-titanium">
+                  <th scope="col" className="py-2 pr-4 font-mono text-[10px] uppercase tracking-[0.18em] font-normal text-left whitespace-nowrap">Identity</th>
+                  <th scope="col" className="py-2 pr-4 font-mono text-[10px] uppercase tracking-[0.18em] font-normal text-left whitespace-nowrap">Address</th>
+                  <th scope="col" className="py-2 pr-4 font-mono text-[10px] uppercase tracking-[0.18em] font-normal text-right whitespace-nowrap">Commits</th>
+                  <th scope="col" className="py-2 font-mono text-[10px] uppercase tracking-[0.18em] font-normal text-right whitespace-nowrap">Kind</th>
+                </tr>
+              </thead>
+              <tbody>
+                {PENULIS.map((p) => (
+                  <tr key={`${p.nama}${p.email}`} className="swiss-border-b align-top hover:bg-stone/40 transition-colors">
+                    <td className="py-3 pr-4">
+                      <span className="font-serif text-body text-obsidian">{p.nama}</span>
+                    </td>
+                    <td className="py-3 pr-4">
+                      <span className="font-mono text-[10px] text-titanium">{p.email}</span>
+                    </td>
+                    <td className="py-3 pr-4 text-right whitespace-nowrap">
+                      <span className={ANGKA}>{p.jumlah}</span>
+                    </td>
+                    <td className="py-3 text-right whitespace-nowrap">
+                      <span className="font-mono text-[10px] tracking-[0.16em] uppercase text-obsidian">
+                        {p.bot ? "bot" : "human"}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
         {/* ── CARA BACA ── */}
         <section className="mt-12 px-5 py-6 swiss-border bg-stone/30" aria-labelledby="cara-baca">
           <h2 id="cara-baca" className="font-mono text-tag tracking-[0.24em] uppercase text-rosso mb-4">
@@ -339,6 +489,11 @@ export default async function Baca() {
               <code className="text-obsidian">git log</code> taken on the machine that writes this
               snapshot. Those dates are real because git supplies them; the repository table above
               still shows none, because GitHub gave this page no date to show.
+            </li>
+            <li>
+              WORKBENCH — the prose names files you can open, and every figure beside it is counted
+              from the same git snapshot as the trail. Identities in that table are git configuration,
+              not people: several rows can be one person who changed the name in a config file.
             </li>
           </ul>
         </section>

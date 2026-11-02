@@ -63,10 +63,35 @@ const entri = mentah.slice(0, MAKS_ENTRI).map((m) => {
   return { commit: m.commit, tanggal: m.tanggal, tipe, scope, ringkasan };
 });
 
+// Siapa yang menulis riwayat ini, dan berapa yang lewat pull request. Dipakai blok "author"
+// di /baca, jadi angkanya tidak boleh diketik tangan: identitas git berubah tiap kali seseorang
+// mengubah nama di konfigurasinya.
+const nonMerge = Number(git('rev-list', '--count', '--no-merges', 'HEAD'));
+const lewatPr = mentah.filter((m) => !/^Merge /.test(m.subject) && /\(#[0-9]+\)$/.test(m.subject)).length;
+const penulis = git('shortlog', '-sn', '-e', '--no-merges', 'HEAD')
+  .split('\n')
+  .filter(Boolean)
+  .map((baris) => {
+    const cocok = baris.match(/^\s*(\d+)\t(.*)\s<(.*)>\s*$/);
+    if (!cocok) return null;
+    const [, jumlah, nama, email] = cocok;
+    return { nama: nama.trim(), email, jumlah: Number(jumlah), bot: nama.trim().endsWith('[bot]') };
+  })
+  .filter((p) => p !== null)
+  .sort((a, b) => b.jumlah - a.jumlah || a.nama.localeCompare(b.nama));
+const jumlahPenulis = penulis.reduce((a, p) => a + p.jumlah, 0);
+if (jumlahPenulis !== nonMerge) {
+  console.error(`penulis tidak menutup: ${jumlahPenulis} dari ${nonMerge} commit tanpa merge terhitung`);
+  process.exit(1);
+}
+
 const snapshot = {
   dicatat: new Date().toISOString(),
   kepala: mentah[0].commit,
   totalCommit: total,
+  nonMerge,
+  lewatPr,
+  penulis,
   rentang: { awal: mentah[mentah.length - 1].tanggal, akhir: mentah[0].tanggal },
   perTipe,
   entri,
@@ -108,6 +133,23 @@ const isian = [
   '/** Distribusi tipe atas SELURUH riwayat. Jumlahnya wajib sama dengan TOTAL_COMMIT. */',
   `export const PER_TIPE = ${JSON.stringify(snapshot.perTipe, null, 2)} as const;`,
   '',
+  '/** Commit tanpa merge di HEAD. Jumlah PENULIS wajib sama dengan angka ini. */',
+  `export const COMMIT_NON_MERGE = ${snapshot.nonMerge};`,
+  '',
+  '/** Commit tanpa merge yang subjeknya berakhir dengan tautan pull request, mis. "(#50)". */',
+  `export const COMMIT_LEWAT_PR = ${snapshot.lewatPr};`,
+  '',
+  'export interface Penulis {',
+  '  nama: string;',
+  '  email: string;',
+  '  jumlah: number;',
+  '  /** Nama yang berakhir "[bot]" — dependabot ikut menulis riwayat ini dan tidak disamarkan. */',
+  '  bot: boolean;',
+  '}',
+  '',
+  '/** Penulis per identitas git, banyak dulu. Termasuk identitas ganda orang yang sama. */',
+  `export const PENULIS: Penulis[] = ${JSON.stringify(snapshot.penulis, null, 2)};`,
+  '',
   `/** ${MAKS_ENTRI} commit terakhir, baru ke lama. */`,
   `export const RIWAYAT_COMMIT: EntriRiwayat[] = ${JSON.stringify(snapshot.entri, null, 2)};`,
   '',
@@ -133,5 +175,6 @@ writeFileSync(KELUAR, isian);
 console.log(
   `ditulis ${KELUAR}\n  HEAD ${snapshot.kepala} · ${snapshot.totalCommit} commit · ` +
     `${snapshot.rentang.awal} → ${snapshot.rentang.akhir} · ${snapshot.entri.length} entri tersimpan · ` +
+    `${snapshot.nonMerge} tanpa merge dalam ${snapshot.penulis.length} identitas (${snapshot.lewatPr} lewat PR) · ` +
     `keranjang ${perTipe.map((t) => `${t.tipe}=${t.jumlah}`).join(' ')}`
 );

@@ -20,13 +20,13 @@ export interface EntriRiwayat {
 }
 
 /** Kapan snapshot ini diambil dari repositori lokal, ISO UTC. */
-export const DICATAT = "2026-11-02T08:30:59.848Z";
+export const DICATAT = "2026-11-02T08:38:59.596Z";
 
 /** HEAD repositori lokal saat snapshot diambil. */
-export const KEPALA_COMMIT = "90ee3be";
+export const KEPALA_COMMIT = "0b6ebc0";
 
 /** Seluruh commit yang reachable dari HEAD, termasuk merge. */
-export const TOTAL_COMMIT = 228;
+export const TOTAL_COMMIT = 229;
 
 export const RENTANG_COMMIT = {
   "awal": "2025-12-09",
@@ -45,7 +45,7 @@ export const PER_TIPE = [
   },
   {
     "tipe": "feat",
-    "jumlah": 42
+    "jumlah": 43
   },
   {
     "tipe": "docs",
@@ -85,8 +85,69 @@ export const PER_TIPE = [
   }
 ] as const;
 
+/** Commit tanpa merge di HEAD. Jumlah PENULIS wajib sama dengan angka ini. */
+export const COMMIT_NON_MERGE = 195;
+
+/** Commit tanpa merge yang subjeknya berakhir dengan tautan pull request, mis. "(#50)". */
+export const COMMIT_LEWAT_PR = 47;
+
+export interface Penulis {
+  nama: string;
+  email: string;
+  jumlah: number;
+  /** Nama yang berakhir "[bot]" — dependabot ikut menulis riwayat ini dan tidak disamarkan. */
+  bot: boolean;
+}
+
+/** Penulis per identitas git, banyak dulu. Termasuk identitas ganda orang yang sama. */
+export const PENULIS: Penulis[] = [
+  {
+    "nama": "Muhamad Arkan Fauzi",
+    "email": "muhammadarkanfauzi9@gmail.com",
+    "jumlah": 164,
+    "bot": false
+  },
+  {
+    "nama": "ArkanFzi",
+    "email": "muhammadarkanfauzi9@gmail.com",
+    "jumlah": 16,
+    "bot": false
+  },
+  {
+    "nama": "dependabot[bot]",
+    "email": "49699333+dependabot[bot]@users.noreply.github.com",
+    "jumlah": 6,
+    "bot": true
+  },
+  {
+    "nama": "root",
+    "email": "root@ServerSija",
+    "jumlah": 4,
+    "bot": false
+  },
+  {
+    "nama": "Fzi1",
+    "email": "muhammadarkanfauzi9@gmail.com",
+    "jumlah": 3,
+    "bot": false
+  },
+  {
+    "nama": "Arkan Fauzi",
+    "email": "muhammadarkanfauzi9@gmail.com",
+    "jumlah": 2,
+    "bot": false
+  }
+];
+
 /** 20 commit terakhir, baru ke lama. */
 export const RIWAYAT_COMMIT: EntriRiwayat[] = [
+  {
+    "commit": "0b6ebc0",
+    "tanggal": "2026-11-02",
+    "tipe": "feat",
+    "scope": "baca",
+    "ringkasan": "trail commit dari snapshot riwayatCommit dengan keranjang tipe yang menutup total, generator tools/ci/riwayat-commit.mjs dan enam gerbang baru halaman-probe"
+  },
   {
     "commit": "90ee3be",
     "tanggal": "2026-11-02",
@@ -219,12 +280,5 @@ export const RIWAYAT_COMMIT: EntriRiwayat[] = [
     "tipe": "feat",
     "scope": "panggung-interaksi",
     "ringkasan": "seret kartu ±12° dengan pegas kembali dan padanan panah keyboard lewat kontrol yang bisa difokus, verifier interaksi-probe 15 gerbang"
-  },
-  {
-    "commit": "9d4ca6f",
-    "tanggal": "2026-11-01",
-    "tipe": "feat",
-    "scope": "panggung-ekstra",
-    "ringkasan": "lima aktor ekstra dipasang ke canvas global, benang rosso dibangun ulang jadi THREE.Line, verifier ekstra-probe 25 gerbang"
   }
 ];

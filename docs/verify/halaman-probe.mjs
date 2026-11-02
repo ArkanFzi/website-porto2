@@ -82,12 +82,17 @@ const baca = await pageBaca.evaluate(() => {
   const kepala = meta.match(/head ([0-9a-f]{7,40})/)?.[1] ?? null;
   const totalTercetak = Number(meta.match(/^(\d+) commits/)?.[1] ?? NaN);
   const keranjang = [...document.querySelectorAll('[data-baca-riwayat] li')].map((e) => e.textContent.replace(/\s+/g, ' ').trim());
+  const penulis = [...document.querySelectorAll('[data-baca-penulis] tbody tr')].map((tr) => {
+    const td = [...tr.querySelectorAll('td')].map((e) => e.textContent.replace(/\s+/g, ' ').trim());
+    return { nama: td[0], email: td[1], jumlah: Number(td[2]), jenis: td[3] };
+  });
   return {
     baris,
     riwayat,
     kepala,
     totalTercetak,
     keranjang,
+    penulis,
     judul: document.querySelector('h1')?.textContent?.trim() ?? '',
     canonical: document.querySelector('link[rel="canonical"]')?.getAttribute('href') ?? null,
     og: document.querySelector('meta[property="og:url"]')?.getAttribute('content') ?? null,
@@ -147,6 +152,9 @@ const modulRiwayat = (() => {
       total: Number(ambil(/export const TOTAL_COMMIT = (\d+)/)),
       perTipe: JSON.parse(ambil(/export const PER_TIPE = ([\s\S]*?) as const;/)),
       entri: JSON.parse(ambil(/export const RIWAYAT_COMMIT: EntriRiwayat\[\] = ([\s\S]*?);\n/)),
+      nonMerge: Number(ambil(/export const COMMIT_NON_MERGE = (\d+)/)),
+      lewatPr: Number(ambil(/export const COMMIT_LEWAT_PR = (\d+)/)),
+      penulis: JSON.parse(ambil(/export const PENULIS: Penulis\[\] = ([\s\S]*?);\n/)),
     };
   } catch (e) {
     return { galat: String(e).slice(0, 140) };
@@ -182,6 +190,30 @@ if (modulRiwayat.galat) {
   const chips = baca.keranjang.map((k) => Number(k.match(/(\d+)$/)?.[1] ?? NaN));
   cek('keranjang yang tercetak di halaman juga menutup total', chips.reduce((a, b) => a + b, 0), modulRiwayat.total);
   cek('setiap tanggal trail tercetak sebagai ISO', baca.tanggalRiwayat, baca.riwayat.length);
+
+  // Tabel penulis: identitas git boleh berbohong tentang berapa orang, tapi tidak boleh
+  // berbohong tentang berapa commit. Jumlah baris tercetak wajib menutup COMMIT_NON_MERGE.
+  cek('jumlah baris penulis sama dengan identitas di modul', baca.penulis.length, modulRiwayat.penulis.length);
+  const bedaPenulis = modulRiwayat.penulis
+    .map((p, i) => {
+      const b = baca.penulis[i];
+      if (!b) return `baris ${i} hilang`;
+      const salah = [];
+      if (b.nama !== p.nama) salah.push(`nama "${b.nama}" ≠ "${p.nama}"`);
+      if (b.email !== p.email) salah.push(`alamat "${b.email}" ≠ "${p.email}"`);
+      if (b.jumlah !== p.jumlah) salah.push(`commit ${b.jumlah} ≠ ${p.jumlah}`);
+      if (b.jenis !== (p.bot ? 'bot' : 'human')) salah.push(`jenis "${b.jenis}" ≠ "${p.bot ? 'bot' : 'human'}"`);
+      return salah.length ? `${p.nama}: ${salah.join(' | ')}` : null;
+    })
+    .filter(Boolean);
+  hasil.push({
+    nama: 'setiap baris penulis cocok dengan modul snapshot',
+    ok: bedaPenulis.length === 0,
+    dapat: bedaPenulis.length ? bedaPenulis.slice(0, 3).join(' ;; ') : 'semua baris cocok',
+    harus: '0 selisih',
+  });
+  cek('commit tercetak menutup total tanpa merge', baca.penulis.reduce((a, p) => a + p.jumlah, 0), modulRiwayat.nonMerge);
+  cek('bot tidak dihitung sebagai manusia', baca.penulis.filter((p) => p.jenis === 'bot').length, modulRiwayat.penulis.filter((p) => p.bot).length);
 }
 await foto(pageBaca, '01-baca');
 
