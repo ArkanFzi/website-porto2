@@ -194,6 +194,7 @@ jobs:
         run: |
           IMG=$AR_REGISTRY/$PROJECT_ID/$AR_REPO/frontend
           docker build --build-arg BACKEND_URL="${{ steps.be_url.outputs.url }}" \
+            --build-arg APP_COMMIT="${{ github.sha }}" \
             -t "$IMG:${{ github.sha }}" ./nextjs-frontend
           out=$(docker push "$IMG:${{ github.sha }}" 2>&1) || { echo "$out"; exit 1; }
           echo "$out"

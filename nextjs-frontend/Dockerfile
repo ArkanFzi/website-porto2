@@ -17,6 +17,14 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ARG BACKEND_URL
 ENV BACKEND_URL=${BACKEND_URL:-http://localhost:8080}
+
+# APP_COMMIT dibakar saat build, bukan dibaca saat kontainer jalan: next.config.ts memasangnya
+# lewat `env`, dan Next mengganti `process.env.APP_COMMIT` dengan literal di bundel. Jadi
+# --set-env-vars di Cloud Run tidak akan pernah menghidupkan HUD; hanya build-arg yang bisa.
+# Nilai kosong di sini berarti "tidak ada SHA", dan /api/telemetry membalas gitCommit: null
+# sehingga UI menampilkan "—" — bukan hash dari build lain.
+ARG APP_COMMIT
+ENV APP_COMMIT=${APP_COMMIT}
 ENV NEXT_TELEMETRY_DISABLED 1
 RUN npm run build
 

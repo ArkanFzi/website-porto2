@@ -938,7 +938,8 @@ jobs:
       # --set-env-vars); langkah ini ikut mengirim build arg karena itulah yang dipakai server.
       - name: Build image frontend dari Dockerfile produksi
         run: |
-          docker build -t porto-fe:ci --build-arg BACKEND_URL=http://127.0.0.1:8080 nextjs-frontend
+          docker build -t porto-fe:ci --build-arg BACKEND_URL=http://127.0.0.1:8080 \
+            --build-arg APP_COMMIT="${{ github.sha }}" nextjs-frontend
 
       - name: PDF dari image — Chromium nyata, data nyata, bukan cuma magic byte
         env:
@@ -1003,6 +1004,18 @@ jobs:
             exit 1
           fi
           echo "penanda $PENANDA terbaca di teks PDF ($(wc -c < /tmp/cv.txt) byte teks): Chromium di dalam image benar-benar merender data"
+
+          # HUD membaca gitCommit dari /api/telemetry. Nilainya dibakar saat build (next.config.ts
+          # `env` + ARG di Dockerfile), jadi satu-satunya bukti yang berarti adalah menanyakannya
+          # ke image yang baru dibangun — bukan ke env job. Sampai langkah ini tidak ada build-arg
+          # APP_COMMIT di jalur Docker, jadi produksi selalu pulang ke "—" meski CI tahu SHA-nya.
+          tel=$(curl -sS --max-time 30 "$FE/api/telemetry" || true)
+          sha_dibakar=$(printf '%s' "$tel" | jq -r '.gitCommit // empty')
+          echo "gitCommit dari image hasil build ini: '${sha_dibakar:-null}' (github.sha=$GITHUB_SHA)"
+          [ "$sha_dibakar" = "$GITHUB_SHA" ] || {
+            echo "APP_COMMIT tidak sampai ke image: $(printf '%s' "$tel" | head -c 300)"
+            exit 1
+          }
 
           docker rm -f fe-pdf > /dev/null
           echo "fe-pdf dihentikan"
