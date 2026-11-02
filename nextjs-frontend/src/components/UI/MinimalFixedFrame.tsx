@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import { usePortfolioMode } from "@/context/PortfolioModeContext";
 import { useBabAktif } from "@/components/SmoothScrollProvider";
 import KontrolPutaran from "@/components/UI/KontrolPutaran";
@@ -93,25 +94,46 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ onChapterClick }) => {
       {/* ── TOP BAR ── */}
       <div className="w-full flex items-center justify-between pointer-events-auto">
         
-        {/* Top-Left: Minimal Monogram AF */}
-        <button
-          onClick={() => onChapterClick(1)}
-          className="group flex items-center gap-3 cursor-pointer text-left"
-          data-magnetic
-        >
-          <div className="flex flex-col">
-            <span
-              className={`font-serif text-xl font-bold tracking-tight ${textColor} ${
-                isRossoSection ? "group-hover:text-black" : "group-hover:text-[#D41E12]"
-              } transition-colors`}
+        {/* Top-Left: Minimal Monogram AF + jalan masuk dua lorong rincian.
+            Kedua tautan ditumpuk VERTIKAL di bawah monogram, bukan di bar bawah: bar itu
+            pernah menelan sasaran interaktif halaman (catatan di bagian bawah file ini), dan
+            kolom kiri tidak menggeser pil mana pun secara horizontal. */}
+        <div className="flex flex-col gap-1.5">
+          <button
+            onClick={() => onChapterClick(1)}
+            className="group flex items-center gap-3 cursor-pointer text-left"
+            data-magnetic
+          >
+            <div className="flex flex-col">
+              <span
+                className={`font-serif text-xl font-bold tracking-tight ${textColor} ${
+                  isRossoSection ? "group-hover:text-black" : "group-hover:text-[#D41E12]"
+                } transition-colors`}
+              >
+                AF<span className={`${accentColor} font-mono text-sm ml-0.5`}>#16</span>
+              </span>
+              <span className={`font-mono text-[9px] tracking-[0.24em] uppercase ${subColor}`}>
+                M. ARKAN FAUZI
+              </span>
+            </div>
+          </button>
+
+          <nav className="flex items-center gap-2" aria-label="Detail pages">
+            <Link
+              href="/baca"
+              className={`font-mono text-[9px] tracking-[0.2em] uppercase ${subColor} opacity-60 hover:opacity-100 transition-opacity`}
             >
-              AF<span className={`${accentColor} font-mono text-sm ml-0.5`}>#16</span>
-            </span>
-            <span className={`font-mono text-[9px] tracking-[0.24em] uppercase ${subColor}`}>
-              M. ARKAN FAUZI
-            </span>
-          </div>
-        </button>
+              CODE INDEX
+            </Link>
+            <span className={`h-2.5 w-[1px] ${isRossoSection ? "bg-white/40" : "bg-[#D41E12]/40"}`} aria-hidden="true" />
+            <Link
+              href="/arsip"
+              className={`font-mono text-[9px] tracking-[0.2em] uppercase ${subColor} opacity-60 hover:opacity-100 transition-opacity`}
+            >
+              PIT WALL
+            </Link>
+          </nav>
+        </div>
 
         {/* Top-Center: Minimal Dual-Persona Switcher */}
         <div className={`flex items-center p-1 rounded-full border ${borderColor} backdrop-blur-md ${
