@@ -120,6 +120,12 @@ export default async function Baca() {
             >
               ← Editorial
             </Link>
+            <Link
+              href="/arsip"
+              className="font-mono text-[10px] tracking-[0.2em] uppercase px-3 py-1.5 rounded-full swiss-border hover:border-rosso hover:text-rosso transition-colors"
+            >
+              Telemetry ↗
+            </Link>
             <a
               href={GITHUB_PROFILE}
               target="_blank"
