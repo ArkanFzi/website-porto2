@@ -686,7 +686,17 @@ const P95_UJI = 66;const payloadRitme = (tambahan = {}) => ({
     fpsTerendah: 24,
     shareLambatPct: 9.4,
     resolusiTeratas: [{ resolusi: '1440x900', laporan: 4 }],
-    buket: [],
+    // Tiga menit terakhir berisi, tiga menit sebelumnya kosong: rail harus mengisi
+    // persis yang punya laporan dan membiarkan sisanya nol sisi.
+    buket: [0, 1, 2].map((i) => ({
+      menit: new Date(Date.now() - i * 60_000 - (Date.now() % 60_000)).toISOString().slice(0, 16) + 'Z',
+      laporan: 4 - i,
+      frame: 900 - i * 100,
+      medianRerataMs: 16.7,
+      p95RerataMs: [40, 28, 61][i],
+      fpsTerendah: 24 - i,
+      shareLambatPct: 9.4,
+    })),
     sejak: new Date(Date.now() - 120000).toISOString(),
   },
 });
@@ -756,6 +766,38 @@ hasil.push({
   dapat: Number.isFinite(bedaLukisan) ? bedaLukisan.toFixed(6) : '(tidak terukur)',
   harus: '< 0.001',
 });
+
+// Rail menit + crosshair pointer (E3 /waktu). Rail memakai slot, fungsi, dan angka yang
+// sama dengan bilah /arsip; payload uji berisi tiga menit terisi, jadi enam slot harus
+// tergambar dengan tepat tiga terisi. Crosshair mewakili pointer, bukan data: ia tidak
+// boleh ada sebelum ada pointer, dan setelah ada ia dijepit di dalam bingkai.
+cek('rail menit punya enam slot saat angka ada', awalWaktu.jendela?.buketSlot, 6);
+cek('rail mengisi persis menit yang punya laporan', awalWaktu.jendela?.buketTerisi, 3);
+cek('crosshair tidak tergambar sebelum pointer bergerak', awalWaktu.jendela?.jarum ?? null, null);
+const kotakWaktu = await pageWaktu.evaluate(() => {
+  const el = document.querySelector('[data-panggung-kecil]');
+  el.scrollIntoView({ block: 'center', behavior: 'instant' });
+  const r = el.getBoundingClientRect();
+  return { x: r.left, y: r.top, w: r.width, h: r.height };
+});
+await pageWaktu.mouse.move(kotakWaktu.x + kotakWaktu.w * 0.3, kotakWaktu.y + kotakWaktu.h * 0.4);
+await jeda(250);
+await pageWaktu.mouse.move(kotakWaktu.x + kotakWaktu.w * 0.7, kotakWaktu.y + kotakWaktu.h * 0.6);
+await jeda(400);
+const jarumWaktu = await pageWaktu.evaluate(() =>
+  window.__jendela?.jarum ? { ...window.__jendela.jarum } : null
+);
+console.log('waktu-jarum', JSON.stringify(jarumWaktu));
+cek('pointer menggambar crosshair', !!jarumWaktu, true);
+cek(
+  'crosshair dijepit di dalam bingkai',
+  jarumWaktu ? Math.abs(jarumWaktu.x) <= 1 && Math.abs(jarumWaktu.y) <= 1 : false,
+  true
+);
+// Pointer yang barusan bergerak me-reset fase "always" hukum diam (IDLE_MS 4000 dari
+// interaksi terakhir, bukan dari muat halaman). Beri waktu lewat sebelum blok diam
+// mengukur delta frame.
+await jeda(1500);
 
 // Hukum diam: kedua sampel diambil SETELAH IDLE_MS (4000 ms) lewat. Mengukur delta dari
 // sampel yang masih jatuh di fase "always" akan menghitung frame yang seharusnya jalan —
