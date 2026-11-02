@@ -136,7 +136,7 @@ function Metrik({ label, nilai, keterangan }: { label: string; nilai: string; ke
     <div className="flex flex-col gap-1.5 px-4 py-5 swiss-border bg-paper/60">
       <span className="font-mono text-tag uppercase tracking-[0.2em] text-titanium">{label}</span>
       <span className="font-serif text-item leading-none text-obsidian">{nilai}</span>
-      <span className="font-mono text-[10px] leading-snug text-titanium">{keterangan}</span>
+      <span className="font-mono text-tag leading-snug text-titanium">{keterangan}</span>
     </div>
   );
 }
@@ -159,7 +159,7 @@ function Baris({ repo, indeks }: { repo: RepoGitHub; indeks: number }) {
         >
           {repo.name}
         </a>
-        <span className="block font-mono text-[10px] tracking-[0.16em] uppercase text-titanium mt-1">
+        <span className="block font-mono text-tag tracking-[0.2em] uppercase text-titanium mt-1">
           {repo.language ?? "—"}
         </span>
       </td>
@@ -180,7 +180,7 @@ function Baris({ repo, indeks }: { repo: RepoGitHub; indeks: number }) {
             href={repo.homepage}
             target="_blank"
             rel="noopener noreferrer"
-            className="font-mono text-[10px] tracking-[0.16em] uppercase text-rosso hover:text-obsidian transition-colors"
+            className="font-mono text-tag tracking-[0.2em] uppercase text-rosso hover:text-obsidian transition-colors"
           >
             live ↗
           </a>
@@ -200,7 +200,7 @@ function BarisRiwayat({ entri }: { entri: EntriRiwayat }) {
         <span className={ANGKA + " text-titanium"}>{entri.tanggal}</span>
       </td>
       <td className="py-3 pr-4 whitespace-nowrap">
-        <span className="font-mono text-[10px] tracking-[0.16em] uppercase text-obsidian">
+        <span className="font-mono text-tag tracking-[0.2em] uppercase text-obsidian">
           {entri.tipe}
           {entri.scope ? <span className="text-titanium">({entri.scope})</span> : null}
         </span>
@@ -233,20 +233,20 @@ export default async function Baca() {
             <h1 className="font-serif text-subtitle leading-[0.95] tracking-tight">
               THE READING ROOM
             </h1>
-            <p className="font-mono text-micro tracking-[0.16em] uppercase text-titanium">
+            <p className="font-mono text-micro tracking-[0.2em] uppercase text-titanium">
               Detailed index behind CH.03 SELECTED ARCHIVES
             </p>
           </div>
           <nav className="flex items-center gap-3" aria-label="Site navigation">
             <Link
               href="/"
-              className="font-mono text-[10px] tracking-[0.2em] uppercase px-3 py-1.5 rounded-full swiss-border hover:border-rosso hover:text-rosso transition-colors"
+              className="font-mono text-tag tracking-[0.2em] uppercase px-3 py-1.5 rounded-full swiss-border hover:border-rosso hover:text-rosso transition-colors"
             >
               ← Editorial
             </Link>
             <Link
               href="/arsip"
-              className="font-mono text-[10px] tracking-[0.2em] uppercase px-3 py-1.5 rounded-full swiss-border hover:border-rosso hover:text-rosso transition-colors"
+              className="font-mono text-tag tracking-[0.2em] uppercase px-3 py-1.5 rounded-full swiss-border hover:border-rosso hover:text-rosso transition-colors"
             >
               Telemetry ↗
             </Link>
@@ -254,7 +254,7 @@ export default async function Baca() {
               href={GITHUB_PROFILE}
               target="_blank"
               rel="noopener noreferrer"
-              className="font-mono text-[10px] tracking-[0.2em] uppercase px-3 py-1.5 rounded-full swiss-border hover:border-rosso hover:text-rosso transition-colors"
+              className="font-mono text-tag tracking-[0.2em] uppercase px-3 py-1.5 rounded-full swiss-border hover:border-rosso hover:text-rosso transition-colors"
             >
               @{GITHUB_USERNAME} ↗
             </a>
@@ -299,7 +299,7 @@ export default async function Baca() {
             <h2 id="daftar-judul" className="font-mono text-tag tracking-[0.24em] uppercase text-obsidian">
               REPOSITORIES — NEWEST FIRST
             </h2>
-            <p className="font-mono text-[10px] tracking-[0.14em] uppercase text-titanium">
+            <p className="font-mono text-tag tracking-[0.2em] uppercase text-titanium">
               forks and the profile repo are filtered out at the source
             </p>
           </div>
@@ -330,12 +330,12 @@ export default async function Baca() {
                 </caption>
                 <thead>
                   <tr className="swiss-border-b text-titanium">
-                    <th scope="col" className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.18em] font-normal text-left">#</th>
-                    <th scope="col" className="py-2 pr-4 font-mono text-[10px] uppercase tracking-[0.18em] font-normal text-left">Repository</th>
-                    <th scope="col" className="py-2 pr-4 font-mono text-[10px] uppercase tracking-[0.18em] font-normal text-left">What it does</th>
-                    <th scope="col" className="py-2 pr-4 font-mono text-[10px] uppercase tracking-[0.18em] font-normal text-right">Stars</th>
-                    <th scope="col" className="py-2 font-mono text-[10px] uppercase tracking-[0.18em] font-normal text-right">Forks</th>
-                    <th scope="col" className="py-2 pl-4 font-mono text-[10px] uppercase tracking-[0.18em] font-normal text-right hidden lg:table-cell">Live</th>
+                    <th scope="col" className="py-2 pr-3 font-mono text-tag uppercase tracking-[0.2em] font-normal text-left">#</th>
+                    <th scope="col" className="py-2 pr-4 font-mono text-tag uppercase tracking-[0.2em] font-normal text-left">Repository</th>
+                    <th scope="col" className="py-2 pr-4 font-mono text-tag uppercase tracking-[0.2em] font-normal text-left">What it does</th>
+                    <th scope="col" className="py-2 pr-4 font-mono text-tag uppercase tracking-[0.2em] font-normal text-right">Stars</th>
+                    <th scope="col" className="py-2 font-mono text-tag uppercase tracking-[0.2em] font-normal text-right">Forks</th>
+                    <th scope="col" className="py-2 pl-4 font-mono text-tag uppercase tracking-[0.2em] font-normal text-right hidden lg:table-cell">Live</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -354,7 +354,7 @@ export default async function Baca() {
             <h2 id="riwayat-judul" className="font-mono text-tag tracking-[0.24em] uppercase text-obsidian">
               COMMIT TRAIL — LOCAL SNAPSHOT
             </h2>
-            <p className="font-mono text-[10px] tracking-[0.14em] uppercase text-titanium">
+            <p className="font-mono text-tag tracking-[0.2em] uppercase text-titanium">
               {TOTAL_COMMIT} commits · {RENTANG_COMMIT.awal} → {RENTANG_COMMIT.akhir} · head {KEPALA_COMMIT}
             </p>
           </div>
@@ -367,7 +367,7 @@ export default async function Baca() {
 
           <ul className="flex flex-wrap gap-1.5 mb-6" aria-label="Commit type distribution over the whole snapshot">
             {PER_TIPE.map((t) => (
-              <li key={t.tipe} className="px-2 py-1 swiss-border font-mono text-[10px] tracking-[0.16em] uppercase text-obsidian">
+              <li key={t.tipe} className="px-2 py-1 swiss-border font-mono text-tag tracking-[0.2em] uppercase text-obsidian">
                 {t.tipe} <span className={`${ANGKA} text-rosso`}>{t.jumlah}</span>
               </li>
             ))}
@@ -381,10 +381,10 @@ export default async function Baca() {
               </caption>
               <thead>
                 <tr className="swiss-border-b text-titanium">
-                  <th scope="col" className="py-2 pr-4 font-mono text-[10px] uppercase tracking-[0.18em] font-normal text-left whitespace-nowrap">Commit</th>
-                  <th scope="col" className="py-2 pr-4 font-mono text-[10px] uppercase tracking-[0.18em] font-normal text-left whitespace-nowrap">Author date</th>
-                  <th scope="col" className="py-2 pr-4 font-mono text-[10px] uppercase tracking-[0.18em] font-normal text-left whitespace-nowrap">Type(scope)</th>
-                  <th scope="col" className="py-2 font-mono text-[10px] uppercase tracking-[0.18em] font-normal text-left">Subject</th>
+                  <th scope="col" className="py-2 pr-4 font-mono text-tag uppercase tracking-[0.2em] font-normal text-left whitespace-nowrap">Commit</th>
+                  <th scope="col" className="py-2 pr-4 font-mono text-tag uppercase tracking-[0.2em] font-normal text-left whitespace-nowrap">Author date</th>
+                  <th scope="col" className="py-2 pr-4 font-mono text-tag uppercase tracking-[0.2em] font-normal text-left whitespace-nowrap">Type(scope)</th>
+                  <th scope="col" className="py-2 font-mono text-tag uppercase tracking-[0.2em] font-normal text-left">Subject</th>
                 </tr>
               </thead>
               <tbody>
@@ -403,7 +403,7 @@ export default async function Baca() {
           </h2>
           <div className="grid lg:grid-cols-2 gap-3">
             <div className="flex flex-col gap-3">
-              <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-rosso">
+              <span className="font-mono text-tag tracking-[0.2em] uppercase text-rosso">
                 What this repository is busy with
               </span>
               {SEDANG_DIKERJAKAN.map((b) => (
@@ -412,7 +412,7 @@ export default async function Baca() {
                   <p className="font-sans text-body leading-snug text-obsidian/80 mt-2">{b.tubuh}</p>
                   <ul className="mt-3 flex flex-col gap-1">
                     {b.bukti.map((jalur) => (
-                      <li key={jalur} className="font-mono text-[10px] tracking-[0.1em] text-titanium">
+                      <li key={jalur} className="font-mono text-tag tracking-[0.1em] text-titanium">
                         {jalur}
                       </li>
                     ))}
@@ -421,7 +421,7 @@ export default async function Baca() {
               ))}
             </div>
             <div className="flex flex-col gap-3">
-              <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-rosso">
+              <span className="font-mono text-tag tracking-[0.2em] uppercase text-rosso">
                 Open for collaboration
               </span>
               {DIBUKA_UNTUK.map((b) => (
@@ -430,7 +430,7 @@ export default async function Baca() {
                   <p className="font-sans text-body leading-snug text-obsidian/80 mt-2">{b.tubuh}</p>
                 </article>
               ))}
-              <p className="font-mono text-[10px] leading-relaxed tracking-[0.06em] text-titanium">
+              <p className="font-mono text-tag leading-relaxed tracking-[0.06em] text-titanium">
                 The dispatch console on the front page is the way in; it writes to the same inbox this
                 repository administers.
               </p>
@@ -470,10 +470,10 @@ export default async function Baca() {
               </caption>
               <thead>
                 <tr className="swiss-border-b text-titanium">
-                  <th scope="col" className="py-2 pr-4 font-mono text-[10px] uppercase tracking-[0.18em] font-normal text-left whitespace-nowrap">Identity</th>
-                  <th scope="col" className="py-2 pr-4 font-mono text-[10px] uppercase tracking-[0.18em] font-normal text-left whitespace-nowrap">Address</th>
-                  <th scope="col" className="py-2 pr-4 font-mono text-[10px] uppercase tracking-[0.18em] font-normal text-right whitespace-nowrap">Commits</th>
-                  <th scope="col" className="py-2 font-mono text-[10px] uppercase tracking-[0.18em] font-normal text-right whitespace-nowrap">Kind</th>
+                  <th scope="col" className="py-2 pr-4 font-mono text-tag uppercase tracking-[0.2em] font-normal text-left whitespace-nowrap">Identity</th>
+                  <th scope="col" className="py-2 pr-4 font-mono text-tag uppercase tracking-[0.2em] font-normal text-left whitespace-nowrap">Address</th>
+                  <th scope="col" className="py-2 pr-4 font-mono text-tag uppercase tracking-[0.2em] font-normal text-right whitespace-nowrap">Commits</th>
+                  <th scope="col" className="py-2 font-mono text-tag uppercase tracking-[0.2em] font-normal text-right whitespace-nowrap">Kind</th>
                 </tr>
               </thead>
               <tbody>
@@ -483,13 +483,13 @@ export default async function Baca() {
                       <span className="font-serif text-body text-obsidian">{p.nama}</span>
                     </td>
                     <td className="py-3 pr-4">
-                      <span className="font-mono text-[10px] text-titanium">{p.email}</span>
+                      <span className="font-mono text-tag text-titanium">{p.email}</span>
                     </td>
                     <td className="py-3 pr-4 text-right whitespace-nowrap">
                       <span className={ANGKA}>{p.jumlah}</span>
                     </td>
                     <td className="py-3 text-right whitespace-nowrap">
-                      <span className="font-mono text-[10px] tracking-[0.16em] uppercase text-obsidian">
+                      <span className="font-mono text-tag tracking-[0.2em] uppercase text-obsidian">
                         {p.bot ? "bot" : "human"}
                       </span>
                     </td>
@@ -506,7 +506,7 @@ export default async function Baca() {
             <h2 id="esai-judul" className="font-mono text-tag tracking-[0.24em] uppercase text-obsidian">
               ESSAYS — THE DECISIONS BEHIND THE NUMBERS
             </h2>
-            <p className="font-mono text-[10px] tracking-[0.14em] uppercase text-titanium">
+            <p className="font-mono text-tag tracking-[0.2em] uppercase text-titanium">
               {ESAI.length} texts, written into the bundle rather than a database
             </p>
           </div>
@@ -524,7 +524,7 @@ export default async function Baca() {
                   <span className="block font-sans text-body leading-snug text-obsidian/80 mt-2">
                     {e.ringkas}
                   </span>
-                  <span className="block font-mono text-[10px] tracking-[0.16em] uppercase text-titanium mt-2.5">
+                  <span className="block font-mono text-tag tracking-[0.2em] uppercase text-titanium mt-2.5">
                     {e.slug} · written {e.ditulis} · about {menitBaca(e)} min · {e.tubuh.length} paragraphs ·{" "}
                     {e.bukti.length} files cited
                   </span>
@@ -540,7 +540,7 @@ export default async function Baca() {
             <h2 id="panggung-judul" className="font-mono text-tag tracking-[0.24em] uppercase text-obsidian">
               SECOND STAGE — SMALL WEBGL ROUTES WITH ONE MEASURED INPUT
             </h2>
-            <p className="font-mono text-[10px] tracking-[0.14em] uppercase text-titanium">
+            <p className="font-mono text-tag tracking-[0.2em] uppercase text-titanium">
               {PANGGUNG.length} routes, each with its own canvas
             </p>
           </div>
@@ -558,7 +558,7 @@ export default async function Baca() {
                   <span className="block font-sans text-body leading-snug text-obsidian/80 mt-2">
                     {p.ringkas}
                   </span>
-                  <span className="block font-mono text-[10px] tracking-[0.16em] uppercase text-titanium mt-2.5">
+                  <span className="block font-mono text-tag tracking-[0.2em] uppercase text-titanium mt-2.5">
                     {p.jalur} · {p.objek} · {p.hukum}
                   </span>
                 </Link>
@@ -613,12 +613,12 @@ export default async function Baca() {
         </section>
 
         <footer className="mt-10 pt-6 swiss-border-t flex flex-wrap items-center justify-between gap-3">
-          <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-titanium">
+          <span className="font-mono text-tag tracking-[0.2em] uppercase text-titanium">
             M. ARKAN FAUZI // THE READING ROOM
           </span>
           <Link
             href="/"
-            className="font-mono text-[10px] tracking-[0.2em] uppercase text-rosso hover:text-obsidian transition-colors"
+            className="font-mono text-tag tracking-[0.2em] uppercase text-rosso hover:text-obsidian transition-colors"
           >
             ← BACK TO THE EDITORIAL
           </Link>

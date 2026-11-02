@@ -23,7 +23,7 @@ const teks = (v: string | number | null | undefined): string =>
 function Sel({ label, nilai, nama }: { label: string; nilai: string; nama: string }) {
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 py-3 swiss-border-b">
-      <span className="font-mono text-tag tracking-[0.18em] uppercase text-titanium">{label}</span>
+      <span className="font-mono text-tag tracking-[0.2em] uppercase text-titanium">{label}</span>
       <span data-arsip-sel={nama} className="font-mono text-micro tabular-nums text-obsidian text-right">
         {nilai}
       </span>
@@ -142,7 +142,7 @@ export default function ArsipHidup() {
                 return (
                   <div key={h.id} className="flex flex-col gap-1">
                     <div className="flex items-baseline justify-between gap-3">
-                      <span className="font-mono text-tag tracking-[0.18em] uppercase text-titanium">
+                      <span className="font-mono text-tag tracking-[0.2em] uppercase text-titanium">
                         {h.id}
                       </span>
                       <span
@@ -165,7 +165,7 @@ export default function ArsipHidup() {
                   </div>
                 );
               })}
-              <p className="font-mono text-[10px] leading-relaxed text-titanium pt-2">
+              <p className="font-mono text-tag leading-relaxed text-titanium pt-2">
                 node = handler duration minus the backend fetch measured inside it; backend =
                 fetch to /api/health; postgres = never measured, the health endpoint answers ok or
                 error without a millisecond figure.
@@ -196,10 +196,10 @@ export default function ArsipHidup() {
               <Sel nama="sejak" label="window opened at" nilai={teks(cf?.sejak)} />
               <div className="pt-5">
                 <div className="flex items-baseline justify-between mb-2">
-                  <span className="font-mono text-tag tracking-[0.18em] uppercase text-titanium">
+                  <span className="font-mono text-tag tracking-[0.2em] uppercase text-titanium">
                     LAST {JUMLAH_BUKET} MINUTES · p95 MEAN PER MINUTE
                   </span>
-                  <span className="font-mono text-[10px] text-titanium">bar = p95 / 33 ms</span>
+                  <span className="font-mono text-tag text-titanium">bar = p95 / 33 ms</span>
                 </div>
                 <DeretBuket />
               </div>
@@ -213,7 +213,7 @@ export default function ArsipHidup() {
             <>
               <Sel nama="commit" label="build commit" nilai={teks(t?.gitCommit)} />
               <Sel nama="timestamp" label="response timestamp" nilai={teks(t?.timestamp)} />
-              <p className="font-mono text-[10px] leading-relaxed text-titanium pt-4">
+              <p className="font-mono text-tag leading-relaxed text-titanium pt-4">
                 The latency window and the frame window live inside a single Node process, so a
                 second instance keeps its own numbers. Without a build-time commit stamp the field
                 is left empty rather than filled with an old hash.

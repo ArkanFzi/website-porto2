@@ -50,20 +50,20 @@ export default async function EsaiHalaman({ params }: Props) {
               ESSAY // THE READING ROOM
             </span>
             <h1 className="font-serif text-subtitle leading-[0.95] tracking-tight">{esai.judul}</h1>
-            <p className="font-mono text-micro tracking-[0.16em] uppercase text-titanium">
+            <p className="font-mono text-micro tracking-[0.2em] uppercase text-titanium">
               written {esai.ditulis} · about {menitBaca(esai)} min read · {esai.tubuh.length} paragraphs
             </p>
           </div>
           <nav className="flex items-center gap-3" aria-label="Site navigation">
             <Link
               href="/baca"
-              className="font-mono text-[10px] tracking-[0.2em] uppercase px-3 py-1.5 rounded-full swiss-border hover:border-rosso hover:text-rosso transition-colors"
+              className="font-mono text-tag tracking-[0.2em] uppercase px-3 py-1.5 rounded-full swiss-border hover:border-rosso hover:text-rosso transition-colors"
             >
               ← Reading room
             </Link>
             <Link
               href="/"
-              className="font-mono text-[10px] tracking-[0.2em] uppercase px-3 py-1.5 rounded-full swiss-border hover:border-rosso hover:text-rosso transition-colors"
+              className="font-mono text-tag tracking-[0.2em] uppercase px-3 py-1.5 rounded-full swiss-border hover:border-rosso hover:text-rosso transition-colors"
             >
               Editorial ↗
             </Link>
@@ -86,7 +86,7 @@ export default async function EsaiHalaman({ params }: Props) {
           <h2 id="bukti-judul" className="font-mono text-tag tracking-[0.24em] uppercase text-rosso mb-4">
             WHAT THIS TEXT POINTS AT
           </h2>
-          <p className="font-mono text-[10px] leading-relaxed text-titanium mb-3">
+          <p className="font-mono text-tag leading-relaxed text-titanium mb-3">
             Paths are relative to the repository root; a bare hash is a commit in its history. Every
             claim above can be opened and contradicted.
           </p>
@@ -100,12 +100,12 @@ export default async function EsaiHalaman({ params }: Props) {
         </section>
 
         <footer className="mt-10 pt-6 swiss-border-t flex flex-wrap items-center justify-between gap-3">
-          <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-titanium">
+          <span className="font-mono text-tag tracking-[0.2em] uppercase text-titanium">
             M. ARKAN FAUZI // {esai.slug.toUpperCase()}
           </span>
           <Link
             href="/baca"
-            className="font-mono text-[10px] tracking-[0.2em] uppercase text-rosso hover:text-obsidian transition-colors"
+            className="font-mono text-tag tracking-[0.2em] uppercase text-rosso hover:text-obsidian transition-colors"
           >
             ← BACK TO THE INDEX
           </Link>

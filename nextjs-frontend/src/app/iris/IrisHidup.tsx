@@ -39,7 +39,10 @@ export default function IrisHidup() {
 
   return (
     <div className="flex flex-col gap-8">
-      <div className="relative h-[46vh] min-h-[340px] swiss-border overflow-hidden" data-iris-wadah>
+      <div
+        className="relative h-[52vh] min-h-[380px] swiss-border bg-obsidian/5 overflow-hidden"
+        data-iris-wadah
+      >
         <div className="absolute inset-0 px-6 md:px-10 py-8">
           {(Object.keys(TEKS) as ("A" | "B")[]).map((s) => (
             <article
@@ -48,11 +51,11 @@ export default function IrisHidup() {
               className="absolute inset-x-6 md:inset-x-10 top-8 flex flex-col gap-4"
               style={{ opacity: tampak(s) }}
             >
-              <h3 className="font-mono text-tag tracking-[0.24em] uppercase text-rosso">
+              <h2 className="font-mono text-tag tracking-[0.24em] uppercase text-obsidian">
                 {s} · {TEKS[s].judul}
-              </h3>
+              </h2>
               {TEKS[s].bait.map((baris, i) => (
-                <p key={i} className="font-serif text-item leading-snug max-w-[58ch]">
+                <p key={i} className="font-serif text-item leading-snug max-w-[70ch]">
                   {baris}
                 </p>
               ))}
@@ -73,9 +76,9 @@ export default function IrisHidup() {
           <span className="font-mono text-micro tracking-[0.2em] uppercase text-titanium">
             APERTURE
           </span>
-          <span className="font-mono text-[10px] tracking-[0.14em] uppercase text-titanium">
+          <span className="font-mono text-tag tracking-[0.2em] uppercase text-titanium">
             <span data-iris-sisi>{sisi}</span> · tutup{" "}
-            <span data-iris-tutup className="tabular-nums text-obsidian font-bold">
+            <span data-iris-tutup className="tabular-nums text-obsidian">
               {tutup.toFixed(2)}
             </span>{" "}
             · bukaan{" "}
@@ -99,7 +102,7 @@ export default function IrisHidup() {
           ).toFixed(0)} persen terbuka`}
           className="w-full accent-rosso cursor-pointer"
         />
-        <p className="font-mono text-[9px] leading-relaxed text-titanium max-w-[70ch]">
+        <p className="font-mono text-tag leading-relaxed text-titanium max-w-[70ch]">
           Arrow keys move the aperture by one step; Home and End jump to an end of the axis. The
           crossfade happens at the far side of closed, which is why it never shows two exposures at
           once — and why the whole navigation costs one quad.

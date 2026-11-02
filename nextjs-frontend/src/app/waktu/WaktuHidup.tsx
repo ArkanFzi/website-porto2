@@ -8,6 +8,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import JendelaWaktu from "@/components/Three/panggung/JendelaWaktu";
 import PanggungKecil from "@/components/Three/panggung/PanggungKecil";
+import { BingkaiKanvas, GridPanggung } from "@/components/Editorial/PanggungFrame";
 import { pecahanTinggi, rasioAmbang, BATAS_MS } from "@/lib/buketMenit";
 import {
   bacaTelemetri,
@@ -21,7 +22,7 @@ const EMPAT_DASH = "—";
 function Angka({ label, nilai, satuan }: { label: string; nilai: string; satuan?: string }) {
   return (
     <div className="flex flex-col gap-1 pt-3 swiss-border-b">
-      <span className="font-mono text-tag tracking-[0.18em] uppercase text-titanium">{label}</span>
+      <span className="font-mono text-tag tracking-[0.2em] uppercase text-titanium">{label}</span>
       <span className="font-mono text-micro tabular-nums text-obsidian">
         {nilai}
         {satuan ? <span className="text-titanium"> {satuan}</span> : null}
@@ -45,19 +46,19 @@ export default function WaktuHidup() {
 
   return (
     <div className="flex flex-col gap-10">
-      <div className="grid md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] gap-8 md:gap-14 items-center">
+      <GridPanggung>
         <div className="flex flex-col gap-3">
           <span className="font-mono text-micro tracking-[0.2em] uppercase text-titanium">
             P95 FRAME TIME · REPORTED BY VISITING BROWSERS
           </span>
           <p
             data-waktu-angka="p95"
-            className="font-serif text-[clamp(56px,11vw,140px)] leading-[0.85] tracking-tighter tabular-nums text-obsidian"
+            className="font-serif text-title leading-[0.9] tracking-tight tabular-nums text-obsidian"
           >
             {ada ? p95.toFixed(1) : EMPAT_DASH}
             <span className="text-[0.35em] align-top ml-2 text-titanium">ms</span>
           </p>
-          <p className="font-mono text-[10px] leading-relaxed text-titanium max-w-[46ch]">
+          <p className="font-mono text-tag leading-relaxed text-titanium max-w-[70ch]">
             {ada
               ? `The window's side is this number divided by the ${BATAS_MS} ms threshold, drawn with the same height function the front-page bars use. Above the threshold the outline turns rosso.`
               : `No browser has reported a frame time to this process yet, so there is no window — an em-dash is not a measurement of zero.`}
@@ -66,7 +67,7 @@ export default function WaktuHidup() {
 
         {/* Bingkai DOM: persegi acuan 1:1 tempat bukaan diukur dalam persen. */}
         <div className="relative w-full aspect-square max-w-[520px] mx-auto swiss-border">
-          <span className="absolute left-2 top-2 font-mono text-[9px] tracking-[0.2em] uppercase text-titanium">
+          <span className="absolute left-2 top-2 font-mono text-tag tracking-[0.2em] uppercase text-titanium">
             WEBGL SIDE = {ada ? (fraksi * 2).toFixed(3) : EMPAT_DASH} / 2 UNITS
           </span>
           {ada ? (
@@ -93,15 +94,17 @@ export default function WaktuHidup() {
             </span>
           )}
         </div>
-      </div>
+      </GridPanggung>
 
-      <PanggungKecil className="w-full h-[52vh] min-h-[360px]" kamera={[0, 0, 3]} fov={42}>
-        <JendelaWaktu />
-      </PanggungKecil>
+      <BingkaiKanvas>
+        <PanggungKecil className="w-full h-full" kamera={[0, 0, 3]} fov={42}>
+          <JendelaWaktu />
+        </PanggungKecil>
+      </BingkaiKanvas>
 
-      <div className="grid md:grid-cols-2 gap-x-12">
+      <div className="grid md:grid-cols-2 gap-x-10">
         <div className="flex flex-col">
-          <h2 className="font-mono text-tag tracking-[0.24em] uppercase text-rosso pb-1">
+          <h2 className="font-mono text-tag tracking-[0.24em] uppercase text-obsidian pb-1">
             THE NUMBER BEHIND THE SHAPE
           </h2>
           <Angka label="p95 frame" nilai={ada ? `${p95!.toFixed(2)} ms` : EMPAT_DASH} />
@@ -117,7 +120,7 @@ export default function WaktuHidup() {
           />
         </div>
         <div className="flex flex-col">
-          <h2 className="font-mono text-tag tracking-[0.24em] uppercase text-rosso pb-1">
+          <h2 className="font-mono text-tag tracking-[0.24em] uppercase text-obsidian pb-1">
             HOW THIS WINDOW IS MEASURED
           </h2>
           <Angka
@@ -140,7 +143,7 @@ export default function WaktuHidup() {
         </div>
       </div>
 
-      <p className="font-mono text-[10px] leading-relaxed text-titanium max-w-[80ch]">
+      <p className="font-mono text-tag leading-relaxed text-titanium max-w-[70ch]">
         This page does not report its own frame rhythm. A page that paints zero frames while you
         read it would drag the shared window toward zero and make the window lie about the thing
         it measures, so the number above belongs to visitors of the editorial page, and the canvas

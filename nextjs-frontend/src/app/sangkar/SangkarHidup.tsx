@@ -9,6 +9,7 @@
 import React, { useEffect, useRef, useSyncExternalStore } from "react";
 import PanggungKecil from "@/components/Three/panggung/PanggungKecil";
 import SangkarTerbuka from "@/components/Three/panggung/SangkarTerbuka";
+import { GridPanggung } from "@/components/Editorial/PanggungFrame";
 import {
   BATAS_DERAJAT,
   ambilFokus,
@@ -60,19 +61,19 @@ export default function SangkarHidup() {
 
   return (
     <div className="flex flex-col gap-10">
-      <div className="grid md:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] gap-8 md:gap-12 items-center">
+      <GridPanggung>
         <div className="flex flex-col gap-4">
           <span className="font-mono text-micro tracking-[0.2em] uppercase text-titanium">
             COMMANDED ATTITUDE · LIMITED TO ±{BATAS_DERAJAT}°
           </span>
-          <p className="font-serif text-[clamp(44px,8vw,96px)] leading-[0.9] tracking-tighter tabular-nums text-obsidian">
+          <p className="font-serif text-title leading-[0.9] tracking-tight tabular-nums text-obsidian">
             <span data-sangkar-derajat="">
               {x >= 0 ? "+" : ""}
               {x}° / {y >= 0 ? "+" : ""}
               {y}°
             </span>
           </p>
-          <p className="font-mono text-[10px] leading-relaxed text-titanium max-w-[44ch]">
+          <p className="font-mono text-tag leading-relaxed text-titanium max-w-[70ch]">
             Drag inside the frame, or focus the control below and use the arrow keys. The angle is
             held only while you hold it: releasing the pointer or leaving the control returns the
             cage to its parked yaw, because a value nobody is commanding should not keep the canvas
@@ -99,7 +100,7 @@ export default function SangkarHidup() {
             onFocus={() => ambilFokus()}
             onBlur={() => lepasFokus()}
             aria-label={`Putar sangkar dengan panah keyboard, saat ini ${x} derajat menyamping dan ${y} derajat menunduk, batas ${BATAS_DERAJAT} derajat`}
-            className="self-start font-mono text-[10px] tracking-[0.2em] uppercase px-4 py-2 rounded-full swiss-border hover:border-rosso hover:text-rosso transition-colors"
+            className="self-start font-mono text-tag tracking-[0.2em] uppercase px-4 py-2 rounded-full swiss-border hover:border-rosso hover:text-rosso transition-colors"
           >
             {x >= 0 ? "+" : ""}
             {x}° / {y >= 0 ? "+" : ""}
@@ -107,14 +108,14 @@ export default function SangkarHidup() {
           </button>
         </div>
 
-        <div ref={wadah} className="w-full h-[52vh] min-h-[380px] swiss-border">
+        <div ref={wadah} className="w-full h-[52vh] min-h-[380px] swiss-border bg-obsidian/5">
           <PanggungKecil className="w-full h-full" kamera={[0, 0, 3.2]} fov={42}>
             <SangkarTerbuka />
           </PanggungKecil>
         </div>
-      </div>
+      </GridPanggung>
 
-      <p className="font-mono text-[10px] leading-relaxed text-titanium max-w-[80ch]">
+      <p className="font-mono text-tag leading-relaxed text-titanium max-w-[70ch]">
         The cage is parked at 45° yaw and 16° pitch so it reads as a solid rather than as a flat
         square; your command is added on top of that and clipped to ±{BATAS_DERAJAT}°, the same
         limit and the same module the front-page portrait uses. There is no easing here on purpose:

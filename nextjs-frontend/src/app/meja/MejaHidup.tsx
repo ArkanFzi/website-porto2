@@ -11,6 +11,7 @@ import MejaTipografi, {
   potongKeMask,
   type MejaNilai,
 } from "@/components/Three/panggung/MejaTipografi";
+import { BingkaiKanvas, GridPanggung } from "@/components/Editorial/PanggungFrame";
 
 const AWAL: MejaNilai = {
   persona: 0,
@@ -96,12 +97,12 @@ export default function MejaHidup() {
 
   return (
     <div className="flex flex-col gap-10">
-      <div className="grid lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] gap-8 lg:gap-12 items-start">
-        <div className="w-full h-[58vh] min-h-[420px] swiss-border bg-obsidian/5">
+      <GridPanggung>
+        <BingkaiKanvas>
           <PanggungKecil className="w-full h-full">
             <MejaTipografi nilai={nilai} />
           </PanggungKecil>
-        </div>
+        </BingkaiKanvas>
 
         <div className="flex flex-col gap-5">
           {KNOB.map((k) => (
@@ -110,11 +111,11 @@ export default function MejaHidup() {
                 <span className="font-mono text-micro tracking-[0.2em] uppercase text-obsidian">
                   {k.label}
                 </span>
-                <span className="flex items-baseline gap-2 font-mono text-[10px] text-titanium">
-                  <span className="tracking-[0.12em] uppercase">{k.uniform}</span>
+                <span className="flex items-baseline gap-2 font-mono text-tag text-titanium">
+                  <span className="tracking-[0.2em] uppercase">{k.uniform}</span>
                   <span
                     data-meja-angka={k.key}
-                    className="tabular-nums text-obsidian text-[13px] font-bold"
+                    className="tabular-nums text-obsidian text-label"
                   >
                     {tetap(nilai[k.key])}
                   </span>
@@ -134,29 +135,29 @@ export default function MejaHidup() {
                 aria-valuetext={`${k.label} ${tetap(nilai[k.key])}`}
                 className="w-full accent-rosso cursor-pointer"
               />
-              <span className="font-mono text-[9px] leading-relaxed text-titanium max-w-[52ch]">
+              <span className="font-mono text-tag leading-relaxed text-titanium max-w-[70ch]">
                 {k.hint}
               </span>
             </label>
           ))}
 
           <div className="flex items-center justify-between gap-3 pt-2 swiss-border-t">
-            <span data-meja-mask className="font-mono text-[9px] tracking-[0.1em] text-titanium">
+            <span data-meja-mask className="font-mono text-tag tracking-[0.2em] text-titanium">
               uMask [{tetap(mask[0])}, {tetap(mask[1])}, {tetap(mask[2])}, {tetap(mask[3])}]
             </span>
             <button
               type="button"
               data-meja-reset
               onClick={() => setNilai(AWAL)}
-              className="font-mono text-[10px] tracking-[0.2em] uppercase px-4 py-2 rounded-full swiss-border hover:border-rosso hover:text-rosso transition-colors cursor-pointer"
+              className="font-mono text-tag tracking-[0.2em] uppercase px-4 py-2 rounded-full swiss-border hover:border-rosso hover:text-rosso transition-colors cursor-pointer"
             >
               Reset
             </button>
           </div>
         </div>
-      </div>
+      </GridPanggung>
 
-      <p className="font-mono text-[10px] leading-relaxed text-titanium max-w-[86ch]">
+      <p className="font-mono text-tag leading-relaxed text-titanium max-w-[70ch]">
         Every knob writes one uniform of one material. Nothing here is animated by the page:
         the image only changes when you move something, and the change costs exactly one frame —
         a knob is a command, so it is allowed to ask for a frame even while the idle law is holding
