@@ -535,9 +535,15 @@ await diamkan(800);
   // putaran, dan apakah wajah lama benar-benar dipegang selama separuh pertama itu.
   // Digabung, mesin yang telat bangun melapor "kode rusak"; dipisah, yang merah adalah
   // gerbang rekaman dan namanya menyebut mesin, bukan panggung.
+  // Dulu gerbang ini diikat ke sampel ke-nol. Itu menguji FASA penggaris, bukan panggung:
+  // jeda klik→efek bisa lebih pendek dari satu langkah polling 90ms, jadi sampel pertama
+  // sempat membaca balik=0 sebelum putaran mulai (terukur 0,000 padahal sampel 1-2
+  // menangkap 0,659). Yang ditagih di sini adalah rekamannya PERNAH melihat separuh
+  // pertama — dan kalau mesin tertidur lalu satu frame raksasa menelan separuh pertama,
+  // angka terbesar itu tetap di bawah 0,5, jadi klaimnya tidak ikut dilonggarkan.
   cek(
     'rekaman menangkap putaran sejak separuh pertamanya',
-    (flip.rekam[0]?.balik ?? 0) >= 0.5,
+    Math.max(0, ...flip.rekam.map((r) => r?.balik ?? 0)) >= 0.5,
     true
   );
   cek(

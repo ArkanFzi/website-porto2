@@ -1,13 +1,13 @@
 {
   "_catatan": "Hasil ukur `node tools/ci/perf-budget.mjs --tulis` dikali ruang tumbuh 8%. Diukur dari aset yang dirujuk HTML hasil build rute / (bukan besar folder .next). 'kirim' = gzip level default untuk teks, ukuran file apa adanya untuk woff2/webp.",
-  "diukurPada": "2026-11-01",
+  "diukurPada": "2026-11-02",
   "asetTambahan": [
     "/FotoDiriFix.webp"
   ],
-  "maksTotalKirim": 613,
+  "maksTotalKirim": 621,
   "maksPerKategori": {
-    "js": 277,
-    "css": 13,
+    "js": 283,
+    "css": 15,
     "font": 112,
     "aset": 212
   },
