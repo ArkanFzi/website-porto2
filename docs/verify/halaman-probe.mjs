@@ -448,6 +448,26 @@ hasil.push({
 cek('tidak ada tumpang tindih tautan baru dengan sasaran interaktif', ukurMasuk.overlap, 0);
 await foto(pageUtama, '05-masuk-hud');
 
+// ── 6 · penjaga jalur: apa yang boleh dibaca crawler dan apa yang tidak ──
+// /cv-layout adalah kertas render untuk /api/cv, bukan halaman. robots.txt sudah menolaknya;
+// gerbang ini memastikan dokumen itu sendiri juga menolak, dan bahwa dua lorong rincian yang
+// baru benar-benar terdaftar di sitemap — supaya yang dilarang dan yang diumumkan tidak
+// pernah tertukar.
+const ambil = async (jalur) => {
+  const r = await fetch(FE + jalur);
+  return { status: r.status, teks: await r.text() };
+};
+const cv = await ambil('/cv-layout');
+cek('/cv-layout menjawab 200', cv.status, 200);
+cek('/cv-layout menolak diindeks lewat meta robots', /name="robots"[^>]*noindex/i.test(cv.teks), true);
+cek('/cv-layout punya judul dokumen sendiri', /<title>[^<]*CV render sheet/i.test(cv.teks), true);
+const rb = await ambil('/robots.txt');
+cek('robots.txt men-disallow /cv-layout', /disallow:\s*\/cv-layout/i.test(rb.teks), true);
+const sm = await ambil('/sitemap.xml');
+cek('sitemap memuat /baca', sm.teks.includes('/baca'), true);
+cek('sitemap memuat /arsip', sm.teks.includes('/arsip'), true);
+cek('sitemap tidak memuat /cv-layout', sm.teks.includes('/cv-layout'), false);
+
 await browser.close();
 for (const h of hasil) console.log(`${h.ok ? 'LULUS' : 'GAGAL'}  ${h.nama}: dapat ${h.dapat}, harus ${h.harus}`);
 const gagal = hasil.filter((h) => !h.ok).length;
