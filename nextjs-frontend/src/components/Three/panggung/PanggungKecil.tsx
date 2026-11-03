@@ -28,6 +28,11 @@ interface Props {
    *  editorial — tanpa gerbang ini, satu gulir di ujung halaman dibayar dua kanvas.
    *  Default true: panggung per-rute tidak punya tetangga. */
   aktif?: boolean;
+  /** Isi hanya bila panggung ini duduk di halaman yang sudah punya kanvas utama. Alat ukur
+   *  tetap berjalan tapi tercatat di window.__renders[id], bukan menimpa __render/__scene —
+   *  kalau tidak, verifier panggung utama sensusnya dicabut dari scene tetangga.
+   *  Default kosong: rute dengan satu kanvas, dan kanvas itulah yang diukur. */
+  pengukurId?: string;
   children: React.ReactNode;
 }
 
@@ -36,6 +41,7 @@ export const PanggungKecil: React.FC<Props> = ({
   kamera = [0, 0, 5],
   fov = 42,
   aktif = true,
+  pengukurId,
   children,
 }) => {
   const reduceMotion = useSyncExternalStore(
@@ -56,7 +62,9 @@ export const PanggungKecil: React.FC<Props> = ({
         <Suspense fallback={null}>{children}</Suspense>
         {/* Alat ukur yang sama dengan kanvas editorial: draw call rute ini bisa dibaca
             drawcall-probe dengan kontrak yang sama, bukan dengan angka yang dikira-kira. */}
-        {process.env.NODE_ENV !== "production" && <PengukurRender />}
+        {process.env.NODE_ENV !== "production" && (
+          <PengukurRender id={pengukurId ?? "utama"} utama={!pengukurId} />
+        )}
       </Canvas>
     </div>
   );
