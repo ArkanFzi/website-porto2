@@ -30,10 +30,18 @@ const RUTE = RUTE_TEKNIS;
 const SUDUT = RUTE.map((_, i) => Math.PI / 2 - (i * Math.PI * 2) / RUTE.length);
 
 /** Elips penempatan label dalam persen kotak panggung. Ry kecil karena cincin dilihat
- *  miring: proyeksi layar cincin dunia memang pipih. */
-const RX = 43;
-const RY = 27;
-const PUSAT_Y = 52;
+ *  miring: proyeksi layar cincin dunia memang pipih.
+ *
+ *  Angkanya diturunkan dari proyeksi cincin yang sebenarnya, bukan dikira: kamera
+ *  [0, 2,15, 5,3] fov 42 pada kotak 1180x558 memproyeksi lingkaran JARI 1,9 menjadi elips
+ *  rx 254 px / ry 100 px yang pusatnya duduk di y 324 px (58,1%), dan node dipasang 15% di
+ *  luar elips itu supaya titik kursor tidak menutupi bodi. Selama kotak hitam masih ada,
+ *  simpangan ini tidak kelihatan karena semuanya tenggelam di latar yang sama gelapnya;
+ *  di atas kertas, label yang melayang 2x radius cincin terbaca sebagai daftar yang kebetulan
+ *  dilingkarkan, bukan sebagai peta. */
+const RX = 25;
+const RY = 21;
+const PUSAT_Y = 58;
 
 const posisiNode = (i: number) => ({
   left: `${50 + RX * Math.cos(SUDUT[i])}%`,
@@ -130,7 +138,7 @@ export const ChapterHub: React.FC = () => {
         {/* Kepala section duduk DI ATAS panggung, bukan di kolom kanan: yang dibaca lebih
             dulu adalah "ini peta lima sektor", baru lingkarannya. */}
         <span className="font-mono text-[10px] tracking-[0.25em] uppercase text-[#D41E12] mb-4">
-          SEVEN SECTORS // ONE STEER
+          FIVE SECTORS // ONE STEER
         </span>
         <h2 className="font-serif text-4xl sm:text-5xl font-bold tracking-tight text-[#D41E12] mb-4">
           THE PIT WALL
@@ -140,39 +148,30 @@ export const ChapterHub: React.FC = () => {
           car looks where you are going; the ring is a map, not a menu you have to open.
         </p>
 
-        {/* Panggung: kanvas + node, hanya di layar lebar. Latar belakangnya bukan hitam rata
-            lagi: satu gradien radial cyclorama — terang lembut di belakang mobil, jatuh ke
-            hitam di sudut — supaya sorot di dalam kanvas punya dinding untuk jatuh.
-            Digambar di CSS, bukan WebGL: nol draw call, dan tepi kotak tetap kotak. */}
+        {/* Panggung: kanvas + node, hanya di layar lebar. Kotaknya dihapus, bukan
+            diperindah: kanvas ini alpha:true sejak awal, jadi satu-satunya alasan dulu
+            ada kotak hitam adalah supaya sorot panggung punya dinding untuk jatuh.
+            Tanpa sorot, dinding itu yang membuat panggung terbaca sebagai video player
+            yang ditempel ke kertas — jadi yang dilukis di belakang podium sekarang adalah
+            kertas halaman itu sendiri. Tidak ada border, tidak ada gradien, tidak ada
+            vignette; PanggungKecil sudah memotong kanvasnya sendiri. */}
         <div
-          className="hidden md:block relative w-full h-[62vh] min-h-[460px] max-h-[720px] swiss-border overflow-hidden"
-          style={{
-            background:
-              "radial-gradient(46% 42% at 12% 4%, rgba(212,30,18,0.32) 0%, rgba(212,30,18,0) 70%)," +
-              "radial-gradient(72% 58% at 50% 36%, #26262c 0%, #17171b 40%, #0b0b0d 72%, #060607 100%)",
-          }}
+          data-hub-panggung=""
+          className="hidden md:block relative w-full h-[62vh] min-h-[460px] max-h-[720px]"
         >
           <div className="absolute inset-0">
             {adaTempat && (
               <HubPanggung sudut={SUDUT} node={node} dekat={dekat} terlihat={terlihat} />
             )}
           </div>
-          {/* Bingkai viewport: crosshair di empat sudut + vignette dalam. Dua-duanya DOM,
-              bukan WebGL — nol draw call, dan `pointer-events-none` membuat lima node di
-              bawahnya tetap bisa diklik. Fungsinya menyatukan kotak hitam dengan latar
-              off-white: tanpa ini tepi kanvas terbaca sebagai video player yang ditempel. */}
+          {/* Tanda daftar di empat sudut: bekas bingkai viewport, sekarang tinta di atas
+              kertas, bukan cahaya di atas hitam. `pointer-events-none` menahan lima node di
+              bawahnya tetap bisa diklik. */}
           <div aria-hidden className="pointer-events-none absolute inset-0">
-            <div
-              className="absolute inset-0"
-              style={{
-                background:
-                  "radial-gradient(118% 92% at 50% 46%, rgba(0,0,0,0) 52%, rgba(0,0,0,0.45) 100%)",
-              }}
-            />
             {SUDUT_BINGKAI.map((kelas) => (
               <span
                 key={kelas}
-                className={`absolute font-mono text-[13px] leading-none text-white/30 ${kelas}`}
+                className={`absolute font-mono text-[13px] leading-none text-[#12100E]/20 ${kelas}`}
               >
                 +
               </span>
@@ -193,25 +192,25 @@ export const ChapterHub: React.FC = () => {
             >
               {/* Titik + cincin berdenyut. Denyut hanya ada selama section ini benar-benar
                   terlihat: animasi CSS yang berjalan terus adalah kompositing yang dibayar
-                  bahkan saat tidak ada yang melihat, dan halaman ini punya hukum diam. */}
+                  bahkan saat tidak ada yang melihat, dan halaman ini punya hukum diam.
+                  Tintanya tinta, bukan cahaya: node duduk di atas kertas, dan satu-satunya
+                  hal yang boleh menyala di section ini adalah rosso yang dipilih. */}
               <span className="relative flex h-3.5 w-3.5 items-center justify-center">
                 {terlihat && (
-                  <span className="absolute inset-0 rounded-full border border-white/40 animate-ping motion-reduce:hidden" />
+                  <span className="absolute inset-0 rounded-full border border-[#12100E]/25 animate-ping motion-reduce:hidden" />
                 )}
                 <span
                   className={`w-3.5 h-3.5 rounded-full border transition-colors duration-200 ${
-                    node === i
-                      ? "border-[#D41E12] bg-[#D41E12] shadow-[0_0_12px_rgba(212,30,18,0.6)]"
-                      : "border-white/40 bg-white/5"
+                    node === i ? "border-[#D41E12] bg-[#D41E12]" : "border-[#12100E]/45 bg-[#F2F0EA]"
                   }`}
                 />
               </span>
-              <span className="h-px w-3 bg-white/30" aria-hidden />
+              <span className="h-px w-3 bg-[#12100E]/25" aria-hidden />
               <span
-                className={`rounded-full border px-2.5 py-[3px] font-mono text-[10px] font-bold uppercase tracking-[0.25em] backdrop-blur-[2px] transition-colors duration-200 ${
+                className={`rounded-full border px-2.5 py-[3px] font-mono text-[10px] font-bold uppercase tracking-[0.25em] transition-colors duration-200 ${
                   node === i
-                    ? "border-[#D41E12]/70 bg-[#1A0B09]/75 text-[#FF5A4A]"
-                    : "border-white/15 bg-black/55 text-white/90"
+                    ? "border-[#D41E12] bg-[#D41E12] text-[#FFFDF8]"
+                    : "border-[#12100E]/25 bg-[#F2F0EA]/85 text-[#12100E]/75"
                 }`}
               >
                 {r.label}

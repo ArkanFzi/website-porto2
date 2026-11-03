@@ -31,9 +31,11 @@ const FE = process.env.FE_URL ?? 'http://localhost:3001';
 // Bab yang ditagih lewat section-nya sendiri (anchor #chapter-0N di aluraman). Hub (bab 5)
 // sengaja tidak ikut daftar ini: angkanya hidup di kanvas kedua, dan sejak PengukurRender
 // mencatat per root, bacaannya ada di window.__renders.hub — bukan di window.__render yang
-// jadi milik kanvas editorial. Panggung hub sekarang 46 call / 40 objek (alas, ban cahaya
-// di kelilingnya, kolam, bayangan kontak, kisi lantai jauh, sirkuit, tiga kerucut sorot,
-// 32 mesh livery sf26-livery.glb); sensus itu yang dibaca gerbang 5f halaman-probe.
+// jadi milik kanvas editorial. Panggung hub sekarang 40 call / 35 objek (alas, bayangan
+// kontak, sirkuit garis, 32 mesh livery sf26-livery.glb); enam objek panggung-gelap —
+// kisi lantai, ban cahaya, kolam sorot, dan tiga kerucut sorot — ikut dibuang bersama
+// kotak hitamnya di belakang kanvas. Yang ditagih 5f halaman-probe bukan angka ini tapi
+// nol frame saat diam, dan itu tetap berlaku: 40 call hanya ada selama yaw mengejar.
 const BAB = [1, 2, 3, 4];
 
 const argv = process.argv.slice(2);

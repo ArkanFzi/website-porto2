@@ -787,19 +787,21 @@ cek(
 // ── 5f · hub akses: lima node, satu hukum diam ──
 // Hub adalah section aliran dokumen antara bab 02 dan 03 dengan PanggungKecil sendiri.
 // Yang ditagih: kelengkapan menunya (lima node teknis, href sama dengan RUTE_TEKNIS di
-// src/lib/rute.ts), mobilnya benar-benar menoleh ke node yang ditunjuk, dan kanvas baru
-// ini tidak merusak
-// invariant "nol frame saat diam". Counter frame PengukurRender dipakai bersama kedua
-// kanvas, jadi satu selisih menagih keduanya sekaligus.
-// Parkir harus lewat batas portal hub (t + 60), bukan sebelum puncak section: di dalam pita
-// perpindahan kanvas global memang wajib hidup — ia menggeser kartu — dan angka frame jendela
-// diam akan menagih gerak yang benar itu sebagai pelanggaran. Marginnya cuma 60 px dan itu
-// disengaja: kolom HUD fixed sampai --hud-atas (160 px), dan panggung hub yang gelap masuk ke
-// bawah kolom itu begitu section dinaikkan ±120 px — terukur, screenshot-nya jadi terlihat
-// seperti kanvas yang bocor, padahal kertas HUD yang menimpa.
+// src/lib/rute.ts), mobilnya benar-benar menoleh ke node yang ditunjuk, dan kanvas baru ini
+// tidak merusak invariant "nol frame saat diam". Counter frame PengukurRender dipakai bersama
+// kedua kanvas, jadi satu selisih menagih keduanya sekaligus.
+// Parkir harus lewat batas portal hub, bukan sebelum puncak section: di dalam pita perpindahan
+// kanvas global memang wajib hidup — ia menggeser kartu — dan angka frame jendela diam akan
+// menagih gerak yang benar itu sebagai pelanggaran.
+// Margin 262 px (bukan 60 seperti waktu panggung masih kotak hitam) dipilih karena geometri,
+// terukur di 1440x900: puncak stage duduk 462 px di dalam section, stage 558 px, dan pita
+// legibilitas bawah HUD menutup 785..900. Di +60 dua node bawah (POTRET, TRANSISI) mendarat
+// di dalam pita itu; di +262 stage utuh berada di pita bersih 160..785. Kotak hitam yang dulu
+// membuat parkir dalam itu terlihat seperti kanvas bocor sudah tidak ada, jadi tidak ada lagi
+// yang perlu ditakuti dari section yang dinaikkan.
 await pageUtama.evaluate(() => {
   const el = document.getElementById('chapter-hub');
-  window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY + 60);
+  window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY + 262);
 });
 await jeda(4500); // aset glb baru diminta saat section mendekat (rootMargin 60%)
 
@@ -808,6 +810,16 @@ const hub = await pageUtama.evaluate(() => {
   const urut = [...document.querySelectorAll('main section')].map((s) => s.id);
   const node = [...document.querySelectorAll('[data-hub-node]')].filter((e) => e.offsetParent !== null);
   const pr = seksi?.querySelector('[data-portal="5"]')?.getBoundingClientRect();
+  const panggung = seksi?.querySelector('[data-hub-panggung]')?.getBoundingClientRect();
+  // Pita legibilitas bawah: satu-satunya lapisan fixed header yang menempel ke tepi bawah
+  // viewport. Dicari lewat geometri + class-nya, bukan lewat angka yang dikira-kira.
+  const pita = [...document.querySelectorAll('header div')]
+    .filter((e) => {
+      const r = e.getBoundingClientRect();
+      return /pointer-ev/.test(String(e.className)) && r.height > 40 && Math.abs(r.bottom - innerHeight) <= 2;
+    })
+    .map((e) => Math.round(e.getBoundingClientRect().top));
+  const hudAtas = Math.round(parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--hud-atas')) || 0);
   return {
     antara:
       urut.indexOf('chapter-02') + 1 === urut.indexOf('chapter-hub') &&
@@ -820,6 +832,9 @@ const hub = await pageUtama.evaluate(() => {
     // bisa tertutup panggung di sepanjang rentang parkir (terukur). Yang bisa ditagih adalah
     // kartu tidak pernah menabrak isi hub: kotaknya duduk di kiri luar viewport.
     portalLuar: !!pr && pr.right <= 0,
+    panggung: panggung ? { atas: Math.round(panggung.top), bawah: Math.round(panggung.bawah) } : null,
+    pitaAtas: pita.length ? Math.min(...pita) : null,
+    hudAtas,
     baca: window.__hub ?? null,
   };
 });
@@ -833,6 +848,20 @@ cek(
 );
 cek('panggung hub adalah island kanvas sendiri', hub.kanvas, true);
 cek('kartu potret diparkir di luar isi hub, bukan di atasnya', hub.portalLuar, true);
+// Setelah kotak hitam dihapus, yang membuat panggung terbaca sebagai objek di atas kertas —
+// bukan sebagai video yang menempel — adalah bahwa ia duduk UTUH di pita bersih: di bawah
+// kolom HUD dan di atas pita legibilitas. Di +60 dulu dua node bawah mendarat di dalam pita
+// itu (terukur: pita mulai 785, node 809), karena itu parkir dipindah ke +262 dan ditagih.
+cek(
+  'panggung hub duduk di bawah kolom HUD saat parkir',
+  !!hub.panggung && hub.panggung.atas >= hub.hudAtas,
+  true
+);
+cek(
+  'panggung hub tidak tertimpa pita legibilitas bawah',
+  !!hub.panggung && !!hub.pitaAtas && hub.panggung.bawah <= hub.pitaAtas,
+  true
+);
 cek(
   'mobil hub ada dan parkir saat tidak ada yang menunjuk',
   hub.baca !== null && Math.abs(hub.baca.yaw - hub.baca.target) < 0.01,

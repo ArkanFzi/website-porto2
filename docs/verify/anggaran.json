@@ -1,5 +1,5 @@
 {
-  "dibuat": "2026-11-03T04:56:39.129Z",
+  "dibuat": "2026-11-03T07:02:43.366Z",
   "sumber": "docs/verify/drawcall-probe.mjs --tulis",
   "jendela_ukur": {
     "lebar": 1440,
@@ -16,7 +16,7 @@
     "sepi_setelah_ms = lama tunggu dari akhir jendela aktif sampai counter frame berhenti naik; angka ini adalah sisa perjalanan kartu, bukan waktu idle yang diizinkan.",
     "puncak null dan frame_terukur 0 berarti kanvas tidak menulis satu pun frame selama 1,5 s jendela ukur — bukan nol alokasi."
   ],
-  "puncak_aktif_global": 3,
+  "puncak_aktif_global": 5,
   "aset_unduhan": [
     {
       "nama": "FotoDiriFix.webp",
@@ -36,22 +36,19 @@
       "bab": 1,
       "frame_terukur": 15,
       "puncak": {
-        "calls": 5,
-        "segitiga": 18460,
-        "titik": 140,
-        "garis": 2,
-        "geometri": 6,
+        "calls": 2,
+        "segitiga": 18446,
+        "titik": 0,
+        "garis": 0,
+        "geometri": 5,
         "tekstur": 2
       },
       "objek": [
         "Mesh",
-        "debu",
-        "kompas",
-        "bilah",
         "jejak"
       ],
-      "fps": 1.7,
-      "sepi_setelah_ms": 15747,
+      "fps": 9.2,
+      "sepi_setelah_ms": 6007,
       "frame_saat_diam": 0,
       "objek_saat_diam": []
     },
@@ -59,22 +56,20 @@
       "bab": 2,
       "frame_terukur": 15,
       "puncak": {
-        "calls": 5,
+        "calls": 3,
         "segitiga": 18460,
-        "titik": 140,
-        "garis": 2,
-        "geometri": 6,
+        "titik": 0,
+        "garis": 0,
+        "geometri": 5,
         "tekstur": 2
       },
       "objek": [
         "Mesh",
-        "debu",
-        "kompas",
         "bilah",
         "jejak"
       ],
-      "fps": 6.4,
-      "sepi_setelah_ms": 13019,
+      "fps": 7.1,
+      "sepi_setelah_ms": 7261,
       "frame_saat_diam": 0,
       "objek_saat_diam": []
     },
@@ -94,8 +89,8 @@
         "bilah",
         "jejak"
       ],
-      "fps": 1.4,
-      "sepi_setelah_ms": 13278,
+      "fps": 17.8,
+      "sepi_setelah_ms": 7266,
       "frame_saat_diam": 0,
       "objek_saat_diam": []
     },
@@ -115,8 +110,8 @@
         "bilah",
         "jejak"
       ],
-      "fps": 9.3,
-      "sepi_setelah_ms": 13790,
+      "fps": 16.4,
+      "sepi_setelah_ms": 7255,
       "frame_saat_diam": 0,
       "objek_saat_diam": []
     }
