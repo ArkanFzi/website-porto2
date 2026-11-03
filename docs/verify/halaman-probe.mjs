@@ -1228,8 +1228,22 @@ pageSangkar.on('pageerror', (e) => galatSangkar.push(String(e)));
 await pageSangkar.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
 const rSangkar = await pageSangkar.goto(`${FE}/interaksi`, { waitUntil: 'domcontentloaded', timeout: 45000 });
 cek('/interaksi menjawab 200', rSangkar.status(), 200);
-await jeda(1200);
-const sangkarAwal = await bacaSangkar(pageSangkar);
+// Dibaca dengan ditanya, bukan dengan ditidurkan. `window.__sangkar` dan `window.__render`
+// ditulis dari frame, jadi keduanya baru ada setelah kanvas benar-benar menghasilkan frame
+// pertamanya — di SwiftShader bawah beban itu bisa lewat dari jeda tetap 1200 ms dan gerbang
+// membacanya sebagai "verifier tidak terpasang" padahal halamannya sehat (terukur: rute yang
+// sama dibuka sendirian memberi __sangkar terisi, calls 1, nol pageerror). Yang ditunggu
+// keadaannya, tenggatnya tetap ada supaya kegagalan tetap dilaporkan apa adanya.
+const tungguSangkar = async (p, siap, { batasMs = 12000, jedaMs = 200 } = {}) => {
+  const mulai = Date.now();
+  let baca = await bacaSangkar(p);
+  while (!siap(baca) && Date.now() - mulai < batasMs) {
+    await jeda(jedaMs);
+    baca = await bacaSangkar(p);
+  }
+  return baca;
+};
+const sangkarAwal = await tungguSangkar(pageSangkar, (b) => !!b.sangkar && !!b.render);
 console.log('sangkar  ', JSON.stringify(sangkarAwal));
 cek('sangkar tergambar sebagai satu draw call', sangkarAwal.render?.calls, 1);
 cek('verifier sudut terpasang', !!sangkarAwal.sangkar, true);
@@ -1248,8 +1262,7 @@ if (kotak) {
   await pageSangkar.mouse.move(kotak.x, kotak.y);
   await pageSangkar.mouse.down();
   await pageSangkar.mouse.move(kotak.x + 100, kotak.y, { steps: 6 });
-  await jeda(700);
-  const diseret = await bacaSangkar(pageSangkar);
+  const diseret = await tungguSangkar(pageSangkar, (b) => b.sangkar?.derajatX === 6);
   console.log('seret    ', JSON.stringify(diseret.sangkar));
   cek('seret menghasilkan sudut yang benar-benar berubah', diseret.sangkar?.derajatX, 6);
   cek(
@@ -1263,12 +1276,10 @@ if (kotak) {
     true
   );
   await pageSangkar.mouse.move(kotak.x + 900, kotak.y, { steps: 4 });
-  await jeda(500);
-  const dijepit = await bacaSangkar(pageSangkar);
+  const dijepit = await tungguSangkar(pageSangkar, (b) => b.sangkar?.derajatX === 12);
   cek('batas 12 derajat ditegakkan lewat jepit, bukan lewat klaim', dijepit.sangkar?.derajatX, 12);
   await pageSangkar.mouse.up();
-  await jeda(700);
-  const dilepas = await bacaSangkar(pageSangkar);
+  const dilepas = await tungguSangkar(pageSangkar, (b) => b.sangkar?.derajatX === 0);
   cek('melepas seret mengembalikan sudut ke nol', dilepas.sangkar?.derajatX, 0);
   cek('DOM ikut kembali ke nol', !!dilepas.dom?.startsWith('+0°'), true);
 }
@@ -1277,14 +1288,12 @@ if (kotak) {
 await pageSangkar.focus('[data-sangkar-kontrol]');
 await pageSangkar.keyboard.press('ArrowRight');
 await pageSangkar.keyboard.press('ArrowRight');
-await jeda(700);
-const denganPanah = await bacaSangkar(pageSangkar);
+const denganPanah = await tungguSangkar(pageSangkar, (b) => b.sangkar?.derajatX === 8);
 console.log('panah    ', JSON.stringify(denganPanah.sangkar));
 cek('dua langkah panah = delapan derajat', denganPanah.sangkar?.derajatX, 8);
 cek('kontrol keyboard dan kanvas membaca store yang sama', !!denganPanah.dom?.startsWith('+8°'), true);
 await pageSangkar.keyboard.press('Escape');
-await jeda(500);
-const lepasKeyboard = await bacaSangkar(pageSangkar);
+const lepasKeyboard = await tungguSangkar(pageSangkar, (b) => b.sangkar?.derajatX === 0);
 cek('Escape mengembalikan ke nol', lepasKeyboard.sangkar?.derajatX, 0);
 
 // Sampel diambil setelah IDLE_MS lewat dari aktivitas terakhir (Escape membangunkan loop),
