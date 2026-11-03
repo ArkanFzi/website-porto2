@@ -46,6 +46,14 @@ const KECEPATAN_PENUH = 25;
 /** Konstanta waktu pegas dolly, detik. */
 const TAU_DOLLY = 0.14;
 
+/** Laju pelicin pointer dan pegas sikap kartu, per detik. Setara dengan lerp 0,08 per
+ *  frame pada 60 fps (−ln(0,92)·60 ≈ 5), jadi terasa sama di layar yang sehat. Dalam
+ *  fraksi per frame angka itu adalah kecepatan yang berbeda-beda per mesin: pada 7 fps
+ *  (perenderan perangkat lunak) satu kibasan pointer butuh ±115 frame ≈ 16 detik untuk
+ *  settle, dan kartu yang pegasnya sendiri 0,08/frame tertinggal di belakang huruf DOM
+ *  yang membaca angka yang sama — terukur huruf berhenti di −8,99px dari tujuan +34px. */
+const PELICIN_LAJU = 5;
+
 /** Laju silang potret→mobil per detik. Setara dengan alpha 0,1 per frame pada 60 fps
  *  (−ln(0,9)·60 ≈ 6,3), jadi terasa sama di layar yang sehat. */
 const SILANG_LAJU = 6.3;
@@ -346,9 +354,22 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
     // pointer dan fokus keyboard menulis keadaan yang sama.
     const dipegang = bacaFokusKartu();
 
-    // Smooth mouse interpolation
-    mouse.current.x += (mouse.current.targetX - mouse.current.x) * 0.08;
-    mouse.current.y += (mouse.current.targetY - mouse.current.y) * 0.08;
+    // Smooth mouse interpolation. Lajunya per detik (PELICIN_LAJU), bukan fraksi per
+    // frame: kartu dan huruf DOM membaca nilai yang sama, jadi kecepatan penghalusannya
+    // tidak boleh berubah ikut kemampuan mesin.
+    const pelicin = 1 - Math.exp(-delta * PELICIN_LAJU);
+    mouse.current.x += (mouse.current.targetX - mouse.current.x) * pelicin;
+    mouse.current.y += (mouse.current.targetY - mouse.current.y) * pelicin;
+    // Jarak pointer yang belum dilewati pelicinya. Ini yang menahan loop "demand" tetap
+    // bangun setelah peristiwa pointer berhenti: tanpa dihitung, satu gerakan hanya
+    // menyumbang beberapa frame (terukur: 4–6 frame lalu tidurnya datang, huruf berhenti
+    // di −8,99px dari tujuan +34px dan kartu tertinggal di belakangnya), jadi geyang
+    // pointer mendarat di tengah jalan dan baru lanjut lagi saat kursor digerakkan lagi.
+    // Di 60fps gejalanya halus — cursor yang diam sesudah kibasan tetap kehilangan
+    // sehelai parallax — di mesin lambat ia membeku.
+    const sisaPointer =
+      Math.abs(mouse.current.targetX - mouse.current.x) +
+      Math.abs(mouse.current.targetY - mouse.current.y);
     // Kartu yang difokus lewat keyboard menyala sama terangnya dengan kartu yang disentuh
     // pointer: reveal tidak lagi milik pointer saja, karena cahaya itulah reticle-nya.
     mat.uniforms.uReveal.value = THREE.MathUtils.lerp(
@@ -511,11 +532,11 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
     const skala = muat(kotak) / pxPerWorld(k.pas);
     meshRef.current.scale.set(skala, skala, 1);
 
-    meshRef.current.position.x = THREE.MathUtils.lerp(meshRef.current.position.x, targetX, 0.08);
-    meshRef.current.position.y = THREE.MathUtils.lerp(meshRef.current.position.y, targetY, 0.08);
-    meshRef.current.position.z = THREE.MathUtils.lerp(meshRef.current.position.z, targetZ, 0.08);
-    dasar.current.rotY = THREE.MathUtils.lerp(dasar.current.rotY, targetRotY, 0.08);
-    dasar.current.rotX = THREE.MathUtils.lerp(dasar.current.rotX, -mouse.current.y * 0.08, 0.08);
+    meshRef.current.position.x = THREE.MathUtils.lerp(meshRef.current.position.x, targetX, pelicin);
+    meshRef.current.position.y = THREE.MathUtils.lerp(meshRef.current.position.y, targetY, pelicin);
+    meshRef.current.position.z = THREE.MathUtils.lerp(meshRef.current.position.z, targetZ, pelicin);
+    dasar.current.rotY = THREE.MathUtils.lerp(dasar.current.rotY, targetRotY, pelicin);
+    dasar.current.rotX = THREE.MathUtils.lerp(dasar.current.rotX, -mouse.current.y * 0.08, pelicin);
     // Sisa jarak kartu ke sikap yang dituntut portal. Angka ini ikut menahan loop
     // "demand" tetap bangun: tanpa itu satu frame pemicu (gerak pointer, satu tick
     // gulir) hanya menutup 8% dari jarak lalu tidurnya datang, dan kartu berhenti
@@ -576,6 +597,7 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
     if (
       balik.current > 0 ||
       sudutBalik > 0 ||
+      sisaPointer > 1e-4 ||
       Math.abs(perintah.x - pusing.current.x) > 1e-4 ||
       Math.abs(perintah.y - pusing.current.y) > 1e-4 ||
       Math.abs((mat.uniforms.uPersona.value as number) - targetPersona) > 1e-3 ||
