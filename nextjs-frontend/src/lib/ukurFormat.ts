@@ -26,6 +26,10 @@ export type UkurTersedia = UkurPerKartu | null | undefined;
  *  jalur "tampilkan angka terakhir" karena itulah yang sedang kita hapus. */
 export function saringMetrik(m: MetrikKartu, sekarang: number = Date.now()): UkurPerKartu | null {
   const umurHari = (sekarang - Date.parse(m.dihasilkanPada)) / 86_400_000;
+  // `Number.isFinite` bukan hiasan: stempel yang hilang atau tidak terbaca membuat umurHari
+  // NaN, dan `NaN > batas` itu false — tanpa pemeriksaan ini kartu gelap justru mencetak
+  // angka lama seolah-olah baru diukur. Kartu gelap lebih jujur dari angka tanpa sumber.
+  if (!Number.isFinite(umurHari)) return null;
   return umurHari > m.batasUsiaHari ? null : m.kartu;
 }
 
