@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node --test src/lib/buketMenit.test.ts src/lib/jejakArsitektur.test.ts",
+    "test": "node --test src/lib/buketMenit.test.ts src/lib/jejakArsitektur.test.ts src/lib/ukurFormat.test.ts",
     "lint": "eslint"
   },
   "dependencies": {
