@@ -126,7 +126,7 @@ export const ChapterHub: React.FC = () => {
         ease="halus"
       />
       <div className="w-full max-w-[1180px] mx-auto flex flex-col items-center text-center">
-        <div className="w-full flex items-center justify-between pb-6 swiss-border-b mb-10">
+        <div data-jejak-papan className="w-full flex items-center justify-between pb-6 swiss-border-b mb-10">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-[#D41E12]" />
             <span className="font-mono text-[11px] font-bold tracking-[0.25em] uppercase text-[#D41E12]">

@@ -230,6 +230,7 @@ export const ChapterArchives: React.FC<ArchivesProps> = ({
       {/* Header dan daftar wajib berbagi kotak isi yang sama: tanpa pr-8 tepi kanan
           tombol panah jatuh tepat di tepi papan dan setengah lingkarannya hilang di atas kertas. */}
       <div
+        data-jejak-papan
         className={`w-full max-w-[1600px] mx-auto xl:max-w-[1000px] xl:mx-0 xl:pr-8 ${kelasBaca} flex items-center justify-between pb-6 border-b border-white/10 mb-16`}
       >
         <div className="flex items-center gap-2">

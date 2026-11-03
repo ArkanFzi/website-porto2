@@ -550,7 +550,7 @@ const jejak = await page.evaluate(() => {
   };
   return {
     panggung: j
-      ? { hop: j.hop, ms: j.ms, px: j.px, mulai: j.mulai, pxPerMs: j.pxPerMs, anggaranPx: j.anggaranPx, totalMs: j.totalMs }
+      ? { hop: j.hop, ms: j.ms, px: j.px, mulai: j.mulai, pxPerMs: j.pxPerMs, anggaranPx: j.anggaranPx, totalMs: j.totalMs, papan: j.papan, tebalPx: j.tebalPx, jarakPapanPx: j.jarakPapanPx }
       : null,
     dom: { node: pecahan('node'), backend: pecahan('backend'), database: pecahan('database') },
     kotakDatabase: !!document.querySelector('[data-jejak-hop="database"] [data-jejak-bar]'),
@@ -590,7 +590,120 @@ cek('DOM dan panggung melukis pecahan yang sama', bedaPecahan.length, 0);
 cek('jejak hanya satu objek', jejak.objek.filter((n) => n === 'jejak').length, 1);
 cek('jumlah hop sama dengan total yang dijumlah penggaris', j ? Math.abs(j.px[0] + j.px[1] - j.totalMs * j.pxPerMs) < 0.01 : false, true);
 
+// ── 8b. Jangkar garis: baris header bab, bukan kotak portal ──
+// Kotak portal itu `position: fixed` (MeshPortal), jadi garis yang menggantung di tepi atasnya
+// diam di layar sementara seluruh teks bab lewat melewatinya — terukur di bab 04: pada gulir
+// 130 px garis mendarat di tengah "LET'S BUILD THE". Yang ditagih di bawah bukan lagi panjang
+// (sudah bagian 8) tapi DI MANA garis itu duduk, dan hukurnya ditulis ULANG dari kontrak
+// JejakArsitektur.tsx: jangkar = elemen [data-jejak-papan], garis = JARAK_PAPAN_PX di bawah
+// batas baris itu dalam ruang dokumen, setebal TEBAL_BILAH_PX. Karena rect dibaca langsung dari
+// DOM — bukan dari angka yang diklaim komponen — gerbang ini tetap menolak kalau komponennya
+// diam-diam kembali ke portal. Yang lama diuji sebagai taring: hukum lama (tepi atas portal +
+// 40) HARUS tetap ketahuan menyayat teks, supaya "nol tabrakan" bukan kebetulan satu offset.
+const JARAK_PAPAN_PX = 14; // harus sama dengan JARAK_PAPAN_PX di JejakArsitektur.tsx
+const TEBAL_BILAH_PX = 3; // harus sama dengan TEBAL_BILAH_PX
+const JARAK_LAMA_PX = 40; // hukum lama: turun dari tepi atas portal yang fixed
+const UMUR_TIP = 24; // tipografi sebesar ini yang tidak boleh tersayat
+
+const jangkar = await page.evaluate(() => {
+  const nomorPortal = (el) => Number(el.closest('section')?.querySelector('[data-portal]')?.dataset.portal);
+  const portal = [...document.querySelectorAll('[data-portal]')]
+    .map((el) => Number(el.dataset.portal))
+    .filter(Number.isFinite);
+  const papan = [...document.querySelectorAll('[data-jejak-papan]')].map((el) => {
+    const r = el.getBoundingClientRect();
+    return {
+      bab: nomorPortal(el),
+      kiri: r.left + window.scrollX,
+      bawah: r.top + window.scrollY + r.height,
+      lebar: r.width,
+    };
+  });
+  return { jumlahPortal: new Set(portal).size, jumlahPapan: papan.length, papan };
+});
+cek('setiap bab berportal punya baris jangkar', jangkar.jumlahPapan, jangkar.jumlahPortal);
+const papanDOM = jangkar.papan.find((p) => p.bab === j?.papan?.bab);
+cek(
+  'jangkar yang dilaporkan komponen sama dengan baris yang ada di DOM',
+  !!(j?.papan && papanDOM) &&
+    Math.abs(j.papan.bawah - papanDOM.bawah) < 1 &&
+    Math.abs(j.papan.kiri - papanDOM.kiri) < 1 &&
+    Math.abs(j.papan.lebar - papanDOM.lebar) < 1,
+  true
+);
+cek('kontrak jarak dan tebal tidak berubah di komponen', j ? [j.jarakPapanPx, j.tebalPx].join('x') : null, `${JARAK_PAPAN_PX}x${TEBAL_BILAH_PX}`);
 await foto('09-jejak-arsitektur');
+
+// Sapu beberapa titik gulir di setiap bab dan bandingkan rentang garis (hukum baru vs hukum lama)
+// dengan kotak tipografi besar. Karena garis ikut dokumen, hukum baru hanya boleh menyentuh teks
+// di wilayah header-nya sendiri; hukum lama menyentuhnya di tengah halaman.
+const sapuJangkar = [];
+for (const bab of [1, 2, 3, 4, 5]) {
+  const dasar = await page.evaluate(
+    (b) => {
+      const el = document.querySelector(`#chapter-0${b}`);
+      if (!el) return -1;
+      return Math.round(el.getBoundingClientRect().top + window.scrollY);
+    },
+    bab
+  );
+  if (dasar < 0) continue;
+  for (const geser of [0, 130, 260, 390]) {
+    await parkirY(dasar + geser);
+    const b = await page.evaluate(
+      (ctx) => {
+        const j = window.__jejak;
+        if (!j?.papan) return null;
+        const papan = [...document.querySelectorAll('[data-jejak-papan]')]
+          .map((el) => {
+            const r = el.getBoundingClientRect();
+            const nomor = Number(el.closest('section')?.querySelector('[data-portal]')?.dataset.portal);
+            return { bab: nomor, kiri: r.left + window.scrollX, bawah: r.top + window.scrollY + r.height };
+          })
+          .find((p) => p.bab === j.papan.bab);
+        if (!papan) return null;
+        const kotakPortal = document.querySelector(`[data-portal="${j.papan.bab}"]`)?.getBoundingClientRect();
+        const panjang = j.px.reduce((a, p) => a + p, 0);
+        const kiri = papan.kiri - window.scrollX;
+        const sayat = (y) => {
+          if (y < 0 || y > window.innerHeight) return [];
+          const kena = [];
+          for (const el of document.querySelectorAll('h1,h2,h3,p,span,div')) {
+            const r = el.getBoundingClientRect();
+            if (r.width < 20 || r.height < 8) continue;
+            const fs = parseFloat(getComputedStyle(el).fontSize) || 0;
+            if (fs < ctx.umur) continue;
+            if (r.top > y + ctx.tebal || r.bottom < y) continue;
+            if (r.right < kiri || r.left > kiri + panjang) continue;
+            kena.push(`${el.tagName} ${Math.round(fs)}px`);
+          }
+          return kena;
+        };
+        return {
+          bab: j.papan.bab,
+          baru: sayat(papan.bawah - window.scrollY + ctx.jarak),
+          lama: kotakPortal ? sayat(kotakPortal.top + ctx.lama) : [],
+        };
+      },
+      { jarak: JARAK_PAPAN_PX, tebal: TEBAL_BILAH_PX, lama: JARAK_LAMA_PX, umur: UMUR_TIP }
+    );
+    if (b) sapuJangkar.push({ bab, geser, ...b });
+  }
+}
+const tabrakBaru = sapuJangkar.filter((s) => s.baru.length > 0);
+const tabrakLama = sapuJangkar.filter((s) => s.lama.length > 0);
+console.log(
+  'jangkar  ',
+  `titik=${sapuJangkar.length}`,
+  'baru:',
+  JSON.stringify(tabrakBaru.slice(0, 3)),
+  '| lama:',
+  JSON.stringify(tabrakLama.slice(0, 3))
+);
+cek('garis tidak menyayat tipografi besar di semua titik gulir', tabrakBaru.length, 0);
+cekMin('sapuan menyentuh lebih dari satu bab', new Set(sapuJangkar.map((s) => s.bab)).size, 3);
+cek('hukum lama akan ketahuan (gerbangnya bertaring)', tabrakLama.length > 0, true);
+
 await page.click('button[aria-label="Pit-Wall Telemetry HUD"]');
 
 // ── 9. Roda paddock (ide 3): sudut dijumlahkan dari velositas, hanya di bab penutup ──

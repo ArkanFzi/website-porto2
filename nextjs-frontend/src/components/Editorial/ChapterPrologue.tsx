@@ -22,7 +22,7 @@ export const ChapterPrologue: React.FC = () => {
         rotGeyang={0.1}
       />
       {/* ── Top Header Tags (z-20) ── */}
-      <div className="w-full max-w-[1600px] mx-auto flex items-center justify-between pb-6 swiss-border-b z-20">
+      <div data-jejak-papan className="w-full max-w-[1600px] mx-auto flex items-center justify-between pb-6 swiss-border-b z-20">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-[#D41E12] animate-pulse" />
           <span className="font-mono text-[11px] font-bold tracking-[0.25em] uppercase text-[#D41E12]">

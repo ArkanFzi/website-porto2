@@ -116,7 +116,7 @@ export const ChapterPaddock: React.FC = () => {
       <div className="w-full max-w-[1600px] mx-auto z-20">
         
         {/* ── Top Header Tags ── */}
-        <div className="w-full flex items-center justify-between pb-6 border-b border-white/20 mb-12 sm:mb-16">
+        <div data-jejak-papan className="w-full flex items-center justify-between pb-6 border-b border-white/20 mb-12 sm:mb-16">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
             <span className="font-mono text-[11px] font-bold tracking-[0.25em] uppercase text-white">

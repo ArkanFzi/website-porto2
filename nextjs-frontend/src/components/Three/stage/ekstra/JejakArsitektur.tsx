@@ -1,12 +1,20 @@
 "use client";
 
 /** Jejak arsitektur panggung: garis waktu horizontal satu request /api/telemetry, dilukis
- *  sebagai SATU instancedMesh di dalam portal bab aktif.
+ *  sebagai SATU instancedMesh yang direkatkan ke baris header bab aktif.
  *
  *  Panjang tiap segmen adalah durasi yang benar-benar terukur, dibagi dengan satu penggaris
  *  pixel-per-milidetik yang sama untuk semua hop (lib/jejakArsitektur). Baris ARCHITECTURE
  *  TRACE di panel telemetri memakai hukum dan angka yang sama dari store yang sama, jadi
  *  rasio kedua lukisan tidak bisa berpisah.
+ *
+ *  Jangkarnya baris header, bukan kotak portal: portal itu `position: fixed` (lihat
+ *  MeshPortal) sehingga garis yang mengikutinya diam di layar sementara seluruh teks bab
+ *  lewat melewatinya — terukur pada bab 04, garis mendarat di tengah "LET'S BUILD THE"
+ *  begitu halaman digulir 130 px. Baris header punya garis batas bawah sendiri; garis waktu
+ *  duduk 14 px di bawahnya dan ikut dokumen, jadi ia tidak pernah bisa menyayat tipografi.
+ *  Bab yang tidak memasang penanda tidak mendapat bentuk — hukum yang sama dengan hop tanpa
+ *  angka.
  *
  *  Hop yang tidak diukur tidak dapat bentuk. PostgreSQL masuk daftar tapi tidak pernah punya
  *  durasi — go-backend hanya menjawab "ok"/"error" — jadi slotnya berpanjang 0, bukan kotak
@@ -14,7 +22,13 @@
  *
  *  Satu draw call, nol frame tambahan: bacaan baru terbit ±20 detik sekali dan hanya menandai
  *  ring kotor; penulisan instans terjadi pada frame yang memang sedang jalan. */
-import React, { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import React, {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+} from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import {
@@ -34,18 +48,16 @@ const JUMLAH_HOP = ID_HOP.length;
 /** Marka batas hop ikut dalam mesh yang sama supaya tetap satu draw call. */
 const JUMLAH_MARKA = JUMLAH_HOP + 1;
 const JUMLAH_INSTANS = JUMLAH_HOP + JUMLAH_MARKA;
-/** Anggaran lebar: 60% kotak tersempit, sisa 40% dibiarkan kosong supaya garis waktu tidak
- *  pernah mengaku "satu layar penuh" saat angkanya cuma beberapa milidetik. */
+/** Anggaran lebar: 60% baris header bab itu sendiri, sisa 40% dibiarkan kosong supaya garis
+ *  waktu tidak pernah mengaku "satu layar penuh" saat angkanya cuma beberapa milidetik. */
 const LEBAR_DANA_RASIO = 0.6;
 const TEBAL_BILAH_PX = 3;
 const TEBAL_MARKA_PX = 1;
 const TINGGI_MARKA_PX = 9;
-/** Turun dari tepi atas kotak, supaya tidak bertumpuk dengan bilah telemetri di bawah DAN
- *  tidak jatuh di atas label bab. Portal menempel 20vh dari puncak layar sementara baris
- *  "CHAPTER 0N // …" duduk tepat di bawah pita HUD: pada 14 px garis waktu ini mendarat di
- *  tengah label bab 02 (terukur: label 192..209, garis 194..199). 40 px menaruh garis di
- *  bawah label, di atas kepala kartu — tempat yang sama di semua bab dan semua ukuran. */
-const JARAK_ATAS_PX = 40;
+/** Turun dari garis batas bawah baris header. Baris itu sendiri sudah `pb-6` (24 px) dan
+ *  diberi jarak 40–64 px ke konten berikutnya, jadi 14 px menaruh garis waktu di dalam pita
+ *  kosong itu, menempel ke header yang ia keterangkan, tanpa pernah menyentuh tipografi. */
+const JARAK_PAPAN_PX = 14;
 const Z_DEPAN = 0.35;
 const KERTAS = 0xf7f5f0;
 const MERAH = 0xd41e12;
@@ -73,6 +85,37 @@ const tidakAdaSaatSSR = () => false;
 
 /** Quaternion identitas dipakai bersama: `compose()` hanya membacanya. */
 const PUTARAN_NOL = new THREE.Quaternion();
+
+/** Baris header satu bab, hasil ukur dalam ruang DOKUMEN.
+ *
+ *  Sengaja dokumen, bukan layar: satu-satunya yang berubah tiap frame adalah gulir, jadi
+ *  posisinya bisa dihitung tanpa membaca layout sama sekali. Penandanya `data-jejak-papan`
+ *  di baris header, babnya diambil dari marker portal di section yang sama. */
+interface Papan {
+  bab: number;
+  kiri: number;
+  /** Tepi bawah garis batas header, tempat garis waktu bergantung. */
+  bawah: number;
+  lebar: number;
+}
+
+const bacaPapan = (): Papan[] => {
+  const daftar: Papan[] = [];
+  for (const el of Array.from(document.querySelectorAll<HTMLElement>("[data-jejak-papan]"))) {
+    const portal = el.closest("section")?.querySelector<HTMLElement>("[data-portal]");
+    const nomor = Number(portal?.dataset.portal);
+    if (!Number.isFinite(nomor)) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width < 2) continue;
+    daftar.push({
+      bab: nomor,
+      kiri: r.left + window.scrollX,
+      bawah: r.top + window.scrollY + r.height,
+      lebar: r.width,
+    });
+  }
+  return daftar;
+};
 
 /** Ring hop + alat tulis matriks, semuanya di satu `useRef`: tidak ada alokasi saat instans
  *  ditulis ulang dan tidak ada state React yang ikut naik. */
@@ -108,7 +151,7 @@ const buatAlatTulis = (): AlatTulis => ({
 });
 
 /** Bentuk window.__jejak — dibaca verifier, tidak pernah dipakai kode produksi. */
-const tulisJejakDebug = (a: AlatTulis) => {
+const tulisJejakDebug = (a: AlatTulis, papan: Papan) => {
   const jendela = window as unknown as {
     __jejak?: {
       hop: string[];
@@ -119,6 +162,9 @@ const tulisJejakDebug = (a: AlatTulis) => {
       anggaranPx: number;
       totalMs: number;
       tebalPx: number;
+      /** Baris header yang jadi jangkar, dalam ruang dokumen. */
+      papan: { bab: number; kiri: number; bawah: number; lebar: number };
+      jarakPapanPx: number;
     };
   };
   jendela.__jejak = {
@@ -130,6 +176,8 @@ const tulisJejakDebug = (a: AlatTulis) => {
     anggaranPx: a.anggaranPx,
     totalMs: a.total,
     tebalPx: TEBAL_BILAH_PX,
+    papan: { bab: papan.bab, kiri: papan.kiri, bawah: papan.bawah, lebar: papan.lebar },
+    jarakPapanPx: JARAK_PAPAN_PX,
   };
 };
 
@@ -155,14 +203,10 @@ const isiDariBacaan = (a: AlatTulis, p: PayloadTelemetri | null): boolean => {
 
 /** Semua bahan lewat argumen: fungsi ini tidak menyentuh state React, jadi tidak ada
  *  yang perlu (atau boleh) di-memo — dipanggil hanya pada peristiwa, bukan tiap frame. */
-const pasangJejak = (im: THREE.InstancedMesh, kunci: Kunci[], a: AlatTulis) => {
-  if (!kunci.length) return;
-
-  // Anggaran dari portal TERSEMPIT: kotak saat perpindahan hasil campur antar portal, jadi
-  // portal aktif saja tidak menjamin garis sepanjang ini muat.
-  let lebarDana = Infinity;
-  for (const k of kunci) if (k.kotak.lebar < lebarDana) lebarDana = k.kotak.lebar;
-  const anggaran = lebarDana * LEBAR_DANA_RASIO;
+const pasangJejak = (im: THREE.InstancedMesh, papan: Papan, a: AlatTulis) => {
+  // Anggaran dari baris header bab yang sedang aktif: garisnya bergantung ke baris itu, jadi
+  // tidak ada kotak hasil campur yang perlu ditanggung.
+  const anggaran = papan.lebar * LEBAR_DANA_RASIO;
   const pxPerMs = penggaris(anggaran, a.total);
   if (!(pxPerMs > 0)) return;
 
@@ -176,7 +220,7 @@ const pasangJejak = (im: THREE.InstancedMesh, kunci: Kunci[], a: AlatTulis) => {
     const px = panjangPx(ms, pxPerMs);
     a.px[i] = px;
     a.mulai[i] = x;
-    posisi.set(x + px / 2, -JARAK_ATAS_PX, 0);
+    posisi.set(x + px / 2, -JARAK_PAPAN_PX, 0);
     // Segmen berpanjang 0 tetap ditulis: skalanya nol, jadi tidak ada piksel yang bertambah.
     skala.set(px, TEBAL_BILAH_PX, 1);
     matriks.compose(posisi, PUTARAN_NOL, skala);
@@ -191,7 +235,7 @@ const pasangJejak = (im: THREE.InstancedMesh, kunci: Kunci[], a: AlatTulis) => {
   // keempat yang perlu dibaca.
   let batas = 0;
   for (let m = 0; m < JUMLAH_MARKA; m++) {
-    posisi.set(batas, -JARAK_ATAS_PX, 0);
+    posisi.set(batas, -JARAK_PAPAN_PX, 0);
     skala.set(TEBAL_MARKA_PX, TINGGI_MARKA_PX, 1);
     matriks.compose(posisi, PUTARAN_NOL, skala);
     im.setMatrixAt(JUMLAH_HOP + m, matriks);
@@ -202,7 +246,7 @@ const pasangJejak = (im: THREE.InstancedMesh, kunci: Kunci[], a: AlatTulis) => {
 
   im.instanceMatrix.needsUpdate = true;
   if (im.instanceColor) im.instanceColor.needsUpdate = true;
-  tulisJejakDebug(a);
+  tulisJejakDebug(a, papan);
 };
 
 export const JejakArsitektur: React.FC<AktorProps> = ({ scrollProgressRef }) => {
@@ -228,12 +272,31 @@ export const JejakArsitektur: React.FC<AktorProps> = ({ scrollProgressRef }) => 
 
   const alat = useRef<AlatTulis>(buatAlatTulis());
   const kotor = useRef(true);
-  const kunciTerpakai = useRef<Kunci[]>([]);
+  const papan = useRef<Papan[]>([]);
+  const babTerpakai = useRef(-1);
   const cacheSikap = useRef<{ p: number; kunci: Kunci[]; s: Sikap | undefined }>({
     p: -1,
     kunci: [],
     s: undefined,
   });
+
+  useLayoutEffect(() => {
+    const ukur = () => {
+      papan.current = bacaPapan();
+      // Lebar baris ikut anggaran, jadi setiap perubahan tata letak harus mengemas ulang
+      // instans; posisi saja tidak cukup.
+      kotor.current = true;
+    };
+    ukur();
+    const pengamat = new ResizeObserver(ukur);
+    for (const el of Array.from(document.querySelectorAll("[data-jejak-papan]")))
+      pengamat.observe(el);
+    window.addEventListener("resize", ukur);
+    return () => {
+      pengamat.disconnect();
+      window.removeEventListener("resize", ukur);
+    };
+  }, []);
 
   useEffect(() => {
     // Pengunjung yang minta gerakan dikurangi tidak boleh dibangunkan frame: tanpa mount,
@@ -269,22 +332,30 @@ export const JejakArsitektur: React.FC<AktorProps> = ({ scrollProgressRef }) => 
       g.p = p;
       g.kunci = portal.current;
       g.s = sikap(p, portal.current);
-      if (g.kunci !== kunciTerpakai.current) kotor.current = true;
-    }
-    if (kotor.current) {
-      kunciTerpakai.current = g.kunci;
-      pasangJejak(im, g.kunci, alat.current);
-      kotor.current = false;
     }
     const k = g.s;
     if (!k) return;
+    const aktif = papan.current.find((s) => s.bab === k.babKe);
+    // Tidak ada jangkar, tidak ada bentuk — sama seperti hop tanpa angka.
+    if (!aktif) {
+      im.visible = false;
+      return;
+    }
+    im.visible = true;
+    if (kotor.current || babTerpakai.current !== aktif.bab) {
+      babTerpakai.current = aktif.bab;
+      pasangJejak(im, aktif, alat.current);
+      kotor.current = false;
+    }
     const z = k.z + Z_DEPAN;
     const pxw = pxPerWorld(z);
-    // Point asal mesh = kiri-atas kotak portal; satuan lokalnya pixel CSS, dan sumbu y
-    // lokal negatif berarti turun ke dalam kotak.
+    // Titik asal mesh = kiri-bawah garis batas baris header, dinaikkan JARAK_PAPAN_PX.
+    // Papan diukur dalam ruang dokumen, jadi satu-satunya yang dibaca per frame adalah gulir:
+    // tidak ada getBoundingClientRect di jalur render.
+    const atas = aktif.bawah - window.scrollY + JARAK_PAPAN_PX;
     im.position.set(
-      (k.kotak.kiri - size.width / 2) / pxw,
-      -(k.kotak.atas - size.height / 2) / pxw,
+      (aktif.kiri - window.scrollX - size.width / 2) / pxw,
+      -(atas - size.height / 2) / pxw,
       z
     );
     im.scale.setScalar(1 / pxw);
