@@ -45,6 +45,23 @@ import {
  *  Kredit CC-BY-4.0 ikut di samping file (sf26-livery-LICENSE.txt) dan ditagih di halaman. */
 const ALAMAT = "/models/sf26-livery.glb";
 
+/** Kamera panggung, diturunkan dari kotak panggung yang sebenarnya (1180x558 pada 62vh di
+ *  viewport 900, aspect dikunci oleh lebar kolom editorial), bukan dari selera:
+ *  `docs/verify` memproyeksi lingkaran JARI pada y=0 lewat PerspectiveCamera fov 42 dan
+ *  mencari posisi terbesar yang masih memuat elips LABEL (1,16x cincin) dengan marjin >= 40px
+ *  di keempat sisinya. [0, 2,15, 5,3] memuatkan cincin 508 px = 43% lebar kolom dan podium
+ *  itu terbaca sebagai stempel kecil yang mengambang di kertas; [0, 1,4, 3,6] dengan tatapan
+ *  -0,35 memuatkan 801 px = 68% — 1,6x lebih besar — pada kemiringan yang hampir sama (pipih
+ *  0,406 vs 0,394, jadi cincin tidak berubah jadi pita) dan marjin 102/77/125 px.
+ *  Yang TIDAK bisa dinaikkan: tinggi kotak. Band bebas antara kolom HUD atas dan pita
+ *  legibilitas bawah terukur 589 px di viewport 900, kotak 62vh sudah 558 px — jadi satu-satunya
+ *  jalan membesarkan panggung adalah mendekatkan kamera, bukan memperlebar kotaknya. */
+const KAMERA: [number, number, number] = [0, 1.4, 3.6];
+/** Titik tatap kamera. -0,35 (di bawah dek) memiringkan kamera turun dan menggeser cincin naik
+ *  di dalam kotak: pusat 52,3% vs 57% pada tatapan -0,2, jadi label bawah dapat marjin 77 px
+ *  dan podium duduk di tengah kotak alih-alih menempel di dasarnya. */
+const TATAPAN = -0.35;
+
 /** Jari-jari platform dalam satuan dunia. Cincin, garis sirkuit, dan ukuran mobil
  *  semuanya diukur dari angka yang sama. */
 const JARI = 1.9;
@@ -103,7 +120,7 @@ const tulisHubDebug = (node: number | null, yaw: number, target: number) => {
 const Tatapan: React.FC = () => {
   const { camera, invalidate } = useThree();
   useEffect(() => {
-    camera.lookAt(0, 0.12, 0);
+    camera.lookAt(0, TATAPAN, 0);
     camera.updateMatrixWorld();
     invalidate();
   }, [camera, invalidate]);
@@ -323,13 +340,14 @@ const Lampu: React.FC = () => (
     <hemisphereLight args={[0xf7f5f2, 0xd9d5cc, 0.52]} />
     <directionalLight position={[-1.4, 3.0, 2.4]} intensity={1.95} />
     {/* Rosso dari belakang-kanan, tapi LANDAI (y 0,55 terhadap jarak horizontal 4,4).
-        Alas memantulkan directional sebagai satu titik cermin: cermin kamera [0, 2,15, 5,3]
-        terhadap bidang lantai di (0, -2,15, 5,3), lalu P = cermin + arahLampu *
-        (2,15 / arahLampu.y). Pada y 0,9 yang lama P ≈ (1,2, 0, -0,2) — tepat di kanan alas,
+        Alas memantulkan directional sebagai satu titik cermin: cermin kamera [0, 1,4, 3,6]
+        terhadap bidang lantai di (0, -1,4, 3,6), lalu P = cermin + arahLampu *
+        (1,4 / arahLampu.y). Pada y 0,9 yang lama P ≈ (1,2, 0, -0,2) — tepat di kanan alas,
         dan blob-nya lebih besar dari rim yang diterima mobil. Terukur: kotak kanan-alas
         turun dari RGB(198,28,39) ke RGB(26,24,24) saat lampu ini dimatikan, sementara
         spotLight rosso dan kerucutnya (keduanya sudah dibuang) terbukti nol pengaruhnya.
-        Dengan y 0,55 P terdorong ke (10, 0, -14), keluar dari podium; yang tersisa di lantai
+        Dengan y 0,55 P terdorong ke (6,62, 0, -5,56) — radius 8,65, jauh keluar JARI 1,9 —
+        jadi tidak ada blob yang ikut membesar saat kamera didekatkan; yang tersisa di lantai
         cuma sheen lebar, dan mobil tetap dapat sapuan rosso — sudut raking justru yang
         membuat rim. */}
     <directionalLight position={[2.6, 0.55, -3.6]} intensity={0.9} color={MERAH} />
@@ -339,8 +357,9 @@ const Lampu: React.FC = () => (
         bodi yang gelap supaya mobil tidak terlihat seperti potongan hitam. Arahnya tetap
         curam (y 4,5 terhadap jarak horizontal 3,2) karena satu alasan yang masih berlaku:
         directional yang tinggi menaruh titik cerminnya DI LUAR podium (L ternormalisasi
-        ≈ (-0,07 0,81 -0,58), P = cermin kamera + (2,15/0,81)·L ≈ (-0,19, 0, 3,77),
-        |P| 3,77 > JARI 1,9), jadi tidak ada blob terang di atas alas; dan diffuse-nya ke
+        ≈ (-0,07 0,81 -0,58), P = cermin kamera + (1,4/0,81)·L ≈ (-0,12, 0, 2,60),
+        |P| 2,61 > JARI 1,9), jadi tidak ada blob terang di atas alas — termasuk setelah
+        kamera didekatkan, yang memperkecil margin ini dari 3,77 ke 2,61; dan diffuse-nya ke
         lantai tetap hitungan kecil karena albedo alas 0x2f2f34 ≈ 0,026 linier. */}
     <directionalLight position={[-0.4, 4.5, -3.2]} intensity={1.15} color={RIM} />
   </>
@@ -447,7 +466,7 @@ interface Props {
 const HubPanggung: React.FC<Props> = ({ sudut, node, dekat, terlihat }) => (
   <PanggungKecil
     className="w-full h-full"
-    kamera={[0, 2.15, 5.3]}
+    kamera={KAMERA}
     fov={42}
     aktif={terlihat}
     pengukurId="hub"

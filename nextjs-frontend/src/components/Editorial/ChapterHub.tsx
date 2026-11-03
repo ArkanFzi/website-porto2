@@ -31,17 +31,20 @@ const SUDUT = RUTE.map((_, i) => Math.PI / 2 - (i * Math.PI * 2) / RUTE.length);
 
 /** Elips penempatan label dalam persen kotak panggung. Ry kecil karena cincin dilihat
  *  miring: proyeksi layar cincin dunia memang pipih.
- *
  *  Angkanya diturunkan dari proyeksi cincin yang sebenarnya, bukan dikira: kamera
- *  [0, 2,15, 5,3] fov 42 pada kotak 1180x558 memproyeksi lingkaran JARI 1,9 menjadi elips
- *  rx 254 px / ry 100 px yang pusatnya duduk di y 324 px (58,1%), dan node dipasang 15% di
- *  luar elips itu supaya titik kursor tidak menutupi bodi. Selama kotak hitam masih ada,
- *  simpangan ini tidak kelihatan karena semuanya tenggelam di latar yang sama gelapnya;
- *  di atas kertas, label yang melayang 2x radius cincin terbaca sebagai daftar yang kebetulan
- *  dilingkarkan, bukan sebagai peta. */
-const RX = 25;
-const RY = 21;
-const PUSAT_Y = 58;
+ *  [0, 1,4, 3,6] fov 42 dengan tatapan (0, -0,35, 0) pada kotak 1180x558 memproyeksi lingkaran
+ *  JARI 1,9 menjadi elips rx 345 px / ry 140 px yang pusatnya duduk di y 291 px (52,3%), dan
+ *  node dipasang 1,16x elips itu (39/34/52) supaya titik kursor tidak menutupi bodi.
+ *  Persen dipilih, bukan pixel, karena dua hal bergerak bersama: px per satuan dunia sebanding
+ *  dengan TINGGI kotak, jadi rx% ikut bergeser saat viewport berubah tapi ry% dan pusat% tidak
+ *  — dan label menggeser rx dengan cara yang sama persis dengan cincinnya, jadi elips ini tetap
+ *  nempel ke cincin di tinggi viewport berapa pun.
+ *  Selama kotak hitam masih ada, simpangan ini tidak kelihatan karena semuanya tenggelam di
+ *  latar yang sama gelapnya; di atas kertas, label yang melayang 2x radius cincin terbaca
+ *  sebagai daftar yang kebetulan dilingkarkan, bukan sebagai peta. */
+const RX = 39;
+const RY = 34;
+const PUSAT_Y = 52;
 
 const posisiNode = (i: number) => ({
   left: `${50 + RX * Math.cos(SUDUT[i])}%`,

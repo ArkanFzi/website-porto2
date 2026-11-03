@@ -877,8 +877,16 @@ const parkir = hub.baca?.target ?? 0;
 const haluanNode = [];
 for (let i = 0; i < hub.jumlah; i++) {
   await pageUtama.hover(`[data-hub-node="${i}"]`);
-  await jeda(1000);
-  const b = await pageUtama.evaluate(() => window.__hub ?? null);
+  // Dibaca dengan ditanya, bukan dengan ditidurkan: kanvas hub hidup di demand dan satu
+  // frame SwiftShader bisa makan lebih dari jeda tetap, jadi yang ditunggu adalah bacaannya
+  // benar-benar pindah ke node ini (dengan tenggat), bukan 1000 ms yang kebetulan cukup.
+  let b = null;
+  const mulai = Date.now();
+  while (Date.now() - mulai < 8000) {
+    b = await pageUtama.evaluate(() => window.__hub ?? null);
+    if (b?.node === i) break;
+    await jeda(200);
+  }
   haluanNode.push({ i, node: b?.node ?? null, target: b?.target ?? null });
   await pageUtama.mouse.move(10, 10);
   await jeda(400);
