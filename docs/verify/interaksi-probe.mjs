@@ -161,9 +161,23 @@ const klikMode = async (label) => {
   const sebelum = await bacaMode();
   await page.mouse.click(titik.x, titik.y);
   const rekam = [];
-  for (let i = 0; i < 30; i++) {
+  // Sampai tuntas, bukan sejumlah. Putaran kartu adalah pegas per-frame dan SwiftShader di
+  // bawah beban pernah menyelesaikannya lewat jendela 30 × 90 ms: rekamannya kehabisan waktu
+  // sebelum wajah sempat berpindah, dan gerbang "wajah berganti ketika kartu masih berputar"
+  // melapor merah karena alat ukurnya habis, bukan karena panggungnya salah.
+  let landai = 0;
+  for (let i = 0; i < 120 && landai < 4; i++) {
     await diamkan(90);
-    rekam.push(await bacaMode());
+    const b = await bacaMode();
+    rekam.push(b);
+    const dahulu = rekam[rekam.length - 2];
+    const tenang =
+      !!dahulu &&
+      b.balik <= 0.001 &&
+      Math.abs(b.balik - dahulu.balik) < 1e-4 &&
+      Math.abs(b.persona - dahulu.persona) < 1e-4 &&
+      Math.abs(DERAJAT(b.rotY - dahulu.rotY)) < 0.05;
+    landai = tenang ? landai + 1 : 0;
   }
   return { sebelum, rekam };
 };
