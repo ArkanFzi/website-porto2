@@ -29,26 +29,40 @@ const RUTE = RUTE_TEKNIS;
  *  Sama persis dengan yang dibaca cincin 3D dan haluan mobil. */
 const SUDUT = RUTE.map((_, i) => Math.PI / 2 - (i * Math.PI * 2) / RUTE.length);
 
-/** Elips penempatan label dalam persen kotak panggung. Ry kecil karena cincin dilihat
- *  miring: proyeksi layar cincin dunia memang pipih.
- *  Angkanya diturunkan dari proyeksi cincin yang sebenarnya, bukan dikira: kamera
- *  [0, 1,4, 3,6] fov 42 dengan tatapan (0, -0,35, 0) pada kotak 1180x558 memproyeksi lingkaran
- *  JARI 1,9 menjadi elips rx 345 px / ry 140 px yang pusatnya duduk di y 291 px (52,3%), dan
- *  node dipasang 1,16x elips itu (39/34/52) supaya titik kursor tidak menutupi bodi.
- *  Persen dipilih, bukan pixel, karena dua hal bergerak bersama: px per satuan dunia sebanding
- *  dengan TINGGI kotak, jadi rx% ikut bergeser saat viewport berubah tapi ry% dan pusat% tidak
- *  — dan label menggeser rx dengan cara yang sama persis dengan cincinnya, jadi elips ini tetap
- *  nempel ke cincin di tinggi viewport berapa pun.
- *  Selama kotak hitam masih ada, simpangan ini tidak kelihatan karena semuanya tenggelam di
- *  latar yang sama gelapnya; di atas kertas, label yang melayang 2x radius cincin terbaca
- *  sebagai daftar yang kebetulan dilingkarkan, bukan sebagai peta. */
-const RX = 39;
-const RY = 34;
-const PUSAT_Y = 52;
+/** Posisi tiap node = titik rim yang diproyeksikan, digeser keluar sepanjang sinarnya sendiri
+ *  sejauh 52 px layar — BUKAN elips yang dipasang dari pusat kotak.
+ *
+ *  Yang salah bukan besar-kecilnya label tapi titik acunya, dan selisihnya 72 px: lingkaran
+ *  dunia memang memproyeksi jadi elips, tetapi (0,0,0) — tempat mobil berputar — jatuh di
+ *  y 219,6 px sedangkan pusat elipsnya di y 291,7 px, karena sisi dekat podium diperbesar
+ *  sehingga elipsnya melorot. Ditempatkan dari pusat elips, radius tiap node ikut salah:
+ *  INTERAKSI dan STATISTIK melayang 438 px dari asal (seharusnya 350 px) sementara POTRET dan
+ *  TRANSISI justru duduk 351 px — di DALAM rim yang 368 px. Ditempatkan dari titik rim yang
+ *  diproyeksikan, arah layar label sama dengan arah layar haluan: keduanya proyeksi dari garis
+ *  dunia yang sama, jadi titik menu dan hidung mobil tidak bisa lagi tidak sepakat.
+ *
+ *  Gapsnya dibuat konstan dalam pixel layar, bukan konstan dalam pecahan radius, karena
+ *  perspektif memampatkan sisi jauh: rim KINERJA cuma 90 px dari asal sedangkan rim POTRET
+ *  368 px. Dengan 1,16x keduanya terasa berbeda (KINERJA mendarat di atas sayap mobil), dengan
+ *  52 px setiap label berjarak sama dari garis podiumnya dan yang jauh saja yang naik lebih.
+ *
+ *  Tabelnya persen kotak pada aspect acuan 1180x558 (kamera [0, 1,4, 3,6], tatapan -0,35,
+ *  fov 42). dy% dan pusat% tidak berubah saat viewport bergeser — px per satuan dunia
+ *  sebanding dengan tinggi kotak dan penyebutnya juga tinggi kotak — tetapi dx% sebanding
+ *  1/aspect, karena itu dikalikan ASPEK_ACUAN/aspek kini yang diukur dari kotaknya sendiri. */
+const ASPEK_ACUAN = 1180 / 558;
+const PUSAT_DUNIA = 39.35;
+const SIMPANGAN: ReadonlyArray<{ x: number; y: number }> = [
+  { x: 0, y: -25.51 },
+  { x: 29.8, y: -7.45 },
+  { x: 31.82, y: 33.68 },
+  { x: -31.82, y: 33.68 },
+  { x: -29.8, y: -7.45 },
+];
 
-const posisiNode = (i: number) => ({
-  left: `${50 + RX * Math.cos(SUDUT[i])}%`,
-  top: `${PUSAT_Y - RY * Math.sin(SUDUT[i])}%`,
+const posisiNode = (i: number, aspek: number) => ({
+  left: `${50 + SIMPANGAN[i].x * (ASPEK_ACUAN / aspek)}%`,
+  top: `${PUSAT_DUNIA + SIMPANGAN[i].y}%`,
 });
 
 /** Sudut bingkai viewport — empat tanda plus, di luar SUDUT node yang sudah lebih dulu
@@ -64,6 +78,25 @@ export const ChapterHub: React.FC = () => {
   // Diukur di 390x844: tanpa gerbang ini ponsel tetap membuka context WebGL, mengunduh
   // sf26.glb (841 KB) dan memasang Mobil ke kotak 300x150 yang tidak akan pernah terlihat.
   const [adaTempat, setAdaTempat] = useState(false);
+  // Aspect kotak panggung, diukur dari kotaknya sendiri. Posisi node butuh angka ini karena
+  // simpangan horizontal persen-nya berbanding terbalik dengan aspect (tinggi kotaklah yang
+  // menentukan px per satuan dunia, lebarnya hanya jadi penyebut); tingginya sendiri 62vh
+  // dengan clamp, jadi mengira dari viewport saja bisa meleset saat min-h/max-h yang aktif.
+  const panggung = useRef<HTMLDivElement>(null);
+  const [aspek, setAspek] = useState(ASPEK_ACUAN);
+
+  useEffect(() => {
+    const el = panggung.current;
+    if (!el) return;
+    const io = new ResizeObserver(() => {
+      const r = el.getBoundingClientRect();
+      // display:none di bawah md memberi tinggi 0: aspect-nya dibiarkan seperti acuan,
+      // karena stage-nya memang tidak digambar.
+      if (r.height > 0) setAspek(r.width / r.height);
+    });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
 
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 768px)");
@@ -159,6 +192,7 @@ export const ChapterHub: React.FC = () => {
             kertas halaman itu sendiri. Tidak ada border, tidak ada gradien, tidak ada
             vignette; PanggungKecil sudah memotong kanvasnya sendiri. */}
         <div
+          ref={panggung}
           data-hub-panggung=""
           className="hidden md:block relative w-full h-[62vh] min-h-[460px] max-h-[720px]"
         >
@@ -190,7 +224,7 @@ export const ChapterHub: React.FC = () => {
               onMouseLeave={() => tunjuk(null)}
               onFocus={() => tunjuk(i)}
               onBlur={() => tunjuk(null)}
-              style={{ left: posisiNode(i).left, top: posisiNode(i).top }}
+              style={{ left: posisiNode(i, aspek).left, top: posisiNode(i, aspek).top }}
               className="absolute -translate-x-1/2 -translate-y-1/2 flex items-center gap-2 pointer-events-auto"
             >
               {/* Titik + cincin berdenyut. Denyut hanya ada selama section ini benar-benar
