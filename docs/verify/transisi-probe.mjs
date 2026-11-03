@@ -44,6 +44,10 @@ const baca = () =>
     const kotakKanvas = kanvas?.getBoundingClientRect();
     return {
       dolly: p.dolly,
+      /** Nomor frame root utama. Dibawa supaya "dua bacaan identik" bisa dibedakan dari
+       *  "loop sedang tidak melukis apa pun" — di perenderan perangkat lunak satu jeda
+       *  150ms bisa memuat nol frame, dan angkanya lalu disalin dari frame yang sama. */
+      frame: window.__render?.frame ?? -1,
       skala: kartu?.scale.x ?? p.skala,
       x: kartu?.position.x ?? p.x,
       y: kartu?.position.y ?? p.y,
@@ -110,11 +114,23 @@ const tungguDolly = async (batas, maksMs = 8000) => {
 /** Bagian kotak portal yang benar-benar berisi kartu, diukur dari layar. Uniform boleh
  *  sempurna sementara shader tidak menggambar apa pun (pernah terjadi: nama konstanta
  *  TypeScript yang disisipkan apa adanya ke GLSL), jadi klaim tentang potongan wajib
- *  lewat piksel. Ambang 26/255 memisahkan kertas gelap dari potret; yang dibandingkan
- *  adalah LUAS relatif, bukan kecerahan, karena potret bergerak bersama kotaknya.
+ *  lewat piksel.
+ *  Yang dibaca ada DUA angka, karena satu tidak cukup: potret hitam-putih dan halaman
+ *  kosong yang tinggal di baliknya sama-sama "terang" di atas ambang kertas, jadi
+ *  fraksi pixel saja tidak bisa memisahkan keduanya (terukur pada sapuan penuh: 1,000
+ *  pixel terang, rata-rata 243, DAN simpangan 9 — bidang datar; potret: 0,560 terang,
+ *  rata-rata 120, simpangan 110). Yang membuktikan potret hilang adalah teksturnya,
+ *  dan itu diukur sebagai simpangan luminansi.
  *  Kotak dibaca sebelum DAN sesudah foto: tanpa itu yang diukur adalah kotak sekarang
  *  atas foto yang tadi, dan sapuan yang sedang lewat ketahuan sebagai bidang kecil
- *  yang sepenuhnya terang. */
+ *  yang sepenuhnya terang.
+ *  Kotak DIPOTONG ke layar lebih dulu, dan hasil potongannya dilaporkan sebagai
+ *  `diLayar`. Di bab 02 portalnya sendiri menjulur keluar tepi kiri (terukur x=-85,6),
+ *  dan getImageData dengan sx negatif tidak melempar — ia mengembalikan area di luar
+ *  kanvas sebagai hitam-transparan, yang oleh penghitung ini terbaca sebagai "potongan
+ *  sapuan sampai ke layar" padahal yang diukur sudut layar. Sebaliknya, kotak yang
+ *  hampir seluruhnya di luar layar menyisakan sehelai 1px yang boleh terhitung 100%
+ *  apa pun — jadi gerbang wajib menyebut berapa besar kotak yang benar-benar terlihat. */
 const areaKartu = async () => {
   const sebelum = await baca();
   if (!sebelum) return null;
@@ -131,17 +147,30 @@ const areaKartu = async () => {
       c.height = img.height;
       const ctx = c.getContext('2d', { willReadFrequently: true });
       ctx.drawImage(img, 0, 0);
-      const w = Math.max(1, Math.min(Math.round(l), img.width - Math.round(k)));
-      const h = Math.max(1, Math.min(Math.round(t), img.height - Math.round(a)));
-      const d = ctx.getImageData(Math.round(k), Math.round(a), w, h).data;
+      const x0 = Math.max(0, Math.round(k));
+      const y0 = Math.max(0, Math.round(a));
+      const w = Math.max(1, Math.min(Math.round(k) + Math.round(l), img.width) - x0);
+      const h = Math.max(1, Math.min(Math.round(a) + Math.round(t), img.height) - y0);
+      const d = ctx.getImageData(x0, y0, w, h).data;
       let terang = 0;
+      let jumlah = 0;
+      let kuadrat = 0;
       let n = 0;
       for (let i = 0; i < d.length; i += 4) {
         const v = (d[i] + d[i + 1] + d[i + 2]) / 3;
         n++;
+        jumlah += v;
+        kuadrat += v * v;
         if (v > 26) terang++;
       }
-      return { pecah: terang / n, piksel: n };
+      const rata = jumlah / n;
+      return {
+        pecah: terang / n,
+        rata,
+        simpang: Math.sqrt(Math.max(0, kuadrat / n - rata * rata)),
+        diLayar: (w * h) / (Math.max(1, Math.round(l)) * Math.max(1, Math.round(t))),
+        piksel: n,
+      };
     },
     { gamba, k, a, l, t }
   );
@@ -154,14 +183,25 @@ const areaKartu = async () => {
   };
 };
 
+/** Pointer DIPARKIR di titik yang diketahui sebelum setiap bukti pixel, dan kartu
+ *  ditunggu tenang di titik itu. `klikBab` meninggalkan pointer di atas pil HUD, sementara
+ *  suku geyang pointer menggeser BAGIAN POTRET yang jatuh di dalam kotak portal — jadi
+ *  `pecah` (fraksi pixel terang) bergantung ke mana klik terakhir jatuh, dan posisi pil ikut
+ *  berubah mengikuti layout HUD (terukur: 0,562 saat pil di satu tempat, 0,390–0,491 saat di
+ *  tempat lain, pada gerbang yang menuntut 0,5). Titik (16,500) sama dengan yang dipakai
+ *  sikapDiBab, jadi ketiga bacaan section ini satu posisi dengan bacaan bagian 3. */
+const parkirPointer = async () => {
+  await page.mouse.move(16, 500);
+  return tungguSikap();
+};
+
 /** Berpindah bab sambil berhenti di tengahnya. Sapuan hanya fungsi dari posisi gulir,
  *  jadi halaman boleh DIPARKIR pada puncaknya dan difoto — kecepatan roda tidak akan
  *  pernah cukup lambat untuk menangkap satu frame di tengah sapuan. Langkah kecil,
  *  berhenti begitu sapuan menutup, lalu jalan lagi sampai ia membuka. */
 const lewatiBand = async (n) => {
-  await klikBab(n);
-  await tungguBab(n);
-  const awal = await tungguSikap();
+  await pilihBab(n);
+  const awal = await parkirPointer();
   const terbuka = await areaKartu();
   const langkah = 30;
   const batas = 60;
@@ -176,8 +216,17 @@ const lewatiBand = async (n) => {
     puncak = Math.max(puncak, b.wipe);
     if (b.wipe >= 0.85) break;
   }
-  const tenang = await tungguSikap();
-  const foto = await areaKartu();
+  const tenang = await parkirPointer();
+  let foto = await areaKartu();
+  // Foto harus diambil pada sapuan yang BENAR-BENAR menutup. Loop di atas berhenti pada
+  // 0,85 dan glide Lenis sesudahnya bisa berhenti di 0,941: 6% potret masih tersohong,
+  // simpangan luminansinya terukur 30,9 — sisa wajah kartu, bukan bidang datar, dan gerbang
+  // "sapuan sampai ke layar" lalu merah karena angkanya sendiri yang tidak menutup.
+  for (let i = 0; i < 8 && foto && foto.wipeSebelum < 0.98; i++) {
+    await page.mouse.wheel({ deltaY: 10 });
+    await diamGulir();
+    foto = await areaKartu();
+  }
   const turun = [];
   for (let i = 0; i < batas; i++) {
     await page.mouse.wheel({ deltaY: langkah });
@@ -193,12 +242,26 @@ const lewatiBand = async (n) => {
   // tengah perjalanan (t 0,83) dan kotaknya adalah kotak bab tujuan yang belum ia tempati.
   // "Setelah mendarat" jadi wajib diukur pada keadaan babDari sudah pindah — tanpa itu yang
   // merah adalah gerbangnya, sementara kartunya memang belum sampai.
+  //
+  // "Sudah pindah" harus berarti SAMPAI DI BAB TUJUAN, bukan "nomornya sudah lewat": di
+  // antara bab 02 dan 03 berdiri panggung SF-26 (bab 5) yang kotak portalnya tidak punya
+  // satu pixel pun di layar (terukur [-432,180,331,540] → helai 1px setelah dipotong).
+  // Dengan syarat lama `< tujuan` berhenti di sana, `mendarat` mengukur sehelai halaman
+  // dan melaporkan 1,000 — angka yang tampak lulus tapi tidak membuktikan apa pun.
   let akhir = await tungguSikap();
-  for (let i = 0; i < batas * 3 && akhir && akhir.babDari < n + 1; i++) {
+  let susut = 0;
+  while (akhir && akhir.babDari !== n + 1 && susut < batas * 8) {
     await page.mouse.wheel({ deltaY: langkah });
     await diamkan(90);
-    akhir = await tungguSikap();
+    const b = await baca();
+    if (!b) break;
+    akhir = b;
+    susut++;
   }
+  // "Mendarat" dibaca pada pose pointer yang sama dengan dua bukti pixel sebelumnya, dan
+  // `akhir` ikut dibaca ulang di pose itu: tanpa itu gerbang wipe/bab di bawah menilai
+  // keadaan sebelum parkir sementara `pecah` menilai sesudahnya.
+  akhir = await parkirPointer();
   const mendarat = await areaKartu();
   const semua = [...naik, tenang, ...turun].filter(Boolean);
   return {
@@ -210,6 +273,7 @@ const lewatiBand = async (n) => {
     tenang,
     akhir,
     mendarat,
+    susut,
     profil: semua,
     puncak: Math.max(puncak, ...semua.map((r) => r.wipe)),
   };
@@ -306,13 +370,41 @@ const tungguBab = async (n, maksMs = 8000) => {
   return b;
 };
 
+/** Guliran harus sudah berhenti sebelum pil bab ditekan: klik yang jatuh sementara
+ *  antrean roda dari bagian sebelumnya masih jalan pernah ditelan tanpa bekas (terukur:
+ *  sikapDiBab(2) pulang melaporkan 1→2, dan dua pembacaan sikap yang dibandingkan di
+ *  bawahnya lalu selisihnya tepat jarak kedua kotak portal — 1,351 unit dunia). */
+const diamGulir = async () => {
+  let dulu = -1;
+  let sama = 0;
+  for (let i = 0; i < 40; i++) {
+    const y = await page.evaluate(() => Math.round(window.scrollY));
+    await diamkan(120);
+    sama = y === dulu ? sama + 1 : 0;
+    dulu = y;
+    if (sama >= 3) return;
+  }
+};
+
+/** Tekan pil bab SAMBIL menagih hasilnya: yang dijanjikan adalah bab itu dilaporkan
+ *  panggung, jadi kalau tidak berubah tekan lagi — sama seperti langkah panah di
+ *  verifier interaksi, yang diregresi oleh peristiwa yang hilang, bukan oleh kodenya. */
+const pilihBab = async (n) => {
+  for (let percobaan = 0; percobaan < 3; percobaan++) {
+    await diamGulir();
+    await klikBab(n);
+    const b = await tungguBab(n);
+    if (b && b.babDari === n) return b;
+  }
+  return await baca();
+};
+
 /** Sikap kartu di awal sebuah bab, lewat jalur yang dipakai pengunjung (tombol bab →
  *  lenis.scrollTo), jadi dua pembacaan banding pada progress yang benar-benar sama.
  *  Pointer diparkir di titik yang sama karena x dan rotY kartu memang mengandung
  *  parallax pointer. */
 const sikapDiBab = async (n) => {
-  await klikBab(n);
-  await tungguBab(n);
+  await pilihBab(n);
   await tungguSikap();
   await page.mouse.move(16, 500);
   return tungguSikap();
@@ -321,8 +413,23 @@ const sikapDiBab = async (n) => {
 /** Parkir pointer di satu titik dan tunggu SAMBIL huruf ikut berhenti. `tungguSikap`
  *  hanya menunggu kartu; suku geyang pointer sampai ke tipografi satu langkah lebih dulu
  *  (kartu masih tertinggal pegasnya sendiri), jadi membaca huruf setelah kartu tenang
- *  saja tidak cukup — yang ditunggu adalah keduanya tidak berubah. */
+ *  saja tidak cukup — yang ditunggu adalah keduanya tidak berubah.
+ *
+ *  "Tidak berubah" saja bohong. Dua pembacaan yang identik bisa berarti perjalanan selesai,
+ *  bisa berarti loop tidak melukis apa pun: pada perenderan perangkat lunak satu jeda
+ *  150ms kadang memuat nol frame, dan loop "demand" pernah tertidur SEBELUM pegasnya habis
+ *  (terukur: kartu berhenti di −0,0151 sementara tujuannya −0,0541, huruf di 19,24px dari
+ *  22,16px, nomor frame membeku di 39 selama empat jeda). Karena itu ketenangan diuji
+ *  dengan bangun: satu peristiwa pointer di titik yang sama — tujuannya tidak berubah,
+ *  tapi loop dipaksa melukis lagi. Angka yang masih bergerak setelah dibangun berarti
+ *  yang tadi itu tidurnya loop, bukan sikap akhirnya, dan perjalanannya ditunggu ulang. */
 const parkirTipografi = async (px, py) => {
+  const identik = (a, b) =>
+    Math.abs(b.x - a.x) < 1e-6 &&
+    Math.abs(b.y - a.y) < 1e-6 &&
+    Math.abs(b.dolly) < 0.005 &&
+    b.tipografi.length === a.tipografi.length &&
+    b.tipografi.every((t, j) => t.x === a.tipografi[j].x && t.y === a.tipografi[j].y);
   await page.mouse.move(px, py);
   let dulu = null;
   let sama = 0;
@@ -330,16 +437,18 @@ const parkirTipografi = async (px, py) => {
     await diamkan(150);
     const b = await baca();
     if (!b) continue;
-    const tenang =
-      dulu !== null &&
-      Math.abs(b.x - dulu.x) < 1e-6 &&
-      Math.abs(b.y - dulu.y) < 1e-6 &&
-      Math.abs(b.dolly) < 0.005 &&
-      b.tipografi.length === dulu.tipografi.length &&
-      b.tipografi.every((t, j) => t.x === dulu.tipografi[j].x && t.y === dulu.tipografi[j].y);
-    sama = tenang ? sama + 1 : 0;
+    sama = dulu !== null && identik(dulu, b) ? sama + 1 : 0;
     dulu = b;
-    if (sama >= 3) return b;
+    if (sama < 3) continue;
+    await page.mouse.move(px, py);
+    await diamkan(800);
+    const bangun = await baca();
+    if (!bangun || identik(b, bangun)) return bangun ?? b;
+    console.log(
+      `  parkir (${px},${py}): loop tertidur di tengah jalan, dibangun lagi (frame ${b.frame} → ${bangun.frame}, kartu ${b.y.toFixed(6)} → ${bangun.y.toFixed(6)})`
+    );
+    dulu = bangun;
+    sama = 0;
   }
   return dulu;
 };
@@ -407,12 +516,26 @@ const profil = sapu.profil;
 const tengah = sapu.foto ? sapu.foto.wipeSebelum : 0;
 console.log(
   'sapuan   puncak:', sapu.puncak.toFixed(3), '| parkir:', tengah.toFixed(3), '| sampel:', profil.length,
+  '| langkah sampai mendarat:', sapu.susut,
   '| nilai:', profil.map((r) => r.wipe.toFixed(2)).join(' '),
   '\n         area  terbuka:', sapu.terbuka?.pecah.toFixed(3), 'tertutup:', sapu.foto?.pecah.toFixed(3),
   'mendarat:', sapu.mendarat?.pecah.toFixed(3),
+  '\n         tekstur (simpangan luminansi) terbuka:', sapu.terbuka?.simpang.toFixed(1),
+  'tertutup:', sapu.foto?.simpang.toFixed(1), 'mendarat:', sapu.mendarat?.simpang.toFixed(1),
+  '| di layar:', [sapu.terbuka, sapu.foto, sapu.mendarat].map((r) => r?.diLayar?.toFixed(2)).join(' '),
   '| kotak foto:', JSON.stringify(sapu.foto?.portal), '→', JSON.stringify(sapu.foto?.portalSesudah)
 );
-cek('kartu diam dalam sebuah bab tidak terpotong sapuan', sapu.awal.wipe <= 0.02 && sapu.terbuka.pecah >= 0.5, true);
+// POTRET = bidangnya bertekstur, BIDANG DATAR = potret tidak ada di sana. Angkanya dari
+// pengukuran yang sama tiga kali: potret terbuka simpangan 110 (rata-rata 120), sapuan
+// penuh simpangan 9 (rata-rata 243), mendarat kembali 105. Ambang 40/25 memisahkan dua
+// clustered itu dengan margin lebar, bukan memotong di tengah-tengah satu.
+const POTRET_MIN = 40;
+const DATAR_MAKS = 25;
+cek(
+  'kartu diam dalam sebuah bab tidak terpotong sapuan',
+  sapu.awal.wipe <= 0.02 && sapu.terbuka.diLayar >= 0.5 && sapu.terbuka.simpang >= POTRET_MIN,
+  true
+);
 cek('berpindah bab menghasilkan sapuan yang hampir menutup', sapu.puncak >= 0.9, true);
 cek('sapuan tidak pernah melewati satu', profil.every((r) => r.wipe <= 1 + 1e-6), true);
 cek('sapuan menutup lalu membuka lagi, satu punggungan', (() => {
@@ -434,13 +557,18 @@ cek(
     sapu.foto.wipeSebelum >= 0.6 &&
     sapu.foto.wipeSesudah >= 0.6 &&
     sapu.foto.portal.every((v, i) => Math.abs(v - sapu.foto.portalSesudah[i]) <= 1) &&
-    sapu.foto.pecah <= 0.4 * sapu.terbuka.pecah,
+    sapu.foto.diLayar >= 0.5 &&
+    sapu.foto.simpang <= DATAR_MAKS,
   true
 );
-cek('setelah mendarat kartu terbuka kembali', sapu.akhir.wipe <= 0.02 && sapu.mendarat.pecah >= 0.5, true);
+cek(
+  'setelah mendarat kartu terbuka kembali',
+  sapu.akhir.wipe <= 0.02 && sapu.mendarat.diLayar >= 0.5 && sapu.mendarat.simpang >= POTRET_MIN,
+  true
+);
 // Prasyarat gerbang di atas ikut ditagih, bukan diasumsikan: kalau pitanya belum selesai,
 // angka 0,5 itu mengukur kartu yang masih terbang.
-cek('pita selesai sebelum keadaan mendarat diukur', (sapu.akhir?.babDari ?? 0) >= 3, true);
+cek('pita selesai sebelum keadaan mendarat diukur', sapu.akhir?.babDari === 3, true);
 
 // ── 5 · prefers-reduced-motion: kamera tidak boleh didolly, kartu tidak disapu ──
 await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
@@ -520,14 +648,13 @@ await diamkan(900);
 // pembacaan yang memang tidak pernah identik. Nisbah antarkedalaman (0.02) bebas dari
 // efek itu karena kedua huruf dibaca pada frame yang sama.
 for (const n of [1, 2, 4]) {
-  await klikBab(n);
   // Parkir dulu, baru parkir pointer. `parkirTipografi` menunggu kartu DAN huruf berhenti
   // berubah, tapi ia tidak tahu bab mana yang sedang dituju: klik bab melepas glide Lenis
   // yang masih berjalan, dan pada dokumen yang lebih tinggi (celah judul bab 02/03 dilebarkan)
   // pembacaan "kiri" sempat diambil di tengah penerbangan itu — Δkartu membengkak 4×
   // (terukur 119,59px vs 30,42px yang sebenarnya) sementara Δhuruf benar, jadi rasio
   // proyeksinya jatuh ke 0,18. Dua gerbang yang sama sekali tidak menyentuh tipografi.
-  await tungguBab(n);
+  await pilihBab(n);
   await tungguSikap();
   const kiri = await parkirTipografi(16, 450);
   const kanan = await parkirTipografi(1424, 450);

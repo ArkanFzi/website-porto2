@@ -44,8 +44,16 @@ await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
 const galat = [];
 page.on('pageerror', (e) => galat.push(String(e).slice(0, 160)));
 await page.goto(FE + '/', { waitUntil: 'domcontentloaded', timeout: 60000 });
-await new Promise((r) => setTimeout(r, 6000));
-const ada = await page.evaluate(() => !!window.__panggung);
+// Bacaan apa pun di bawah bergantung pada frame pertama kanvas, dan frame pertama bukan
+// kepastian waktu: dengan dua kanvas di perenderan perangkat lunak __panggung baru muncul
+// sekitar 6 detik (terukur frame 9 tepat pada 6.000ms), jadi jeda tetap pernah gagal
+// persis di ambangnya. Ditunggu sampai ada, maksimal 20 detik.
+let ada = false;
+for (let i = 0; i < 40; i++) {
+  await new Promise((r) => setTimeout(r, 500));
+  ada = await page.evaluate(() => !!window.__panggung);
+  if (ada) break;
+}
 if (!ada) {
   console.error('window.__panggung tidak ada — butuh `next dev`, bukan build produksi.');
   await browser.close();
@@ -79,6 +87,9 @@ const baca = () =>
           babDari: p.babDari,
           babKe: p.babKe,
           skala: p.skala,
+          // Nomor frame akar kanvas: tanpa ini "cahaya tidak bergerak" tidak bisa
+          // dibedakan dari "loop demand sedang tertidur".
+          frame: window.__render?.frame ?? -1,
         }
       : null;
   });
@@ -88,21 +99,36 @@ const derajati = (b, i) => DERAJAT(b.putar[i]);
  *  "terkunci" dibuktikan dari nilainya yang TETAP sementara pointer berpindah jauh. */
 const bacaReticle = async () => {
   const b = await baca();
-  return b ? { uv: [b.kursor[0], b.kursor[1]], dipegang: b.kursor[2], reveal: b.kursor[3] } : null;
+  return b
+    ? { uv: [b.kursor[0], b.kursor[1]], dipegang: b.kursor[2], reveal: b.kursor[3], frame: b.frame }
+    : null;
 };
 const jarakUV = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
 /** Cahaya datang dari pointer yang DIHALUSKAN mesin (lerp 0,08 per frame), jadi membaca
  *  reticle segera sesudah memindahkan pointer menangkap nilainya di tengah jalan.
  *  Ditunggu sampai berhenti bergerak — kalau tidak, "titik tempat pengunjung menekan"
- *  yang dikunci di bawah bukan titik yang sebenarnya, dan jarak pelepasan ikut salah. */
+ *  yang dikunci di bawah bukan titik yang sebenarnya, dan jarak pelepasan ikut salah.
+ *
+ *  "Berhenti bergerak" harus dibaca bersama nomor frame. Pada perenderan perangkat lunak
+ *  satu poll 220ms bisa memuat NOL frame (deret ΔUV terukur: 0,082 0,144 0,063 0,205 …
+ *  0,0018 0,000), dan dua bacaan yang identik karena loop-nya tertidur tidak bisa
+ *  dibedakan dari cahaya yang benar-benar tenang — cahaya yang tenang adalah dua poll
+ *  berturut-turut tanpa gerak SAMBIL frame tetap naik. Tanpa syarat itu fungsi ini pernah
+ *  pulang di tengah lerp (±0,1 UV dari titik akhirnya) dan gerbang focus-lock menuduh
+ *  produk menggeser cahaya, padahal yang belum sampai adalah titik acunya.
+ *  Anggarannya 60 poll ≈ 13 detik: dari lompatan jauh, sisa lerp turun di bawah 0,002
+ *  per frame setelah ±17 poll pada ±11fps. */
 const tungguReticle = async () => {
   let tadi = await bacaReticle();
-  for (let i = 0; i < 24; i++) {
+  let tenang = 0;
+  for (let i = 0; i < 60; i++) {
     await diamkan(220);
     const kini = await bacaReticle();
-    if (jarakUV(tadi.uv, kini.uv) < 0.002) return kini;
+    const adaFrame = kini.frame > tadi.frame;
+    tenang = adaFrame && jarakUV(tadi.uv, kini.uv) < 0.002 ? tenang + 1 : 0;
     tadi = kini;
+    if (tenang >= 2) return kini;
   }
   return tadi;
 };
