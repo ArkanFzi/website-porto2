@@ -57,7 +57,18 @@ export const CaseStudyStrip: React.FC<StripProps> = ({ caseStudy, catatanUkur, o
   // Sekali saat stripMount: strip yang difokus ulang tiap render akan merebut fokus
   // dari tautan di dalamnya begitu baris tetangga mengubah status hover.
   useEffect(() => {
-    bingkai.current?.focus({ preventScroll: true });
+    const el = bingkai.current;
+    if (!el) return;
+    el.focus({ preventScroll: true });
+    // Ekor strip terpotong di bawah layar: kolom baca baru menyempit SETELAH strip ter-mount,
+    // jadi tingginya masih berubah setelah effect pertama. ResizeObserver membawa strip ke
+    // dalam layar tiap kali ukurannya benar-benar berubah; `block: "nearest"` hanya
+    // menggulir saat ada bagian yang keluar, jadi tidak ada lompatan saat strip sudah muat.
+    const bawaKeLayar = () => el.scrollIntoView({ block: "nearest", behavior: "auto" });
+    bawaKeLayar();
+    const pengamat = new ResizeObserver(bawaKeLayar);
+    pengamat.observe(el);
+    return () => pengamat.disconnect();
   }, []);
 
   return (
