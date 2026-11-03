@@ -14,15 +14,15 @@ import {
 // yang diperintahkan pengunjung sendiri, dan itu datang dari lib/putaran.ts — modul yang sama
 // dengan kontrol rotasi di HUD halaman utama.
 export const metadata: Metadata = {
-  title: "SANGKAR TERBUKA — a roll cage you command, ±12 degrees // M. Arkan Fauzi",
+  title: "KARTU INTERAKSI — a roll cage you command, ±12 degrees // M. Arkan Fauzi",
   description:
     "The front page's hover cage taken out of its choreography and given its own route: one wireframe box, one draw call, and the same rotation module the editorial HUD uses, with the commanded angle printed beside it.",
-  alternates: { canonical: "/sangkar" },
+  alternates: { canonical: "/interaksi" },
   openGraph: {
-    url: "/sangkar",
+    url: "/interaksi",
     siteName: "M. Arkan Fauzi",
     type: "website",
-    title: "SANGKAR TERBUKA — a roll cage you command, ±12 degrees // M. Arkan Fauzi",
+    title: "KARTU INTERAKSI — a roll cage you command, ±12 degrees // M. Arkan Fauzi",
     description:
       "Drag or arrow-key a wireframe roll cage within the ±12 degree limit the portrait uses, with the commanded angle printed from the same store the canvas reads.",
   },
@@ -33,11 +33,11 @@ export default function Sangkar() {
     <Bingkai>
       <SundulPanggung
         eyebrow="SECOND STAGE // NO SCROLL CHOREOGRAPHY"
-        judul="SANGKAR TERBUKA"
+        judul="KARTU INTERAKSI"
         sub="The hover cage, out of the chapter machine"
         tautan={[
           { href: "/", label: "← Editorial" },
-          { href: "/waktu", label: "Time window ↗" },
+          { href: "/kinerja", label: "Kinerja ↗" },
         ]}
       />
 

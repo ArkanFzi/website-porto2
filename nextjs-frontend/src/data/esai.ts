@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Teks statis untuk lorong rincian paling dalam (/baca/esai/[slug]).
+// Teks statis untuk lorong rincian paling dalam (/tulisan/esai/[slug]).
 //
 // Tidak ada MDX atau markdown loader di proyek ini, dan menambah satu dependensi hanya
 // untuk tiga tulisan bukan trade-off yang mau diambil sekarang. Bentuknya array objek

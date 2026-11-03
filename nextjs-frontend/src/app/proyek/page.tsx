@@ -13,15 +13,15 @@ import {
 } from "@/components/Editorial/PanggungFrame";
 
 export const metadata: Metadata = {
-  title: "PETA PROYEK — twenty repositories, one draw call // M. Arkan Fauzi",
+  title: "PROYEK — twenty repositories on one map, one draw call // M. Arkan Fauzi",
   description:
     "Every public non-fork repository the GitHub API returns for this account, drawn as one InstancedMesh whose bar heights are the star counts printed beside them.",
-  alternates: { canonical: "/peta" },
+  alternates: { canonical: "/proyek" },
   openGraph: {
-    url: "/peta",
+    url: "/proyek",
     siteName: "M. Arkan Fauzi",
     type: "website",
-    title: "PETA PROYEK — twenty repositories, one draw call // M. Arkan Fauzi",
+    title: "PROYEK — twenty repositories on one map, one draw call // M. Arkan Fauzi",
     description:
       "One GPU instance per repository, one row of text per repository, and the two counts required to be the same number.",
   },
@@ -48,13 +48,13 @@ export default async function Peta() {
   return (
     <Bingkai>
       <SundulPanggung
-        eyebrow="SECOND STAGE // ONE INSTANCED MESH"
-        judul="PETA PROYEK"
+        eyebrow="PROFILE // ONE INSTANCED MESH"
+        judul="PROYEK"
         sub={ada ? `${daftar.length} repositories · ${puncak} stars at the peak` : "no repository data"}
         tautan={[
           { href: "/", label: "← Editorial" },
-          { href: "/meja", label: "Type desk ↗" },
-          { href: "/arsip", label: "Pit wall ↗" },
+          { href: "/potret", label: "Potret ↗" },
+          { href: "/statistik", label: "Statistik ↗" },
         ]}
       />
 

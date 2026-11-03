@@ -15,6 +15,7 @@ import {
   dengarTelemetri,
   mulaiBacaTelemetri,
 } from "@/lib/bacaTelemetri";
+import { SALURAN } from "@/lib/profil";
 
 const TANDA = "—";
 
@@ -26,14 +27,6 @@ function BarisSampel({ label, nilai }: { label: string; nilai: string }) {
     </div>
   );
 }
-
-const SOCIAL_CHANNELS = [
-  { name: "GITHUB", url: "https://github.com/ArkanFzi" },
-  { name: "LINKEDIN", url: "https://www.linkedin.com/in/muhamad-arkan-fauzi-5a6799380/" },
-  { name: "INSTAGRAM", url: "https://instagram.com/arkan_fzi" },
-  { name: "WHATSAPP", url: "https://wa.me/6281332314854" },
-  { name: "EMAIL", url: "mailto:muhammadarkanfauzi9@gmail.com" },
-];
 
 export const ChapterPaddock: React.FC = () => {
   const [dispatchInput, setDispatchInput] = useState("");
@@ -263,16 +256,16 @@ export const ChapterPaddock: React.FC = () => {
         {/* Right: Minimalist Social Channels & Admin Portal Link */}
         <div className="flex flex-col sm:flex-row items-center gap-6">
           <nav className="flex flex-wrap items-center justify-center gap-6 sm:gap-8" aria-label="Social Links">
-            {SOCIAL_CHANNELS.map((ch) => (
+            {SALURAN.map((ch) => (
               <a
-                key={ch.name}
+                key={ch.nama}
                 href={ch.url}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="font-mono text-[10px] font-bold tracking-[0.2em] uppercase text-white hover:text-[#0A0A0A] transition-colors"
                 data-magnetic
               >
-                {ch.name}
+                {ch.nama}
               </a>
             ))}
           </nav>

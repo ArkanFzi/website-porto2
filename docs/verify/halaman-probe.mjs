@@ -1,12 +1,12 @@
-// Verifikasi dua lorong rincian di belakang halaman editorial: /baca (index repo) dan
-// /arsip (telemetri proses). Yang ditagih di sini bukan "halamannya ada", tapi tiga hukum
+// Verifikasi dua lorong rincian di belakang halaman editorial: /tulisan (index repo) dan
+// /statistik (telemetri proses). Yang ditagih di sini bukan "halamannya ada", tapi tiga hukum
 // yang sudah berlaku di halaman utama dan tidak boleh dilanggar oleh halaman baru:
 //
-//   1. ANTI-KARANGAN — setiap angka di /baca harus ada di respons /api/github-repos, pada
+//   1. ANTI-KARANGAN — setiap angka di /tulisan harus ada di respons /api/github-repos, pada
 //      baris yang sama. Halaman itu boleh kurang, tidak boleh lebih.
-//   2. TIDAK ADA BENTUK TANPA ANGKA — /arsip harus tetap berdiri saat sumbernya diam:
+//   2. TIDAK ADA BENTUK TANPA ANGKA — /statistik harus tetap berdiri saat sumbernya diam:
 //      nol bilah, dan setiap sel ukuran tercetak "—".
-//   3. ANGKA DARI RESPONS YANG DIBACA — sel di /arsip harus cocok dengan payload yang benar-
+//   3. ANGKA DARI RESPONS YANG DIBACA — sel di /statistik harus cocok dengan payload yang benar-
 //      benar dikonsumsi halaman itu, bukan dengan fetch tambahan.
 //
 // Bagian 5 adalah penjaga langkah berikutnya (tautan masuk di bar bawah HUD yang posisinya
@@ -23,6 +23,22 @@ const puppeteer = require('puppeteer');
 const FE = process.env.FE_URL ?? 'http://localhost:3001';
 const OUT = process.argv[2] ?? '/tmp/halaman';
 mkdirSync(OUT, { recursive: true });
+
+// Daftar rute tidak disalin ke probe — probe membaca tabel yang dipakai HUD dan hub
+// (src/lib/rute.ts). Yang ditagih jadi "kedua baris menunjuk tabel yang sama", bukan
+// "keduanya cocok dengan string yang diketik tangan di file ini".
+const RUTE_SRC = readFileSync(
+  new URL('../../nextjs-frontend/src/lib/rute.ts', import.meta.url),
+  'utf8'
+);
+const ruteTerurut = (nama) =>
+  [
+    ...RUTE_SRC.matchAll(new RegExp(`^export const ${nama}: [^=]+= \\[([\\s\\S]*?)\\n\\];`, 'gm')),
+  ]
+    .flatMap((m) => [...m[1].matchAll(/href: "([^"]+)"/g)].map((h) => h[1].replace(/^\//, '')))
+    .sort();
+const RUTE_TEKNIS = ruteTerurut('RUTE_TEKNIS');
+const RUTE_PROFIL = ruteTerurut('RUTE_PROFIL');
 
 const diLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(FE);
 
@@ -47,14 +63,14 @@ const SEL_UKUR = [
   'commit',
 ];
 
-// ── 1 · /baca: angkanya harus datang dari sumber yang sama dengan halaman utama ──
+// ── 1 · /tulisan: angkanya harus datang dari sumber yang sama dengan halaman utama ──
 const pageBaca = await browser.newPage();
 await pageBaca.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
 const galatBaca = [];
 pageBaca.on('pageerror', (e) => galatBaca.push(String(e).slice(0, 200)));
-const respBaca = await pageBaca.goto(`${FE}/baca`, { waitUntil: 'domcontentloaded', timeout: 45000 });
+const respBaca = await pageBaca.goto(`${FE}/tulisan`, { waitUntil: 'domcontentloaded', timeout: 45000 });
 await jeda(3000);
-cek('/baca menjawab 200', respBaca.status(), 200);
+cek('/tulisan menjawab 200', respBaca.status(), 200);
 
 const baca = await pageBaca.evaluate(() => {
   const baris = [...document.querySelectorAll('[data-baca-repos] tbody tr')].map((tr) => {
@@ -99,14 +115,14 @@ const baca = await pageBaca.evaluate(() => {
     og: document.querySelector('meta[property="og:url"]')?.getAttribute('content') ?? null,
     tanggal: (teksRepo.match(/\b\d{4}-\d{2}-\d{2}\b/g) ?? []).length,
     tanggalRiwayat: riwayat.filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.tanggal)).length,
-    linkArsip: !!document.querySelector('a[href="/arsip"]'),
+    linkArsip: !!document.querySelector('a[href="/statistik"]'),
   };
 });
 console.log('baca     ', JSON.stringify({ judul: baca.judul, baris: baca.baris.length, contoh: baca.baris[0] }));
 
-cek('canonical /baca menyebut /baca', (baca.canonical ?? '').endsWith('/baca'), true);
-cek('og:url /baca menyebut /baca', (baca.og ?? '').endsWith('/baca'), true);
-cek('/baca tidak mencetak tanggal yang tidak ada di sumbernya', baca.tanggal, 0);
+cek('canonical /tulisan menyebut /tulisan', (baca.canonical ?? '').endsWith('/tulisan'), true);
+cek('og:url /tulisan menyebut /tulisan', (baca.og ?? '').endsWith('/tulisan'), true);
+cek('/tulisan tidak mencetak tanggal yang tidak ada di sumbernya', baca.tanggal, 0);
 
 const api = await fetch(`${FE}/api/github-repos`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
 cek('/api/github-repos menjawab sebagai daftar', Array.isArray(api), true);
@@ -130,16 +146,16 @@ if (Array.isArray(api)) {
     })
     .filter(Boolean);
   hasil.push({
-    nama: 'setiap baris /baca cocok dengan respons API-nya',
+    nama: 'setiap baris /tulisan cocok dengan respons API-nya',
     ok: selisih.length === 0,
     dapat: selisih.length ? selisih.slice(0, 3).join(' ;; ') : 'semua baris cocok',
     harus: '0 selisih',
   });
   cek('kolom bintang terbaca sebagai angka, bukan teks hiasan', baca.baris.every((b) => Number.isFinite(b.bintang)), true);
 } else {
-  hasil.push({ nama: 'setiap baris /baca cocok dengan respons API-nya', ok: false, dapat: 'API tidak menjawab', harus: '0 selisih' });
+  hasil.push({ nama: 'setiap baris /tulisan cocok dengan respons API-nya', ok: false, dapat: 'API tidak menjawab', harus: '0 selisih' });
 }
-cek('/baca menawarkan jalan ke /arsip', baca.linkArsip, true);
+cek('/tulisan menawarkan jalan ke /statistik', baca.linkArsip, true);
 
 // ── 1b · trail commit: yang tercetak harus sama dengan modul yang dikompilasi ──
 // Sumber angkanya bukan API, jadi yang ditagih di sini adalah salinannya: halaman tidak boleh
@@ -218,7 +234,7 @@ if (modulRiwayat.galat) {
 }
 await foto(pageBaca, '01-baca');
 
-// ── 2 · /arsip hidup: angka yang dilukis datang dari respons yang benar-benar dibaca ──
+// ── 2 · /statistik hidup: angka yang dilukis datang dari respons yang benar-benar dibaca ──
 // Satu laporan dibuang lebih dulu supaya deret menit punya sesuatu untuk dilukis; tanpa itu
 // gerbang "nol bilah" akan lolos karena alasan yang salah. HANYA ke localhost.
 const SEED = { fps: 58.2, medianMs: 16.7, p95Ms: 21.4, over33ms: 3, frames: 300, dpr: 1, lebar: 1440, tinggi: 900 };
@@ -243,9 +259,9 @@ pageArsip.on('response', async (res) => {
   const b = await res.json().catch(() => null);
   if (b && typeof b.latencyMs === 'number') dibaca.push(b);
 });
-const respArsip = await pageArsip.goto(`${FE}/arsip`, { waitUntil: 'domcontentloaded', timeout: 45000 });
+const respArsip = await pageArsip.goto(`${FE}/statistik`, { waitUntil: 'domcontentloaded', timeout: 45000 });
 await jeda(6000);
-cek('/arsip menjawab 200', respArsip.status(), 200);
+cek('/statistik menjawab 200', respArsip.status(), 200);
 
 const bacaSel = (p) =>
   p.evaluate(() => {
@@ -265,7 +281,7 @@ const bacaSel = (p) =>
 const hidup = await bacaSel(pageArsip);
 console.log('arsip    ', JSON.stringify({ status: hidup.status, sel: hidup.sel, bilah: hidup.bilah, jejak: hidup.jejak }));
 
-cek('HUD /arsip membaca sumbernya', hidup.status, 'hidup');
+cek('HUD /statistik membaca sumbernya', hidup.status, 'hidup');
 cekMin('satu respons benar-benar dikonsumsi', dibaca.length, 1);
 const terakhir = dibaca[dibaca.length - 1];
 cek(
@@ -293,7 +309,7 @@ cek(
 cek('aturan ukur dicetak di halaman', hidup.aturanUkur, true);
 cek('blok apa yang tidak disimpan dicetak di halaman', hidup.privasi, true);
 cek('halaman tidak melempar error saat data datang', galatArsip.length, 0);
-cek('/baca tidak melempar error saat dimuat', galatBaca.length, 0);
+cek('/tulisan tidak melempar error saat dimuat', galatBaca.length, 0);
 await foto(pageArsip, '02-arsip-hidup');
 
 // ── 3 · mock: sumber menjawab TANPA angka — halaman tidak boleh mengarang bentuk ──
@@ -318,7 +334,7 @@ pageNull.on('request', (req) => {
   if (!req.url().includes('/api/telemetry')) return req.continue();
   return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(payloadKosong()) });
 });
-await pageNull.goto(`${FE}/arsip`, { waitUntil: 'domcontentloaded', timeout: 45000 });
+await pageNull.goto(`${FE}/statistik`, { waitUntil: 'domcontentloaded', timeout: 45000 });
 await jeda(6000);
 const kosong = await bacaSel(pageNull);
 console.log('null     ', JSON.stringify({ status: kosong.status, sel: kosong.sel, bilah: kosong.bilah, jejak: kosong.jejak }));
@@ -344,7 +360,7 @@ pageSenyap.on('request', (req) => {
   if (!req.url().includes('/api/telemetry')) return req.continue();
   return req.respond({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'mock' }) });
 });
-await pageSenyap.goto(`${FE}/arsip`, { waitUntil: 'domcontentloaded', timeout: 45000 });
+await pageSenyap.goto(`${FE}/statistik`, { waitUntil: 'domcontentloaded', timeout: 45000 });
 await jeda(6000);
 const senyap = await bacaSel(pageSenyap);
 console.log('senyap   ', JSON.stringify({ status: senyap.status, sel: senyap.sel, bilah: senyap.bilah }));
@@ -437,11 +453,15 @@ const ukurMasuk = await pageUtama.evaluate(() => {
   };
 });
 console.log('masuk    ', JSON.stringify(ukurMasuk));
-cek('tujuh tautan masuk ada di bingkai HUD', ukurMasuk.jumlahTautan, 7);
 cek(
-  'daftar tautan masuk persis tujuh rute yang dijanjikan',
+  'jumlah tautan masuk HUD = pil profil + satu jalan ke hub',
+  ukurMasuk.jumlahTautan,
+  RUTE_PROFIL.length + 1
+);
+cek(
+  'daftar tautan masuk HUD = isi RUTE_PROFIL plus anchor hub',
   ukurMasuk.daftar,
-  'arsip,baca,iris,meja,peta,sangkar,waktu'
+  [...RUTE_PROFIL, '#chapter-hub'].sort().join(',')
 );
 cek('tautan tidak menambah tinggi dokumen', ukurMasuk.sama, true);
 cek('tinggi dokumen terbaca (gerbang di atas tidak hampa)', ukurMasuk.sebelum > 900, true);
@@ -764,10 +784,11 @@ cek(
   ''
 );
 
-// ── 5f · hub akses: tujuh node, satu hukum diam ──
+// ── 5f · hub akses: lima node, satu hukum diam ──
 // Hub adalah section aliran dokumen antara bab 02 dan 03 dengan PanggungKecil sendiri.
-// Yang ditagih: kelengkapan menunya (tujuh node, href sama dengan daftar terkunci HUD),
-// mobilnya benar-benar menoleh ke node yang ditunjuk, dan kanvas baru ini tidak merusak
+// Yang ditagih: kelengkapan menunya (lima node teknis, href sama dengan RUTE_TEKNIS di
+// src/lib/rute.ts), mobilnya benar-benar menoleh ke node yang ditunjuk, dan kanvas baru
+// ini tidak merusak
 // invariant "nol frame saat diam". Counter frame PengukurRender dipakai bersama kedua
 // kanvas, jadi satu selisih menagih keduanya sekaligus.
 // Parkir harus lewat batas portal hub (t + 60), bukan sebelum puncak section: di dalam pita
@@ -804,8 +825,12 @@ const hub = await pageUtama.evaluate(() => {
 });
 console.log('hub      ', JSON.stringify(hub));
 cek('hub akses duduk antara bab 02 dan 03', hub.antara, true);
-cek('hub punya tujuh node menu yang terlihat', hub.jumlah, 7);
-cek('node hub menunjuk tujuh rute yang sama dengan HUD', hub.daftar, 'arsip,baca,iris,meja,peta,sangkar,waktu');
+cek('node menu hub seukuran daftar RUTE_TEKNIS', hub.jumlah, RUTE_TEKNIS.length);
+cek(
+  'node hub menunjuk persis rute teknis yang terdaftar di src/lib/rute.ts',
+  hub.daftar,
+  RUTE_TEKNIS.join(',')
+);
 cek('panggung hub adalah island kanvas sendiri', hub.kanvas, true);
 cek('kartu potret diparkir di luar isi hub, bukan di atasnya', hub.portalLuar, true);
 cek(
@@ -814,16 +839,30 @@ cek(
   true
 );
 
-// Tunjuk satu node: haluan harus benar-benar berubah — ditagih dari angka debug mobil,
-// bukan dari tebakan pixel. Selisih target vs parkir dibatasi panjang langkah node,
-// bukan konstanta yang disalin dari komponen.
+// Tunjuk setiap node: yang ditagih dua hal — haluan ikut node yang ditunjuk, dan
+// setidaknya satu node benar-benar mengubah arah dibanding parkir. Tidak ada indeks yang
+// boleh dihardcode: dengan lima node, target node 2 kebetulan sama persis dengan haluan
+// parkir (π/5), jadi gerbang "berubah" harus dicari di antara seluruh node, bukan pada satu
+// node pilihan. Selisihnya dibaca dari angka debug mobil, bukan dari tebakan pixel.
 const parkir = hub.baca?.target ?? 0;
-await pageUtama.hover('[data-hub-node="2"]');
-await jeda(1200);
-const hubTunjuk = await pageUtama.evaluate(() => window.__hub ?? null);
+const haluanNode = [];
+for (let i = 0; i < hub.jumlah; i++) {
+  await pageUtama.hover(`[data-hub-node="${i}"]`);
+  await jeda(1000);
+  const b = await pageUtama.evaluate(() => window.__hub ?? null);
+  haluanNode.push({ i, node: b?.node ?? null, target: b?.target ?? null });
+  await pageUtama.mouse.move(10, 10);
+  await jeda(400);
+}
+console.log('hub-tunjuk', JSON.stringify({ parkir, haluanNode }));
 cek(
-  'menunjuk node mengubah haluan yang dituju mobil',
-  hubTunjuk?.node === 2 && Math.abs(hubTunjuk.target - parkir) > 0.3,
+  'haluan mengikuti node yang ditunjuk',
+  haluanNode.map((h) => `${h.i}:${h.node}`).join(','),
+  haluanNode.map((h) => `${h.i}:${h.i}`).join(',')
+);
+cek(
+  'node terjauh mengubah haluan yang dituju lebih dari 0,3 rad',
+  Math.max(...haluanNode.map((h) => Math.abs((h.target ?? 0) - parkir))) > 0.3,
   true
 );
 
@@ -860,7 +899,7 @@ await foto(pageUtama, '06-hub-akses');
 // bisa dilihat probe desktop ditangkap. (1) sebelum ada gerbang breakpoint, ponsel 390x844
 // tetap membuka context WebGL dan memasang Mobil ke kotak 300x150 yang tidak akan pernah
 // terlihat; (2) tinta daftar fallback dulu white/70 — warna untuk panggung gelap — sehingga
-// tujuh label nyaris hilang di atas kertas terang.
+// label nyaris hilang di atas kertas terang.
 await pageUtama.setViewport({ width: 390, height: 844, deviceScaleFactor: 1 });
 await jeda(1400);
 const sempit = await pageUtama.evaluate(() => {
@@ -880,8 +919,8 @@ const sempit = await pageUtama.evaluate(() => {
 });
 console.log('hub-sempit', JSON.stringify(sempit));
 cek('ponsel 390px tidak memasang kanvas hub', sempit.kanvas, false);
-cek('daftar fallback hub punya tujuh tautan yang terlihat', sempit.tautan, 7);
-cek('tujuh label fallback hub terbaca di latar terang', sempit.gelap, 7);
+cek('daftar fallback hub memuat seluruh rute teknis yang terlihat', sempit.tautan, RUTE_TEKNIS.length);
+cek('setiap label fallback hub terbaca di latar terang', sempit.gelap, RUTE_TEKNIS.length);
 await foto(pageUtama, '06b-hub-ponsel');
 
 // ── 6 · penjaga jalur: apa yang boleh dibaca crawler dan apa yang tidak ──
@@ -900,8 +939,8 @@ cek('/cv-layout punya judul dokumen sendiri', /<title>[^<]*CV render sheet/i.tes
 const rb = await ambil('/robots.txt');
 cek('robots.txt men-disallow /cv-layout', /disallow:\s*\/cv-layout/i.test(rb.teks), true);
 const sm = await ambil('/sitemap.xml');
-cek('sitemap memuat /baca', sm.teks.includes('/baca'), true);
-cek('sitemap memuat /arsip', sm.teks.includes('/arsip'), true);
+cek('sitemap memuat /tulisan', sm.teks.includes('/tulisan'), true);
+cek('sitemap memuat /statistik', sm.teks.includes('/statistik'), true);
 cek('sitemap tidak memuat /cv-layout', sm.teks.includes('/cv-layout'), false);
 
 // ── 7 · esai: setiap berkas yang dikutip naskah harus benar-benar ada ──
@@ -914,11 +953,11 @@ const SLUG_DARI_DATA = [
   ...readFileSync(new URL('../../nextjs-frontend/src/data/esai.ts', import.meta.url), 'utf8').matchAll(/^ {4}slug: "([a-z0-9-]+)",$/gm),
 ].map((m) => m[1]);
 const tautanEsai = await pageBaca.evaluate(() =>
-  [...document.querySelectorAll('[data-baca-esai] a[href^="/baca/esai/"]')].map((a) => a.getAttribute('href'))
+  [...document.querySelectorAll('[data-baca-esai] a[href^="/tulisan/esai/"]')].map((a) => a.getAttribute('href'))
 );
-cek('daftar /baca memuat satu tautan per esai di modul', tautanEsai.length, SLUG_DARI_DATA.length);
+cek('daftar /tulisan memuat satu tautan per esai di modul', tautanEsai.length, SLUG_DARI_DATA.length);
 cek(
-  'tautan esai di /baca sama dengan slug yang ada di modul',
+  'tautan esai di /tulisan sama dengan slug yang ada di modul',
   [...tautanEsai].map((h) => h.split('/').pop()).sort().join(','),
   [...SLUG_DARI_DATA].sort().join(',')
 );
@@ -963,11 +1002,11 @@ for (const n of naskah) {
     harus: 'article',
   });
 }
-const asing = await pageBaca.goto(`${FE}/baca/esai/slug-yang-tidak-ada`, { waitUntil: 'domcontentloaded', timeout: 45000 });
+const asing = await pageBaca.goto(`${FE}/tulisan/esai/slug-yang-tidak-ada`, { waitUntil: 'domcontentloaded', timeout: 45000 });
 cek('slug esai asing menjawab 404', asing.status(), 404);
 cek('sitemap memuat setiap URL esai', tautanEsai.every((h) => sm.teks.includes(h)), true);
 
-// ── 8 · panggung kedua: /waktu harus punya angka dulu baru punya bentuk ──
+// ── 8 · panggung kedua: /kinerja harus punya angka dulu baru punya bentuk ──
 // Rute ini kanvas per-route (PanggungKecil), jadi tagihannya sama dengan halaman utama dan
 // diukur dengan alat yang sama (window.__render dari stage/PengukurRender):
 //   · satu draw call untuk seluruh adegan,
@@ -1013,15 +1052,15 @@ const bacaWaktu = (p) =>
     };
   });
 
-// Jalur masuknya: panggung kedua diumumkan di /baca dan setiap tautan yang tercetak di sana
+// Jalur masuknya: panggung kedua diumumkan di /tulisan dan setiap tautan yang tercetak di sana
 // harus benar-benar menjawab — halaman indeks yang menjanjikan rute mati lebih buruk dari
 // tidak menjanjikan apa pun.
-await pageBaca.goto(`${FE}/baca`, { waitUntil: 'domcontentloaded', timeout: 45000 });
+await pageBaca.goto(`${FE}/tulisan`, { waitUntil: 'domcontentloaded', timeout: 45000 });
 const tautanPanggung = await pageBaca.evaluate(() =>
   [...document.querySelectorAll('[data-baca-panggung] a[href]')].map((a) => a.getAttribute('href'))
 );
-cekMin('/baca mengumumkan panggung kedua', tautanPanggung.length, 1);
-cek('/baca menautkan /waktu', tautanPanggung.includes('/waktu'), true);
+cekMin('/tulisan mengumumkan panggung kedua', tautanPanggung.length, 1);
+cek('/tulisan menautkan /kinerja', tautanPanggung.includes('/kinerja'), true);
 for (const href of tautanPanggung) {
   const r = await fetch(FE + href);
   cek(`tautan panggung ${href} menjawab 200`, r.status, 200);
@@ -1037,13 +1076,13 @@ pageWaktu.on('request', (req) => {
   if (!req.url().includes('/api/telemetry')) return req.continue();
   return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(payloadRitme()) });
 });
-const rWaktu = await pageWaktu.goto(`${FE}/waktu`, { waitUntil: 'domcontentloaded', timeout: 45000 });
-cek('/waktu menjawab 200', rWaktu.status(), 200);
+const rWaktu = await pageWaktu.goto(`${FE}/kinerja`, { waitUntil: 'domcontentloaded', timeout: 45000 });
+cek('/kinerja menjawab 200', rWaktu.status(), 200);
 await jeda(2500);
 const awalWaktu = await bacaWaktu(pageWaktu);
 console.log('waktu    ', JSON.stringify(awalWaktu));
 
-cek('/waktu canonical menunjuk ke jalurnya sendiri', (await pageWaktu.evaluate(() => document.querySelector('link[rel="canonical"]')?.getAttribute('href') ?? '')).endsWith('/waktu'), true);
+cek('/kinerja canonical menunjuk ke jalurnya sendiri', (await pageWaktu.evaluate(() => document.querySelector('link[rel="canonical"]')?.getAttribute('href') ?? '')).endsWith('/kinerja'), true);
 cek('panggung kedua duduk di aliran dokumen, bukan fixed di belakang isi', awalWaktu.posisi, 'relative');
 cek('satu adegan = satu draw call', awalWaktu.render?.calls, 1);
 cek('angka p95 yang tercetak adalah angka respons', !!awalWaktu.angka?.startsWith(String(P95_UJI)), true);
@@ -1065,8 +1104,8 @@ hasil.push({
   harus: '< 0.001',
 });
 
-// Rail menit + crosshair pointer (E3 /waktu). Rail memakai slot, fungsi, dan angka yang
-// sama dengan bilah /arsip; payload uji berisi tiga menit terisi, jadi enam slot harus
+// Rail menit + crosshair pointer (E3 /kinerja). Rail memakai slot, fungsi, dan angka yang
+// sama dengan bilah /statistik; payload uji berisi tiga menit terisi, jadi enam slot harus
 // tergambar dengan tepat tiga terisi. Crosshair mewakili pointer, bukan data: ia tidak
 // boleh ada sebelum ada pointer, dan setelah ada ia dijepit di dalam bingkai.
 cek('rail menit punya enam slot saat angka ada', awalWaktu.jendela?.buketSlot, 6);
@@ -1127,10 +1166,10 @@ cek('tanpa clientFrames tidak ada geometri', !!waktuKosong.jendela, false);
 cek('tanpa clientFrames tidak ada draw call', waktuKosong.render?.calls, 0);
 cek('tanpa clientFrames halaman menulis "—"', waktuKosong.angka?.includes('—'), true);
 cek('tanpa clientFrames ada tempat kosong yang eksplisit', waktuKosong.kosong, true);
-cek('/waktu tidak melempar error', galatWaktu.length, 0);
-cek('sitemap memuat /waktu', sm.teks.includes('/waktu'), true);
+cek('/kinerja tidak melempar error', galatWaktu.length, 0);
+cek('sitemap memuat /kinerja', sm.teks.includes('/kinerja'), true);
 
-// ── 9 · /sangkar: sudut yang sama, dibaca dari dua tempat ──
+// ── 9 · /interaksi: sudut yang sama, dibaca dari dua tempat ──
 // Rute ini tidak punya angka telemetri: angkanya adalah perintah pengunjung. Yang ditagih:
 //   · satu draw call dan satu store putaran (lib/putaran.ts) — DOM dan WebGL harus menyebut
 //     angka yang sama, kalau tidak, halaman ini punya dua kebenaran;
@@ -1150,8 +1189,8 @@ const pageSangkar = await browser.newPage();
 const galatSangkar = [];
 pageSangkar.on('pageerror', (e) => galatSangkar.push(String(e)));
 await pageSangkar.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
-const rSangkar = await pageSangkar.goto(`${FE}/sangkar`, { waitUntil: 'domcontentloaded', timeout: 45000 });
-cek('/sangkar menjawab 200', rSangkar.status(), 200);
+const rSangkar = await pageSangkar.goto(`${FE}/interaksi`, { waitUntil: 'domcontentloaded', timeout: 45000 });
+cek('/interaksi menjawab 200', rSangkar.status(), 200);
 await jeda(1200);
 const sangkarAwal = await bacaSangkar(pageSangkar);
 console.log('sangkar  ', JSON.stringify(sangkarAwal));
@@ -1219,16 +1258,16 @@ const sangkarDiam1 = await bacaSangkar(pageSangkar);
 await jeda(3000);
 const sangkarDiam2 = await bacaSangkar(pageSangkar);
 cek(
-  'nol frame saat pengunjung diam di /sangkar',
+  'nol frame saat pengunjung diam di /interaksi',
   (sangkarDiam2.render?.frame ?? -1) - (sangkarDiam1.render?.frame ?? -1),
   0
 );
-cek('/sangkar tidak melempar error', galatSangkar.length, 0);
-cek('sitemap memuat /sangkar', sm.teks.includes('/sangkar'), true);
-cek('/baca menautkan /sangkar', tautanPanggung.includes('/sangkar'), true);
+cek('/interaksi tidak melempar error', galatSangkar.length, 0);
+cek('sitemap memuat /interaksi', sm.teks.includes('/interaksi'), true);
+cek('/tulisan menautkan /interaksi', tautanPanggung.includes('/interaksi'), true);
 await foto(pageSangkar, '09-sangkar');
 
-// ── 10 · /meja: knob menulis uniform, dan holder panggung utama tidak ikut tersentuh ──
+// ── 10 · /potret: knob menulis uniform, dan holder panggung utama tidak ikut tersentuh ──
 // Dua hal yang ditagih di rute ini:
 //   · angka yang DICETAK DOM = angka yang ADA DI MATERIAL — kalau tidak, halaman ini hanya
 //     menjual ilustrasi;
@@ -1262,9 +1301,9 @@ const pageMeja = await browser.newPage();
 const galatMeja = [];
 pageMeja.on('pageerror', (e) => galatMeja.push(String(e)));
 await pageMeja.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
-const rMeja = await pageMeja.goto(`${FE}/meja`, { waitUntil: 'domcontentloaded', timeout: 45000 });
-cek('/meja menjawab 200', rMeja.status(), 200);
-cek('/meja mendeklarasikan canonical sendiri', (rMeja.headers()['content-type'] || '').includes('text/html'), true);
+const rMeja = await pageMeja.goto(`${FE}/potret`, { waitUntil: 'domcontentloaded', timeout: 45000 });
+cek('/potret menjawab 200', rMeja.status(), 200);
+cek('/potret mendeklarasikan canonical sendiri', (rMeja.headers()['content-type'] || '').includes('text/html'), true);
 // Di dev, window.__meja baru tertulis ±1,7 s setelah goto (compile rute + hidrasi + frame
 // pertama). Jam tetap yang lebih pendek dari itu meruntuhkan delapan gerbang di bawahnya
 // sekaligus, jadi tunggu verifiernya benar-benar ada — gerbangnya tetap menilai "ada".
@@ -1333,16 +1372,16 @@ const mejaDiam1 = await bacaMeja(pageMeja);
 await jeda(3000);
 const mejaDiam2 = await bacaMeja(pageMeja);
 cek(
-  'nol frame saat pengunjung diam di /meja',
+  'nol frame saat pengunjung diam di /potret',
   (mejaDiam2.render?.frame ?? -1) - (mejaDiam1.render?.frame ?? -1),
   0
 );
-cek('/meja tidak melempar error', galatMeja.length, 0);
-cek('sitemap memuat /meja', sm.teks.includes('/meja'), true);
-cek('/baca menautkan /meja', tautanPanggung.includes('/meja'), true);
+cek('/potret tidak melempar error', galatMeja.length, 0);
+cek('sitemap memuat /potret', sm.teks.includes('/potret'), true);
+cek('/tulisan menautkan /potret', tautanPanggung.includes('/potret'), true);
 await foto(pageMeja, '10-meja');
 
-// ── 11 · /peta: instance = baris, tinggi = angka yang dicetak ──
+// ── 11 · /proyek: instance = baris, tinggi = angka yang dicetak ──
 // Rute ini bergantung pada API GitHub di sisi server, yang bisa gagal karena plafon 60
 // request/jam. Keadaan kosongnya więc ikut diuji: tanpa data tidak ada mesh, tidak ada draw
 // call, dan tidak ada angka — bukan batang nol yang karangan.
@@ -1366,8 +1405,8 @@ const pagePeta = await browser.newPage();
 const galatPeta = [];
 pagePeta.on('pageerror', (e) => galatPeta.push(String(e)));
 await pagePeta.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
-const rPeta = await pagePeta.goto(`${FE}/peta`, { waitUntil: 'domcontentloaded', timeout: 45000 });
-cek('/peta menjawab 200', rPeta.status(), 200);
+const rPeta = await pagePeta.goto(`${FE}/proyek`, { waitUntil: 'domcontentloaded', timeout: 45000 });
+cek('/proyek menjawab 200', rPeta.status(), 200);
 // Yang ditagih gerbang ini adalah keadaan DUDUK, jadi yang benar adalah menunggu sampai
 // diam dengan batas atas, bukan tidur buta: gerak masuk 700 ms baru dimulai saat kanvas
 // mendapat frame pertama, dan itu terjadi setelah hidrasi — pada 1,6 detik buta ia pernah
@@ -1445,12 +1484,12 @@ if (peta.baris.length > 0) {
   cek('tanpa data GitHub tidak ada instance', !!peta.peta, false);
   cek('tanpa data GitHub tidak ada draw call', peta.render?.calls, 0);
 }
-cek('/peta tidak melempar error', galatPeta.length, 0);
-cek('sitemap memuat /peta', sm.teks.includes('/peta'), true);
-cek('/baca menautkan /peta', tautanPanggung.includes('/peta'), true);
+cek('/proyek tidak melempar error', galatPeta.length, 0);
+cek('sitemap memuat /proyek', sm.teks.includes('/proyek'), true);
+cek('/tulisan menautkan /proyek', tautanPanggung.includes('/proyek'), true);
 await foto(pagePeta, '11-peta');
 
-// ── 12 · /iris: navigasi diafragma, dan shader panggung tetap tertutup ──
+// ── 12 · /transisi: navigasi diafragma, dan shader panggung tetap tertutup ──
 const bacaIris = (p) =>
   p.evaluate(() => {
     const teks = [...document.querySelectorAll('[data-iris-teks]')].map((el) => ({
@@ -1475,8 +1514,8 @@ const pageIris = await browser.newPage();
 const galatIris = [];
 pageIris.on('pageerror', (e) => galatIris.push(String(e)));
 await pageIris.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
-const rIris = await pageIris.goto(`${FE}/iris`, { waitUntil: 'domcontentloaded', timeout: 45000 });
-cek('/iris menjawab 200', rIris.status(), 200);
+const rIris = await pageIris.goto(`${FE}/transisi`, { waitUntil: 'domcontentloaded', timeout: 45000 });
+cek('/transisi menjawab 200', rIris.status(), 200);
 await jeda(1600);
 
 // Rata-rata luma sebuah klip, diukur dari screenshot sungguhan yang didekode halaman sendiri.
@@ -1656,8 +1695,8 @@ cek('DOM menyebut sisi yang sama dengan kanvas', irisUjung.sisi, 'B');
 // Gerbang sumber: rute ini tidak boleh menyentuh mesin panggung. Komentar dokumentasinya
 // Justru menyebut nama holder itu, jadi yang dibuang dulu baru yang dicocokkan.
 const sumberIris = [
-  'nextjs-frontend/src/app/iris/IrisHidup.tsx',
-  'nextjs-frontend/src/app/iris/page.tsx',
+  'nextjs-frontend/src/app/transisi/IrisHidup.tsx',
+  'nextjs-frontend/src/app/transisi/page.tsx',
   'nextjs-frontend/src/components/Three/panggung/KurvaIris.tsx',
 ]
   .map((f) => readFileSync(new URL(f, AKAR), 'utf8'))
@@ -1665,7 +1704,7 @@ const sumberIris = [
   .replace(/\/\*[\s\S]*?\*\//g, '')
   .replace(/\/\/[^\n]*/g, '');
 cek(
-  '/iris tidak mengimpor material panggung atau holder sapuannya',
+  '/transisi tidak mengimpor material panggung atau holder sapuannya',
   /chiaroscuroMaterial|usePanggung|SAPU_IRIS|SILANG_MOBIL/.test(sumberIris.replace(/\/\/[^\n]*$/gm, '')),
   false
 );
@@ -1676,13 +1715,13 @@ const irisDiam1 = await bacaIris(pageIris);
 await jeda(3000);
 const irisDiam2 = await bacaIris(pageIris);
 cek(
-  'nol frame saat pengunjung diam di /iris',
+  'nol frame saat pengunjung diam di /transisi',
   (irisDiam2.render?.frame ?? -1) - (irisDiam1.render?.frame ?? -1),
   0
 );
-cek('/iris tidak melempar error', galatIris.length, 0);
-cek('sitemap memuat /iris', sm.teks.includes('/iris'), true);
-cek('/baca menautkan /iris', tautanPanggung.includes('/iris'), true);
+cek('/transisi tidak melempar error', galatIris.length, 0);
+cek('sitemap memuat /transisi', sm.teks.includes('/transisi'), true);
+cek('/tulisan menautkan /transisi', tautanPanggung.includes('/transisi'), true);
 await foto(pageIris, '12-iris');
 
 await browser.close();

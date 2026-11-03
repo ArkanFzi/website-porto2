@@ -14,15 +14,15 @@ import {
 // mengirim laporan ritme frame: ia membaca store yang sama dengan HUD dan panggung utama,
 // dan satu-satunya bentuk yang lahir di kanvas kedua adalah bentuk dari angka itu.
 export const metadata: Metadata = {
-  title: "JENDELA WAKTU — one measured number, painted twice // M. Arkan Fauzi",
+  title: "KINERJA HALAMAN — one measured number, painted twice // M. Arkan Fauzi",
   description:
     "A second WebGL stage with nothing but the p95 frame time visitors report: the same figure painted as a DOM square and as a line geometry, from the same height function, with no shape at all when there is no number.",
-  alternates: { canonical: "/waktu" },
+  alternates: { canonical: "/kinerja" },
   openGraph: {
-    url: "/waktu",
+    url: "/kinerja",
     siteName: "M. Arkan Fauzi",
     type: "website",
-    title: "JENDELA WAKTU — one measured number, painted twice // M. Arkan Fauzi",
+    title: "KINERJA HALAMAN — one measured number, painted twice // M. Arkan Fauzi",
     description:
       "The measured p95 frame time drives one aperture: same number, same height law, painted once in the DOM and once in WebGL, and nothing drawn when the reading is missing.",
   },
@@ -33,11 +33,11 @@ export default function Waktu() {
     <Bingkai>
       <SundulPanggung
         eyebrow="SECOND STAGE // ONE OBJECT, NO CHOREOGRAPHY"
-        judul="JENDELA WAKTU"
+        judul="KINERJA HALAMAN"
         sub="A window whose side is a measured number"
         tautan={[
           { href: "/", label: "← Editorial" },
-          { href: "/arsip", label: "Pit wall ↗" },
+          { href: "/statistik", label: "Statistik ↗" },
         ]}
       />
 

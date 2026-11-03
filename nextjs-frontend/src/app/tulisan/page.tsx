@@ -22,15 +22,15 @@ import {
 export const revalidate = 600;
 
 export const metadata: Metadata = {
-  title: "THE READING ROOM — full repository index // M. Arkan Fauzi",
+  title: "TULISAN — full repository index and essays // M. Arkan Fauzi",
   description:
     "Every public repository behind the editorial archive, listed from the same GitHub fields the front page reads: name, description, language, stars, forks. No repo dates, because the payload does not carry any. Includes a dated snapshot of this repository's own commit history.",
-  alternates: { canonical: "/baca" },
+  alternates: { canonical: "/tulisan" },
   openGraph: {
-    url: "/baca",
+    url: "/tulisan",
     siteName: "M. Arkan Fauzi",
     type: "website",
-    title: "THE READING ROOM — full repository index // M. Arkan Fauzi",
+    title: "TULISAN — full repository index and essays // M. Arkan Fauzi",
     description:
       "Full repository index with measured stars and forks, read straight from the GitHub REST payload the portfolio uses.",
   },
@@ -53,7 +53,7 @@ const SEDANG_DIKERJAKAN = [
     judul: "Pages that report their own condition",
     tubuh:
       "The pit wall subscribes to the same store the HUD reads and polls it every twenty seconds. A hop with no number is printed as a name and an em-dash, never as a guess, and the whole page still stands when the endpoint stops answering.",
-    bukti: ["src/lib/bacaTelemetri.ts", "src/app/arsip/ArsipHidup.tsx"],
+    bukti: ["src/lib/bacaTelemetri.ts", "src/app/statistik/ArsipHidup.tsx"],
   },
   {
     judul: "Verifiers that read pixels instead of assertions",
@@ -86,40 +86,40 @@ const DIBUKA_UNTUK = [
  *  ditunjuk. `hukum` adalah invariant yang diuji probe, bukan slogan. */
 const PANGGUNG = [
   {
-    jalur: "/waktu",
-    judul: "Jendela Waktu",
+    jalur: "/kinerja",
+    judul: "Kinerja Halaman",
     ringkas:
       "One figure — the p95 frame time visitors report — painted twice at once: as a square in the DOM and as line geometry in WebGL, both from the same height function, both gone the moment the reading is missing.",
     objek: "1 line-segments scene",
     hukum: "zero frames when still, one draw call",
   },
   {
-    jalur: "/sangkar",
-    judul: "Sangkar Terbuka",
+    jalur: "/interaksi",
+    judul: "Kartu Interaksi",
     ringkas:
       "The archive hover cage lifted out of its choreography and given a route of its own: a wireframe roll cage you tilt by dragging or arrow keys, within the same ±12 degree limit the portrait obeys, printed from the same store the canvas reads.",
     objek: "1 line-segments scene",
     hukum: "one rotation store, zero frames when still",
   },
   {
-    jalur: "/meja",
-    judul: "Meja Tipografi",
+    jalur: "/potret",
+    judul: "Panel Shader Potret",
     ringkas:
       "The portrait's chiaroscuro material with its chapter machine removed: six keyboard-operable knobs that each write one uniform, printing the commanded value and the uniform value side by side while the front page's shared wipe holders stay at zero.",
     objek: "1 shaded plane",
     hukum: "one frame per command, holders untouched",
   },
   {
-    jalur: "/peta",
-    judul: "Peta Proyek",
+    jalur: "/proyek",
+    judul: "Peta Proyek (draw call)",
     ringkas:
       "Every non-fork repository the GitHub API returns, drawn as one InstancedMesh — a matrix per repository, a bar height that is the star count divided by the peak, and a text row carrying the same figure so nothing exists only as geometry.",
     objek: "1 instanced mesh",
     hukum: "instance count equals row count, no per-frame work",
   },
   {
-    jalur: "/iris",
-    judul: "Iris",
+    jalur: "/transisi",
+    judul: "Transisi Bab",
     ringkas:
       "Navigation as an aperture instead of a button pair: one native slider closes a paper quad over the page, the two texts swap sides only while the screen is fully shut, and both paragraphs stay in the DOM at every value.",
     objek: "1 curtain quad",
@@ -228,13 +228,13 @@ export default async function Baca() {
         <header className="flex flex-wrap items-end justify-between gap-4 pb-8 swiss-border-b">
           <div className="flex flex-col gap-2">
             <span className="font-mono text-tag tracking-[0.24em] uppercase text-rosso">
-              ARKANFAZI // SOURCE INDEX
+              ARKANFAZI // TULISAN
             </span>
             <h1 className="font-serif text-subtitle leading-[0.95] tracking-tight">
-              THE READING ROOM
+              TULISAN &amp; REPOSITORI
             </h1>
             <p className="font-mono text-micro tracking-[0.2em] uppercase text-titanium">
-              Detailed index behind CH.03 SELECTED ARCHIVES
+              Indeks repositori lengkap, esai, dan rincian di belakang CH.03
             </p>
           </div>
           <nav className="flex items-center gap-3" aria-label="Site navigation">
@@ -245,7 +245,7 @@ export default async function Baca() {
               ← Editorial
             </Link>
             <Link
-              href="/arsip"
+              href="/statistik"
               className="font-mono text-tag tracking-[0.2em] uppercase px-3 py-1.5 rounded-full swiss-border hover:border-rosso hover:text-rosso transition-colors"
             >
               Telemetry ↗
@@ -514,7 +514,7 @@ export default async function Baca() {
             {ESAI.map((e) => (
               <li key={e.slug}>
                 <Link
-                  href={`/baca/esai/${e.slug}`}
+                  href={`/tulisan/esai/${e.slug}`}
                   className="group block px-4 py-5 swiss-border hover:border-rosso transition-colors"
                   aria-label={`Read ${e.judul}`}
                 >
@@ -614,7 +614,7 @@ export default async function Baca() {
 
         <footer className="mt-10 pt-6 swiss-border-t flex flex-wrap items-center justify-between gap-3">
           <span className="font-mono text-tag tracking-[0.2em] uppercase text-titanium">
-            M. ARKAN FAUZI // THE READING ROOM
+            M. ARKAN FAUZI // TULISAN
           </span>
           <Link
             href="/"

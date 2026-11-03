@@ -14,15 +14,15 @@ import {
 // menjawab request itu. Halaman ini tidak menambah polling sendiri (lihat ArsipHidup), dan tidak
 // punya angka hiasan: yang tidak terukur tercetak "—".
 export const metadata: Metadata = {
-  title: "THE PIT WALL — live process telemetry // M. Arkan Fauzi",
+  title: "STATISTIK PENGUNJUNG — live process telemetry // M. Arkan Fauzi",
   description:
     "Every number the front-page HUD paints, printed with its measuring rule: handler duration, backend probe, browser frame rhythm, runtime, and the scope each figure is valid for.",
-  alternates: { canonical: "/arsip" },
+  alternates: { canonical: "/statistik" },
   openGraph: {
-    url: "/arsip",
+    url: "/statistik",
     siteName: "M. Arkan Fauzi",
     type: "website",
-    title: "THE PIT WALL — live process telemetry // M. Arkan Fauzi",
+    title: "STATISTIK PENGUNJUNG — live process telemetry // M. Arkan Fauzi",
     description:
       "Server round trip, architecture trace and browser frame rhythm, read from the same telemetry store the WebGL HUD uses, with the measuring rule stated next to each figure.",
   },
@@ -33,11 +33,11 @@ export default function Arsip() {
     <Bingkai>
       <SundulPanggung
         eyebrow="LIVE INSTRUMENTATION // NO STORED HISTORY"
-        judul="THE PIT WALL"
+        judul="STATISTIK PENGUNJUNG"
         sub="The HUD numbers, with the ruler beside them"
         tautan={[
           { href: "/", label: "← Editorial" },
-          { href: "/baca", label: "Code index ↗" },
+          { href: "/tulisan", label: "Tulisan ↗" },
         ]}
       />
 

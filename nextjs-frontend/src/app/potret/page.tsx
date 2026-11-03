@@ -13,15 +13,15 @@ import {
 // Rute ini memakai material panggung utama apa adanya, tapi tidak memakai mesinnya: tidak ada
 // registry portal, tidak ada koreografi bab, dan tidak ada holder sapuan yang dibagi.
 export const metadata: Metadata = {
-  title: "MEJA TIPOGRAFI — six knobs into the portrait shader // M. Arkan Fauzi",
+  title: "PANEL SHADER POTRET — six knobs into the portrait shader // M. Arkan Fauzi",
   description:
     "The editorial portrait's chiaroscuro material with its chapter machine removed: six controls that each write one uniform, with the commanded value and the uniform value printed side by side.",
-  alternates: { canonical: "/meja" },
+  alternates: { canonical: "/potret" },
   openGraph: {
-    url: "/meja",
+    url: "/potret",
     siteName: "M. Arkan Fauzi",
     type: "website",
-    title: "MEJA TIPOGRAFI — six knobs into the portrait shader // M. Arkan Fauzi",
+    title: "PANEL SHADER POTRET — six knobs into the portrait shader // M. Arkan Fauzi",
     description:
       "Drive uPersona, uReveal, uFokus, uKabur, uWipe and uMask by hand on a page that owns its own uniform holders and never touches the front page's shared ones.",
   },
@@ -32,11 +32,11 @@ export default function Meja() {
     <Bingkai>
       <SundulPanggung
         eyebrow="SECOND STAGE // MANUAL UNIFORMS"
-        judul="MEJA TIPOGRAFI"
+        judul="PANEL SHADER POTRET"
         sub="The shader without the choreography"
         tautan={[
           { href: "/", label: "← Editorial" },
-          { href: "/sangkar", label: "Roll cage ↗" },
+          { href: "/interaksi", label: "Interaksi ↗" },
         ]}
       />
 

@@ -27,6 +27,21 @@ const nextConfig: NextConfig = {
     APP_COMMIT: process.env.APP_COMMIT ?? "",
     NEXT_VERSION: versiNext(),
   },
+  // Tujuh rute diganti nama pada November 2026 supaya label menu menyebut isinya. URL lama
+  // sudah terbit di sitemap, di README repositori, dan di profil GitHub orang lain, jadi dia
+  // tidak boleh dibiarkan 404: dipetakan permanen ke slug barunya masing-masing.
+  async redirects() {
+    return [
+      { source: "/waktu", destination: "/kinerja", permanent: true },
+      { source: "/sangkar", destination: "/interaksi", permanent: true },
+      { source: "/meja", destination: "/potret", permanent: true },
+      { source: "/peta", destination: "/proyek", permanent: true },
+      { source: "/iris", destination: "/transisi", permanent: true },
+      { source: "/arsip", destination: "/statistik", permanent: true },
+      { source: "/baca", destination: "/tulisan", permanent: true },
+      { source: "/baca/esai/:slug", destination: "/tulisan/esai/:slug", permanent: true },
+    ];
+  },
   async rewrites() {
     return [
       { source: "/api/login", destination: `${BACKEND_URL}/api/login` },

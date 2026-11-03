@@ -1,6 +1,6 @@
 "use client";
 
-/** ChapterHub: section akses cepat antara bab 02 dan 03 — tujuh rute panggung dipasang
+/** ChapterHub: section akses cepat antara bab 02 dan 03 — lima rute teknis dipasang
  *  sebagai node pada cincin mengelilingi SF-26. Mobil tidak ikut menavigasi; hover/fokus
  *  hanya memindahkan TATAPAN halunya ke arah node, satu-satunya gerak yang dibayar halaman
  *  ini saat pengunjung menunjuk.
@@ -15,22 +15,15 @@
 import React, { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import MeshPortal from "./MeshPortal";
+import { RUTE_TEKNIS } from "@/lib/rute";
 
 const HubPanggung = dynamic(() => import("@/components/Three/panggung/HubFerrari"), {
   ssr: false,
 });
 
-/** Sumber: lima pil di bingkai HUD + dua tautan bar bawah. Angka tujuh ini ditagih
- *  halaman-probe dengan daftar terkunci yang sama. */
-const RUTE = [
-  { href: "/waktu", label: "WAKTU" },
-  { href: "/sangkar", label: "SANGKAR" },
-  { href: "/meja", label: "MEJA" },
-  { href: "/peta", label: "PETA" },
-  { href: "/iris", label: "IRIS" },
-  { href: "/arsip", label: "ARSIP" },
-  { href: "/baca", label: "BACA" },
-];
+/** Sumber: RUTE_TEKNIS di lib/rute.ts — daftar yang sama yang dibaca verifier lewat
+ *  kunciHref. Lima node, bukan tujuh lagi: /proyek dan /tulisan sudah naik ke menu profil. */
+const RUTE = RUTE_TEKNIS;
 
 /** Sudut layar tiap node, radian, berlawanan arah jarum jam dari titik jam 12.
  *  Sama persis dengan yang dibaca cincin 3D dan haluan mobil. */
@@ -135,7 +128,7 @@ export const ChapterHub: React.FC = () => {
         </div>
 
         {/* Kepala section duduk DI ATAS panggung, bukan di kolom kanan: yang dibaca lebih
-            dulu adalah "ini peta tujuh sektor", baru lingkarannya. */}
+            dulu adalah "ini peta lima sektor", baru lingkarannya. */}
         <span className="font-mono text-[10px] tracking-[0.25em] uppercase text-[#D41E12] mb-4">
           SEVEN SECTORS // ONE STEER
         </span>
@@ -165,7 +158,7 @@ export const ChapterHub: React.FC = () => {
             )}
           </div>
           {/* Bingkai viewport: crosshair di empat sudut + vignette dalam. Dua-duanya DOM,
-              bukan WebGL — nol draw call, dan `pointer-events-none` membuat tujuh node di
+              bukan WebGL — nol draw call, dan `pointer-events-none` membuat lima node di
               bawahnya tetap bisa diklik. Fungsinya menyatukan kotak hitam dengan latar
               off-white: tanpa ini tepi kanvas terbaca sebagai video player yang ditempel. */}
           <div aria-hidden className="pointer-events-none absolute inset-0">
@@ -227,7 +220,7 @@ export const ChapterHub: React.FC = () => {
           ))}
         </div>
 
-        {/* Daftar fallback: di bawah md panggung tidak punya tempat, jadi tujuh tautan inilah
+        {/* Daftar fallback: di bawah md panggung tidak punya tempat, jadi lima tautan inilah
             petanya. Sama seperti node di lingkarannya, status "ditunjuk" dibawa lewat `node`. */}
         <nav
           aria-label="Pit wall access"

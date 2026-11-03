@@ -14,15 +14,15 @@ import {
 // module-levelnya sengaja tidak diimpor sama sekali — halaman-probe menjaganya lewat gerbang
 // sumber, bukan lewat ingatan.
 export const metadata: Metadata = {
-  title: "IRIS — berpindah bab lewat diafragma // M. Arkan Fauzi",
+  title: "TRANSISI BAB — berpindah bab lewat diafragma // M. Arkan Fauzi",
   description:
     "A two-text passage whose only navigation is an aperture: one slider with a real slider role, one quad of paper closing over the page, and both paragraphs present in the DOM at every value.",
-  alternates: { canonical: "/iris" },
+  alternates: { canonical: "/transisi" },
   openGraph: {
-    url: "/iris",
+    url: "/transisi",
     siteName: "M. Arkan Fauzi",
     type: "website",
-    title: "IRIS — berpindah bab lewat diafragma // M. Arkan Fauzi",
+    title: "TRANSISI BAB — berpindah bab lewat diafragma // M. Arkan Fauzi",
     description:
       "Close the iris to cross the cut: the crossfade happens only at full closure, the commanded aperture is printed, and the buttons do not exist.",
   },
@@ -33,12 +33,12 @@ export default function Iris() {
     <Bingkai>
       <SundulPanggung
         eyebrow="SECOND STAGE // NAVIGATION AS A WIPE"
-        judul="IRIS"
+        judul="TRANSISI BAB"
         sub="One slider, one quad, no buttons"
         tautan={[
           { href: "/", label: "← Editorial" },
-          { href: "/peta", label: "Project map ↗" },
-          { href: "/waktu", label: "Time window ↗" },
+          { href: "/proyek", label: "Proyek ↗" },
+          { href: "/kinerja", label: "Kinerja ↗" },
         ]}
       />
 

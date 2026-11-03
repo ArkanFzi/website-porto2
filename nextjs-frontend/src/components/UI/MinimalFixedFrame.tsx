@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePortfolioMode } from "@/context/PortfolioModeContext";
 import { useBabAktif } from "@/components/SmoothScrollProvider";
 import KontrolPutaran from "@/components/UI/KontrolPutaran";
+import { RUTE_PROFIL } from "@/lib/rute";
 import { ArrowUpRight, Cpu, Sparkles, FileText, Activity, Volume2, VolumeX, Terminal, Layers } from "lucide-react";
 
 interface FrameProps {
@@ -18,15 +19,9 @@ const CHAPTER_LABELS = [
   "THE PADDOCK & DISPATCH",
 ];
 
-// Panggung kedua: lima rute rincian yang berdiri sendiri. Namanya ikut bahasa rute
-// (waktu, sangkar, meja, peta, iris) supaya pil dan URL mengatakan hal yang sama.
-const PANGGUNG_KEDUA = [
-  { href: "/waktu", label: "WAKTU" },
-  { href: "/sangkar", label: "SANGKAR" },
-  { href: "/meja", label: "MEJA" },
-  { href: "/peta", label: "PETA" },
-  { href: "/iris", label: "IRIS" },
-];
+// Empat jalan masuk profil. Daftar ini dan daftar cincin hub hidup di satu tempat
+// (lib/rute.ts) supaya pil HUD dan section hub tidak bisa lagi melaporkan rute berbeda.
+const PIL_PROFIL = RUTE_PROFIL;
 
 export const MinimalFixedFrame: React.FC<FrameProps> = ({ onChapterClick }) => {
   const currentChapter = useBabAktif();
@@ -198,32 +193,27 @@ export const MinimalFixedFrame: React.FC<FrameProps> = ({ onChapterClick }) => {
             </div>
           </button>
 
-          <nav className="flex items-center gap-2" aria-label="Detail pages">
+          {/* Jalan ke daftar kedua. Lima pameran teknis tidak lagi berdiri di bar ini —
+              mereka satu-satunya isi cincin hub, dan bar ini hanya menunjuk ke sana. */}
+          <nav className="flex items-center gap-2" aria-label="Detail teknis">
             <Link
-              href="/baca"
+              href="/#chapter-hub"
               className={`font-mono text-[9px] tracking-[0.2em] uppercase ${subColor} opacity-60 hover:opacity-100 transition-opacity`}
             >
-              CODE INDEX
-            </Link>
-            <span className={`h-2.5 w-[1px] ${isRossoSection ? "bg-white/40" : "bg-[#D41E12]/40"}`} aria-hidden="true" />
-            <Link
-              href="/arsip"
-              className={`font-mono text-[9px] tracking-[0.2em] uppercase ${subColor} opacity-60 hover:opacity-100 transition-opacity`}
-            >
-              PIT WALL
+              DETAIL TEKNIS
             </Link>
           </nav>
 
-          {/* Lima pil panggung kedua. Sengaja di kolom kiri yang sama dan memflex-wrap
+          {/* Empat pil profil. Sengaja di kolom kiri yang sama dan memflex-wrap
               dalam max-w-[26ch]: kolom inilah yang sudah lama menerbitkan --hud-atas,
               jadi bab yang membaca variabel itu ikut menyesuaikan tanpa satu angka pun
               ditulis ulang di bab-nya. Bar bawah tidak disentuh — ia pernah menelan
               sasaran interaktif (catatan di pita bawah file ini). */}
           <nav
             className="flex flex-wrap items-center gap-1.5 max-w-[26ch]"
-            aria-label="Second stage"
+            aria-label="Profil"
           >
-            {PANGGUNG_KEDUA.map(({ href, label }) => (
+            {PIL_PROFIL.map(({ href, label }) => (
               <Link
                 key={href}
                 href={href}

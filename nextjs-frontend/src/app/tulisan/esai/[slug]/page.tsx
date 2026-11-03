@@ -19,7 +19,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const esai = cariEsai(slug);
   if (!esai) return { title: judulBaris("Essay not found") };
-  const jalur = `/baca/esai/${esai.slug}`;
+  const jalur = `/tulisan/esai/${esai.slug}`;
   return {
     title: judulBaris(esai.judul),
     description: esai.ringkas,
@@ -56,7 +56,7 @@ export default async function EsaiHalaman({ params }: Props) {
           </div>
           <nav className="flex items-center gap-3" aria-label="Site navigation">
             <Link
-              href="/baca"
+              href="/tulisan"
               className="font-mono text-tag tracking-[0.2em] uppercase px-3 py-1.5 rounded-full swiss-border hover:border-rosso hover:text-rosso transition-colors"
             >
               ← Reading room
@@ -104,7 +104,7 @@ export default async function EsaiHalaman({ params }: Props) {
             M. ARKAN FAUZI // {esai.slug.toUpperCase()}
           </span>
           <Link
-            href="/baca"
+            href="/tulisan"
             className="font-mono text-tag tracking-[0.2em] uppercase text-rosso hover:text-obsidian transition-colors"
           >
             ← BACK TO THE INDEX
