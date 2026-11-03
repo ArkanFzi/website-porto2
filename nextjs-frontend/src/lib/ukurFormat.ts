@@ -59,7 +59,7 @@ export function barisKartu(index: IndexKartu, m: UkurTersedia): string | null {
     case "03":
       return m["03"] ? `${desimal(m["03"].filePerDetik)} FILE/DETIK SATU RUN · n=${m["03"].jumlahRun}` : null;
     case "04":
-      return m["04"] ? `${ribu(m["04"].query)} QUERY / ${m["04"].permintaan} REQ · p99 ${desimal(m["04"].p99Ms)} MS` : null;
+      return m["04"] ? `${m["04"].testFungsi} TEST · ${m["04"].rute} RUTE · ${m["04"].modul} MODUL GO` : null;
     case "05":
       return m["05"] ? `${jendela(m["05"])} · ${namaPerangkat(m["05"].perangkat)}` : null;
   }
@@ -84,8 +84,12 @@ export function selUkur(index: IndexKartu, m: UkurTersedia): { latencyP99?: stri
   if (index === "04" && m["04"]) {
     const h = m["04"];
     return {
-      latencyP99: `${desimal(h.p99Ms, 2)} ms per query (n=${ribu(h.query)})`,
-      concurrencyRps: `${ribu(h.permintaan)} permintaan dev lokal · ${h.uriBerbeda} URI · median ${h.medianPerPermintaan} / maks ${h.maksPerPermintaan} query per permintaan`,
+      // Sel ini sengaja berisi nol, bukan angka: repo tidak punya func Benchmark dan tidak punya
+      // artefak profil yang dikomit, jadi tidak ada waktu respons yang bisa dilaporkan.
+      latencyP99: h.benchmarkFungsi === 0
+        ? "tidak diukur — 0 func Benchmark di repo ini"
+        : `${h.benchmarkFungsi} benchmark ada di repo, belum dilipat ke kartu`,
+      concurrencyRps: `${h.rute} rute (${h.ruteApi} /api) di ${h.berkasRute} berkas · ${h.testFungsi} func Test di ${h.testBerkas} berkas · ${h.modul} modul`,
     };
   }
   if (index === "05" && m["05"]) {
@@ -113,7 +117,7 @@ export function catatanUkur(index: IndexKartu, m: UkurTersedia): string | null {
   }
   if (index === "04" && m["04"]) {
     const h = m["04"];
-    return `${ribu(h.query)} statement berjenis query dari ${ribu(h.permintaan)} permintaan dev lokal (${tanggal(h.rentangAwal)} → ${tanggal(h.rentangAkhir)}), koneksi ${h.connection}. ${ribu(h.transaksi)} statement transaction (BEGIN/COMMIT, durasinya selalu 0 di tangkapan Debugbar) DKECUALIKAN dari persentil — memasukkannya menurunkan p99 dari ${desimal(h.p99Ms, 2)} ke angka yang tidak berarti. p95 ${desimal(h.p95Ms, 2)} ms, median ${desimal(h.medianMs, 2)} ms, maks ${desimal(h.maksMs, 2)} ms. Snapshot dev, bukan produksi, bukan load test.`;
+    return `Dihitung dari sumber yang dikomit, bukan dari sistem yang sedang berjalan: ${h.testFungsi} "func Test" di ${h.testBerkas} berkas *_test.go, ${h.rute} registrasi HandleFunc ber-"METHOD /path" di ${h.berkasRute} berkas (${h.ruteApi} di antaranya di bawah /api; satu penangkap root yang menyajikan React tertanam dihitung terpisah, bukan sebagai rute API), ${h.modul} modul di internal/modules, ${h.tipeProtokol} tipe kontrak di pkg/protocol. Tidak ada angka waktu respons di panel ini karena ${h.benchmarkFungsi} func Benchmark dan nol artefak profil yang dikomit. Korpus: ${h.signature}. Angka ini bergerak kalau kodenya bergerak — itu gunanya.`;
   }
   if (index === "05" && m["05"]) {
     const f = m["05"];

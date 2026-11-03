@@ -20,7 +20,7 @@
 //   /01 direktori extensions/*/ yang punya extension.js + metadata.json
 //   /02 konstanta RATE_LIMIT_REQUESTS yang benar-benar ditegakkan di hook PocketBase
 //   /03 stempel berpasangan di log post-commit graphify, dibagi file yang diekstrak
-//   /04 tangkapan Laravel Debugbar dari aplikasi HRIS dev lokal
+//   /04 struktur sumber Hermes Control Tower: fungsi tes, registrasi rute, modul heksagonal
 //   /05 jendela frame yang diukur drawcall-probe di GPU keras
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -41,15 +41,6 @@ const VERSI = 1;
 const gagal = (pesan) => {
   console.error(pesan);
   process.exit(1);
-};
-
-/** Persentil nearest-rank pada salinan terurut naik: nilai terkecil yang peringkatnya
- *  ceil(p·n) — BUKAN interpolasi. Bedanya nyata pada n=3.440 dan angkanya dicetak publik,
- *  jadi metodenya ditulis sekali di sini supaya semua kartu memakai metode yang sama. */
-const persentil = (nilai, p) => {
-  const terurut = nilai.slice().sort((a, b) => a - b);
-  if (terurut.length === 0) return null;
-  return terurut[Math.ceil(p * terurut.length) - 1];
 };
 
 // ── /01 Ferrari Ubuntu ──────────────────────────────────────────────────────────
@@ -146,68 +137,115 @@ function ukurEkstraksi() {
   };
 }
 
-// ── /04 HRIS ────────────────────────────────────────────────────────────────────
-const DIR_DEBUGBAR =
-  process.env.DIR_DEBUGBAR ?? '/home/arkan/Documents/Coding/Sekawan_Media_Tasks/hris/hris-admin/storage/debugbar';
+// ── /04 Hermes Control Tower ────────────────────────────────────────────────────
+const DIR_HERMES =
+  process.env.DIR_HERMES ?? '/home/arkan/Documents/Coding/hermes-control-tower';
+const relatif = (f) => f.slice(DIR_HERMES.length + 1);
 
-function ukurHris() {
-  if (!existsSync(DIR_DEBUGBAR)) return null;
-  const berkas = readdirSync(DIR_DEBUGBAR).filter((f) => f.endsWith('.json')).sort();
-  if (berkas.length === 0) return null;
-  const durasiQuery = [];
-  const durasiTransaksi = [];
-  const perPermintaan = [];
-  const uri = new Set();
-  const waktu = [];
-  const koneksi = new Set();
-  let totalStatement = 0;
-  const penutupRusak = [];
-  for (const f of berkas) {
-    const j = JSON.parse(readFileSync(join(DIR_DEBUGBAR, f), 'utf8'));
-    const q = j.queries ?? {};
-    const statement = q.statements ?? [];
-    // `count` adalah jumlah statement TERMASUK BEGIN/COMMIT. Kalau suatu hari Debugbar
-    // mengubah arti field ini, total yang dicetak ikut salah tanpa suara — jadi persamaannya
-    // ditagih per file, bukan diasumsikan sekali.
-    if (q.count !== statement.length) penutupRusak.push(`${f}: count=${q.count} statements=${statement.length}`);
-    if ((q.nb_excluded_statements ?? 0) !== 0) penutupRusak.push(`${f}: ${q.nb_excluded_statements} statement dikecualikan dari tangkapan`);
-    for (const s of statement) {
-      if (typeof s.duration !== 'number') continue;
-      if (s.type === 'transaction') durasiTransaksi.push(s.duration);
-      else durasiQuery.push(s.duration);
-      if (s.connection) koneksi.add(s.connection);
+/** Jalan rekursif di atas repo orang lain, hanya-baca: hanya berkas .go, direktori hasil build
+ *  dan hasil graph tidak pernah dibuka. Urutan deterministik karena signature korpus ikut dicetak. */
+function berkasGo(akhiran) {
+  const KECUALI = new Set(['.git', 'node_modules', 'bin', 'graphify-out', 'vendor', 'dist']);
+  const keluar = [];
+  const jalan = (dir) => {
+    for (const entri of readdirSync(dir, { withFileTypes: true })) {
+      if (entri.isDirectory()) {
+        if (!KECUALI.has(entri.name)) jalan(join(dir, entri.name));
+      } else if (entri.name.endsWith(akhiran)) {
+        keluar.push(join(dir, entri.name));
+      }
     }
-    totalStatement += statement.length;
-    perPermintaan.push(statement.length);
-    if (j.__meta?.uri) uri.add(j.__meta.uri);
-    if (typeof j.__meta?.utime === 'number') waktu.push(j.__meta.utime * 1000);
+  };
+  jalan(DIR_HERMES);
+  return keluar.sort();
+}
+
+/** Pola ServeMux yang dihitung sebagai rute: method, satu spasi, path absolut. Root tanpa method
+ *  adalah penangkap SPA, bukan rute — dan dipisah supaya tidak menyamar jadi angka ke-83. */
+const METODE_ROUTE = /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) \//;
+
+function ukurHermes() {
+  if (!existsSync(DIR_HERMES)) return null;
+  const sumber = berkasGo('.go');
+  const berkasTest = sumber.filter((f) => f.endsWith('_test.go'));
+  // Repo tanpa satu pun berkas tes Go = bukan hermes, atau hermes tanpa tes. Dua-duanya berarti
+  // tidak ada angka: kartu gelap, bukan nol yang dicetak sebagai fakta.
+  if (berkasTest.length === 0) return null;
+
+  let testFungsi = 0;
+  let benchmark = 0;
+  const testKosong = [];
+  for (const f of berkasTest) {
+    const isi = readFileSync(f, 'utf8');
+    const n = isi.match(/^func Test/gm)?.length ?? 0;
+    if (n === 0) testKosong.push(relatif(f));
+    testFungsi += n;
+    benchmark += isi.match(/^func Benchmark/gm)?.length ?? 0;
   }
-  if (penutupRusak.length) {
-    gagal(`/04: ${penutupRusak.length} tangkapan tidak menutup (contoh: ${penutupRusak.slice(0, 3).join('; ')})`);
+  // Berkas *_test.go tanpa satu pun `func Test` berarti regex-nya yang salah atau repo-nya yang
+  // berubah bentuk; dua-duanya membuat "186 TEST" jadi bohong, jadi generator mati.
+  if (testKosong.length) gagal(`/04: ${testKosong.length} berkas *_test.go tanpa "func Test" (contoh ${testKosong[0]})`);
+
+  let rute = 0;
+  let ruteApi = 0;
+  let tangkapSPA = 0;
+  const berkasRute = new Set();
+  const takTerkenali = [];
+  for (const f of sumber) {
+    const isi = readFileSync(f, 'utf8');
+    const literal = [...isi.matchAll(/HandleFunc\(\s*"([^"]*)"/g)];
+    if (literal.length === 0) continue;
+    const total = isi.match(/HandleFunc\(/g)?.length ?? 0;
+    // Registrasi lewat variabel tidak bisa dibaca dari teks. Kalau panggilan lebih banyak dari
+    // literal, ada rute yang hilang dari angka tanpa suara — itu yang ditagih di sini.
+    if (total !== literal.length) {
+      gagal(`/04: ${relatif(f)} punya ${total} panggilan HandleFunc tapi hanya ${literal.length} ber-argumen string literal`);
+    }
+    for (const m of literal) {
+      const pola = m[1];
+      if (METODE_ROUTE.test(pola)) {
+        rute++;
+        berkasRute.add(relatif(f));
+        if (pola.slice(pola.indexOf(' ') + 1).startsWith('/api/')) ruteApi++;
+      } else if (pola === '/') {
+        // routes_web.go: satu-satunya penangkap root yang menyajikan SPA tertanam — bukan rute API.
+        tangkapSPA++;
+      } else {
+        takTerkenali.push(`${relatif(f)}: "${pola}"`);
+      }
+    }
   }
-  if (durasiQuery.length + durasiTransaksi.length !== totalStatement) {
-    gagal(`/04: pemisahan tipe tidak menutup — query ${durasiQuery.length} + transaction ${durasiTransaksi.length} ≠ ${totalStatement} statement`);
+  if (takTerkenali.length) {
+    gagal(`/04: ${takTerkenali.length} registrasi tidak jatuh ke "METHOD /…" atau root SPA (contoh ${takTerkenali[0]})`);
   }
-  const urut = perPermintaan.slice().sort((a, b) => a - b);
+
+  const dirModul = join(DIR_HERMES, 'internal', 'modules');
+  const namaModul = existsSync(dirModul)
+    ? readdirSync(dirModul, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort()
+    : [];
+  const tipeProtokol = sumber
+    .filter((f) => f.includes('/pkg/protocol/'))
+    .reduce((t, f) => t + (readFileSync(f, 'utf8').match(/^type [A-Z]/gm)?.length ?? 0), 0);
+
+  if (rute === 0 || testFungsi === 0 || namaModul.length === 0) {
+    gagal(`/04: tidak menutup — ${testFungsi} func Test, ${rute} rute, ${namaModul.length} modul di ${DIR_HERMES}; repo ini bukan bentuk yang diduganya`);
+  }
   return {
-    permintaan: berkas.length,
-    uriBerbeda: uri.size,
-    query: durasiQuery.length,
-    transaksi: durasiTransaksi.length,
-    totalStatement,
-    p99Ms: persentil(durasiQuery, 0.99),
-    p95Ms: persentil(durasiQuery, 0.95),
-    medianMs: persentil(durasiQuery, 0.5),
-    maksMs: Math.max(...durasiQuery),
-    medianPerPermintaan: urut[Math.floor(urut.length / 2)],
-    maksPerPermintaan: urut[urut.length - 1],
-    rentangAwal: new Date(Math.min(...waktu)).toISOString(),
-    rentangAkhir: new Date(Math.max(...waktu)).toISOString(),
-    connection: [...koneksi].sort().join(','),
-    // Sidik jari korpus: generator yang dijalankan ke folder lain tidak boleh lolos --cek
+    testFungsi,
+    testBerkas: berkasTest.length,
+    /** Nol dan dicetak: kartu ini tidak punya angka waktu respons karena tidak ada benchmark-nya. */
+    benchmarkFungsi: benchmark,
+    rute,
+    ruteApi,
+    berkasRute: berkasRute.size,
+    tangkapSPA,
+    modul: namaModul.length,
+    namaModul,
+    tipeProtokol,
+    // Sidik jari korpus: generator yang dijalankan ke repo lain tidak boleh lolos --cek
     // hanya karena angkanya kebetulan mirip.
-    signature: `${berkas.length}|${berkas[0]}|${berkas[berkas.length - 1]}|${[...koneksi].sort().join(',')}`,
-    sumber: `${DIR_DEBUGBAR}/*.json (tangkapan Debugbar dev lokal, bukan produksi)`,
+    signature: `${berkasTest.length}|${relatif(berkasTest[0])}|${relatif(berkasTest[berkasTest.length - 1])}|${namaModul.length}`,
+    sumber: `${DIR_HERMES} (sumber yang dikomit: func Test di *_test.go, HandleFunc literal, internal/modules/*)`,
   };
 }
 
@@ -261,7 +299,7 @@ function buatIsian() {
       '01': ukurEkstensi(),
       '02': ukurBatasLaju(),
       '03': ukurEkstraksi(),
-      '04': ukurHris(),
+      '04': ukurHermes(),
       '05': ukurFrame(),
     },
   };
@@ -319,23 +357,21 @@ const modul = [
   '  sumber: string;',
   '}',
   '',
-  'export interface UkurHris {',
-  '  permintaan: number;',
-  '  uriBerbeda: number;',
-  '  /** Statement berjenis query. BEGIN/COMMIT dihitung terpisah di `transaksi`. */',
-  '  query: number;',
-  '  /** Statement berjenis transaction; durasinya selalu 0 di tangkapan Debugbar. */',
-  '  transaksi: number;',
-  '  totalStatement: number;',
-  '  p99Ms: number;',
-  '  p95Ms: number;',
-  '  medianMs: number;',
-  '  maksMs: number;',
-  '  medianPerPermintaan: number;',
-  '  maksPerPermintaan: number;',
-  '  rentangAwal: string;',
-  '  rentangAkhir: string;',
-  '  connection: string;',
+  'export interface UkurHermes {',
+  '  /** Jumlah `func Test` di seluruh *_test.go — bukan jumlah assertion. */',
+  '  testFungsi: number;',
+  '  testBerkas: number;',
+  '  /** Nol berarti kartu ini tidak punya angka waktu respons; nilainya ikut dicetak. */',
+  '  benchmarkFungsi: number;',
+  '  /** Registrasi HandleFunc ber-"METHOD /path". Penangkap root SPA dihitung terpisah. */',
+  '  rute: number;',
+  '  ruteApi: number;',
+  '  berkasRute: number;',
+  '  tangkapSPA: number;',
+  '  modul: number;',
+  '  namaModul: string[];',
+  '  /** Tipe data kontrak WebSocket di pkg/protocol. */',
+  '  tipeProtokol: number;',
   '  signature: string;',
   '  sumber: string;',
   '}',
@@ -367,7 +403,7 @@ const modul = [
   "    '01': UkurEkstensi | null;",
   "    '02': UkurBatasLaju | null;",
   "    '03': UkurEkstraksi | null;",
-  "    '04': UkurHris | null;",
+  "    '04': UkurHermes | null;",
   "    '05': UkurFrame | null;",
   '  };',
   '}',
@@ -385,9 +421,20 @@ if (MODE_VALIDASI) {
   if (!cocok) gagal('--validasi: bentuk modul tidak dikenali — jangan disunting tangan, regenerasi.');
   const baca = JSON.parse(cocok[1]);
   if (baca.versi !== VERSI) gagal(`--validasi: artefak versi ${baca.versi}, generator ini mengerti versi ${VERSI}`);
-  const h = baca.kartu?.['04'];
-  if (h && h.query + h.transaksi !== h.totalStatement) {
-    gagal(`--validasi: /04 tidak menutup — ${h.query} query + ${h.transaksi} transaksi ≠ ${h.totalStatement} statement`);
+  const hm = baca.kartu?.['04'];
+  if (hm) {
+    // Penutup yang bisa diperiksa TANPA membaca repo sumber — ini yang membuat langkah CI
+    // --validasi tetap berarti di runner yang tidak punya hermes-control-tower: angka yang
+    // dicetak harus cocok dengan daftar yang dicetak di sebelahnya.
+    if (hm.modul !== hm.namaModul?.length) {
+      gagal(`--validasi: /04 modul=${hm.modul} tapi namaModul berisi ${hm.namaModul?.length} nama — artefak disunting tangan?`);
+    }
+    if (hm.testFungsi < hm.testBerkas) {
+      gagal(`--validasi: /04 ${hm.testFungsi} func Test tidak mungkin untuk ${hm.testBerkas} berkas *_test.go`);
+    }
+    if (hm.ruteApi > hm.rute) {
+      gagal(`--validasi: /04 ruteApi=${hm.ruteApi} > rute=${hm.rute}`);
+    }
   }
   const umurHari = (Date.now() - Date.parse(baca.dihasilkanPada)) / 86_400_000;
   if (!Number.isFinite(umurHari)) gagal('--validasi: dihasilkanPada tidak terbaca sebagai tanggal');
@@ -416,6 +463,6 @@ console.log(
     `  /01 ${h['01'] ? `${h['01'].jumlah} ekstensi` : '-'} · ` +
     `/02 ${h['02'] ? `${h['02'].permintaanPerMenit} req/menit (${h['02'].ditegakkanDi})` : '-'} · ` +
     `/03 ${h['03'] ? `${h['03'].filePerDetik.toFixed(1)} file/detik agregat (${h['03'].totalFile} file / ${h['03'].totalDetik.toFixed(0)} s) dari ${h['03'].jumlahRun} run, per-run ${h['03'].min.toFixed(1)}–${h['03'].maks.toFixed(1)} · ${h['03'].runDibuang} run dibuang` : '-'} · ` +
-    `/04 ${h['04'] ? `${h['04'].query} query / ${h['04'].permintaan} permintaan, p99 ${h['04'].p99Ms?.toFixed(4)} ms, maks ${h['04'].maksMs?.toFixed(4)} ms, ${h['04'].transaksi} transaction dikecualikan dari latensi` : '-'} · ` +
+    `/04 ${h['04'] ? `${h['04'].testFungsi} func Test di ${h['04'].testBerkas} berkas, ${h['04'].rute} rute (${h['04'].ruteApi} /api) di ${h['04'].berkasRute} berkas + ${h['04'].tangkapSPA} root SPA, ${h['04'].modul} modul, ${h['04'].tipeProtokol} tipe protokol, ${h['04'].benchmarkFungsi} benchmark` : '-'} · ` +
     `/05 ${h['05'] ? `${h['05'].fpsTerendah} fps terendah @${h['05'].lebar}×${h['05'].tinggi} di ${h['05'].perangkat}` : '-'}`
 );
