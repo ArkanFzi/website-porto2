@@ -47,6 +47,10 @@ const posisiNode = (i: number) => ({
   top: `${PUSAT_Y - RY * Math.sin(SUDUT[i])}%`,
 });
 
+/** Sudut bingkai viewport — empat tanda plus, di luar SUDUT node yang sudah lebih dulu
+ *  memakai nama itu. Class string, bukan objek style, supaya Tailwind tetap melihatnya. */
+const SUDUT_BINGKAI = ["top-2 left-2", "top-2 right-2", "bottom-2 left-2", "bottom-2 right-2"];
+
 export const ChapterHub: React.FC = () => {
   const wadah = useRef<HTMLElement>(null);
   const [node, setNode] = useState<number | null>(null);
@@ -117,38 +121,90 @@ export const ChapterHub: React.FC = () => {
         className="-left-[30vw] top-[20vh] h-[60vh] w-[23vw]"
         ease="halus"
       />
-      <div className="w-full max-w-[1600px] mx-auto">
-        <div className="flex items-center justify-between pb-6 swiss-border-b mb-12">
+      <div className="w-full max-w-[1180px] mx-auto flex flex-col items-center text-center">
+        <div className="w-full flex items-center justify-between pb-6 swiss-border-b mb-10">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-[#D41E12]" />
             <span className="font-mono text-[11px] font-bold tracking-[0.25em] uppercase text-[#D41E12]">
               PIT WALL // SECTOR ACCESS
             </span>
           </div>
-          <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-[#6E6A64]">
+          <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-[#6E6A64] hidden sm:block">
             {node === null ? "PARKED // SELECT A SECTOR" : `TRACKING // ${RUTE[node].label}`}
           </span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-12 items-start">
-          {/* Panggung: kanvas + node, hanya di layar lebar */}
-          <div className="hidden md:block md:col-span-7 relative w-full h-[58vh] min-h-[420px] swiss-border bg-[#0A0A0A] overflow-hidden">
-            <div className="absolute inset-0">
-              {adaTempat && <HubPanggung sudut={SUDUT} node={node} dekat={dekat} terlihat={terlihat} />}
-            </div>
-            {RUTE.map((r, i) => (
-              <a
-                key={r.href}
-                href={r.href}
-                data-hub-node={i}
-                aria-label={`Open ${r.label} sector`}
-                onMouseEnter={() => tunjuk(i)}
-                onMouseLeave={() => tunjuk(null)}
-                onFocus={() => tunjuk(i)}
-                onBlur={() => tunjuk(null)}
-                style={{ left: posisiNode(i).left, top: posisiNode(i).top }}
-                className="absolute -translate-x-1/2 -translate-y-1/2 flex items-center gap-2 pointer-events-auto"
+        {/* Kepala section duduk DI ATAS panggung, bukan di kolom kanan: yang dibaca lebih
+            dulu adalah "ini peta tujuh sektor", baru lingkarannya. */}
+        <span className="font-mono text-[10px] tracking-[0.25em] uppercase text-[#D41E12] mb-4">
+          SEVEN SECTORS // ONE STEER
+        </span>
+        <h2 className="font-serif text-4xl sm:text-5xl font-bold tracking-tight text-[#D41E12] mb-4">
+          THE PIT WALL
+        </h2>
+        <p className="font-mono text-[11px] leading-relaxed text-[#6E6A64] max-w-[62ch] mb-10">
+          Every experiment on this site is a sector of the same circuit. Point at one and the
+          car looks where you are going; the ring is a map, not a menu you have to open.
+        </p>
+
+        {/* Panggung: kanvas + node, hanya di layar lebar. Latar belakangnya bukan hitam rata
+            lagi: satu gradien radial cyclorama — terang lembut di belakang mobil, jatuh ke
+            hitam di sudut — supaya sorot di dalam kanvas punya dinding untuk jatuh.
+            Digambar di CSS, bukan WebGL: nol draw call, dan tepi kotak tetap kotak. */}
+        <div
+          className="hidden md:block relative w-full h-[62vh] min-h-[460px] max-h-[720px] swiss-border overflow-hidden"
+          style={{
+            background:
+              "radial-gradient(46% 42% at 12% 4%, rgba(212,30,18,0.32) 0%, rgba(212,30,18,0) 70%)," +
+              "radial-gradient(72% 58% at 50% 36%, #26262c 0%, #17171b 40%, #0b0b0d 72%, #060607 100%)",
+          }}
+        >
+          <div className="absolute inset-0">
+            {adaTempat && (
+              <HubPanggung sudut={SUDUT} node={node} dekat={dekat} terlihat={terlihat} />
+            )}
+          </div>
+          {/* Bingkai viewport: crosshair di empat sudut + vignette dalam. Dua-duanya DOM,
+              bukan WebGL — nol draw call, dan `pointer-events-none` membuat tujuh node di
+              bawahnya tetap bisa diklik. Fungsinya menyatukan kotak hitam dengan latar
+              off-white: tanpa ini tepi kanvas terbaca sebagai video player yang ditempel. */}
+          <div aria-hidden className="pointer-events-none absolute inset-0">
+            <div
+              className="absolute inset-0"
+              style={{
+                background:
+                  "radial-gradient(118% 92% at 50% 46%, rgba(0,0,0,0) 52%, rgba(0,0,0,0.45) 100%)",
+              }}
+            />
+            {SUDUT_BINGKAI.map((kelas) => (
+              <span
+                key={kelas}
+                className={`absolute font-mono text-[13px] leading-none text-white/30 ${kelas}`}
               >
+                +
+              </span>
+            ))}
+          </div>
+          {RUTE.map((r, i) => (
+            <a
+              key={r.href}
+              href={r.href}
+              data-hub-node={i}
+              aria-label={`Open ${r.label} sector`}
+              onMouseEnter={() => tunjuk(i)}
+              onMouseLeave={() => tunjuk(null)}
+              onFocus={() => tunjuk(i)}
+              onBlur={() => tunjuk(null)}
+              style={{ left: posisiNode(i).left, top: posisiNode(i).top }}
+              className="absolute -translate-x-1/2 -translate-y-1/2 flex items-center gap-2 pointer-events-auto"
+            >
+              {/* Titik + cincin berdenyut. Denyut hanya ada selama section ini benar-benar
+                  terlihat: animasi CSS yang berjalan terus adalah kompositing yang dibayar
+                  bahkan saat tidak ada yang melihat, dan halaman ini punya hukum diam. */}
+              <span className="relative flex h-3.5 w-3.5 items-center justify-center">
+                {terlihat && (
+                  <span className="absolute inset-0 rounded-full border border-white/40 animate-ping motion-reduce:hidden" />
+                )}
                 <span
                   className={`w-3.5 h-3.5 rounded-full border transition-colors duration-200 ${
                     node === i
@@ -156,52 +212,67 @@ export const ChapterHub: React.FC = () => {
                       : "border-white/40 bg-white/5"
                   }`}
                 />
-                <span
-                  className={`font-mono text-[10px] font-bold tracking-[0.25em] uppercase transition-colors duration-200 ${
-                    node === i ? "text-[#D41E12]" : "text-white/70"
-                  }`}
-                >
-                  {r.label}
-                </span>
-              </a>
-            ))}
-          </div>
-
-          {/* Kolom kanan: judul + fallback daftar untuk layar sempit */}
-          <div className="col-span-1 md:col-span-5 flex flex-col md:pl-6">
-            <span className="font-mono text-[10px] tracking-[0.25em] uppercase text-[#D41E12] block mb-6">
-              SEVEN SECTORS // ONE STEER
-            </span>
-            <h2 className="font-serif text-4xl sm:text-5xl font-bold tracking-tight text-[#D41E12] mb-6">
-              THE PIT WALL
-            </h2>
-            <p className="font-mono text-[11px] leading-relaxed text-[#6E6A64] max-w-[46ch]">
-              Every experiment on this site is a sector of the same circuit. Point at one and the
-              car looks where you are going; the ring is a map, not a menu you have to open.
-            </p>
-
-            <nav aria-label="Pit wall access" className="grid grid-cols-2 gap-3 mt-8 md:hidden">
-              {RUTE.map((r, i) => (
-                <a
-                  key={r.href}
-                  href={r.href}
-                  data-hub-node={i}
-                  onMouseEnter={() => tunjuk(i)}
-                  onMouseLeave={() => tunjuk(null)}
-                  onFocus={() => tunjuk(i)}
-                  onBlur={() => tunjuk(null)}
-                  className={`font-mono text-[10px] tracking-[0.25em] uppercase px-4 py-3 rounded-full border transition-colors text-center ${
-                    node === i
-                      ? "border-[#D41E12] text-[#D41E12]"
-                      : "border-[#D9D5CC] text-[#6E6A64] hover:border-[#D41E12] hover:text-[#D41E12] focus-visible:border-[#D41E12] focus-visible:text-[#D41E12]"
-                  }`}
-                >
-                  {r.label}
-                </a>
-              ))}
-            </nav>
-          </div>
+              </span>
+              <span className="h-px w-3 bg-white/30" aria-hidden />
+              <span
+                className={`rounded-full border px-2.5 py-[3px] font-mono text-[10px] font-bold uppercase tracking-[0.25em] backdrop-blur-[2px] transition-colors duration-200 ${
+                  node === i
+                    ? "border-[#D41E12]/70 bg-[#1A0B09]/75 text-[#FF5A4A]"
+                    : "border-white/15 bg-black/55 text-white/90"
+                }`}
+              >
+                {r.label}
+              </span>
+            </a>
+          ))}
         </div>
+
+        {/* Daftar fallback: di bawah md panggung tidak punya tempat, jadi tujuh tautan inilah
+            petanya. Sama seperti node di lingkarannya, status "ditunjuk" dibawa lewat `node`. */}
+        <nav
+          aria-label="Pit wall access"
+          className="grid grid-cols-2 gap-3 w-full max-w-[420px] md:hidden"
+        >
+          {RUTE.map((r, i) => (
+            <a
+              key={r.href}
+              href={r.href}
+              data-hub-node={i}
+              onMouseEnter={() => tunjuk(i)}
+              onMouseLeave={() => tunjuk(null)}
+              onFocus={() => tunjuk(i)}
+              onBlur={() => tunjuk(null)}
+              className={`font-mono text-[10px] tracking-[0.25em] uppercase px-4 py-3 rounded-full border transition-colors text-center ${
+                node === i
+                  ? "border-[#D41E12] text-[#D41E12]"
+                  : "border-[#D9D5CC] text-[#6E6A64] hover:border-[#D41E12] hover:text-[#D41E12] focus-visible:border-[#D41E12] focus-visible:text-[#D41E12]"
+              }`}
+            >
+              {r.label}
+            </a>
+          ))}
+        </nav>
+
+        {/* Kredit yang ditagih lisensi CC-BY-4.0: judul, penulis, dan lisensinya harus
+            terlihat di halaman, bukan hanya di sf26-livery-LICENSE.txt di samping file. */}
+        <p className="font-mono text-[9px] tracking-[0.15em] uppercase text-[#6E6A64] mt-8 max-w-[80ch]">
+          Model:{" "}
+          <a
+            href="https://sketchfab.com/3d-models/2026-ferrari-sf-26-e5ca6cecdc42449283f4bed27360f2a7"
+            rel="noopener"
+            className="underline decoration-[#D9D5CC] hover:text-[#D41E12]"
+          >
+            2026 Ferrari SF-26
+          </a>{" "}
+          oleh{" "}
+          <a href="https://sketchfab.com/Tyler_Dave" rel="noopener" className="underline decoration-[#D9D5CC] hover:text-[#D41E12]">
+            Dave Love
+          </a>{" "}
+          ·{" "}
+          <a href="https://creativecommons.org/licenses/by/4.0/" rel="noopener" className="underline decoration-[#D9D5CC] hover:text-[#D41E12]">
+            CC-BY-4.0
+          </a>
+        </p>
       </div>
     </section>
   );
