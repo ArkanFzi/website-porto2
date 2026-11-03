@@ -550,7 +550,7 @@ const jejak = await page.evaluate(() => {
   };
   return {
     panggung: j
-      ? { hop: j.hop, ms: j.ms, px: j.px, mulai: j.mulai, pxPerMs: j.pxPerMs, anggaranPx: j.anggaranPx, totalMs: j.totalMs, papan: j.papan, tebalPx: j.tebalPx, jarakPapanPx: j.jarakPapanPx }
+      ? { hop: j.hop, ms: j.ms, px: j.px, mulai: j.mulai, pxPerMs: j.pxPerMs, anggaranPx: j.anggaranPx, totalMs: j.totalMs, papan: j.papan, tebalPx: j.tebalPx, tinggiMarkaPx: j.tinggiMarkaPx, jarakPapanPx: j.jarakPapanPx, asalY: j.asalY, asalGulir: j.asalGulir }
       : null,
     dom: { node: pecahan('node'), backend: pecahan('backend'), database: pecahan('database') },
     kotakDatabase: !!document.querySelector('[data-jejak-hop="database"] [data-jejak-bar]'),
@@ -602,6 +602,7 @@ cek('jumlah hop sama dengan total yang dijumlah penggaris', j ? Math.abs(j.px[0]
 // 40) HARUS tetap ketahuan menyayat teks, supaya "nol tabrakan" bukan kebetulan satu offset.
 const JARAK_PAPAN_PX = 14; // harus sama dengan JARAK_PAPAN_PX di JejakArsitektur.tsx
 const TEBAL_BILAH_PX = 3; // harus sama dengan TEBAL_BILAH_PX
+const TINGGI_MARKA_PX = 9; // harus sama dengan TINGGI_MARKA_PX — unsur tertinggi
 const JARAK_LAMA_PX = 40; // hukum lama: turun dari tepi atas portal yang fixed
 const UMUR_TIP = 24; // tipografi sebesar ini yang tidak boleh tersayat
 
@@ -632,6 +633,15 @@ cek(
   true
 );
 cek('kontrak jarak dan tebal tidak berubah di komponen', j ? [j.jarakPapanPx, j.tebalPx].join('x') : null, `${JARAK_PAPAN_PX}x${TEBAL_BILAH_PX}`);
+cek('marka yang tertinggi ikut jadi pita tumbukan', j ? j.tinggiMarkaPx : null, TINGGI_MARKA_PX);
+// JARAK_PAPAN_PX hanya boleh dibayar satu kali. Kalau dia masuk ke titik asal mesh DAN ke
+// koordinat lokal instans, garis mendarat 28 px di bawah header sementara panjang segmennya
+// tetap benar — jadi yang ditagih di sini posisi asal yang terpasang, bukan angkanya.
+cek(
+  'titik asal terpasang tepat di tepi bawah jangkar',
+  !!(j?.papan && Number.isFinite(j.asalY)) && Math.abs(j.asalY - (j.papan.bawah - j.asalGulir)) < 1,
+  true
+);
 await foto('09-jejak-arsitektur');
 
 // Sapu beberapa titik gulir di setiap bab dan bandingkan rentang garis (hukum baru vs hukum lama)
@@ -665,15 +675,16 @@ for (const bab of [1, 2, 3, 4, 5]) {
         const kotakPortal = document.querySelector(`[data-portal="${j.papan.bab}"]`)?.getBoundingClientRect();
         const panjang = j.px.reduce((a, p) => a + p, 0);
         const kiri = papan.kiri - window.scrollX;
-        const sayat = (y) => {
-          if (y < 0 || y > window.innerHeight) return [];
+        const sayat = (atas) => {
+          if (atas < 0 || atas > window.innerHeight) return [];
+          const bawah = atas + ctx.pita;
           const kena = [];
           for (const el of document.querySelectorAll('h1,h2,h3,p,span,div')) {
             const r = el.getBoundingClientRect();
             if (r.width < 20 || r.height < 8) continue;
             const fs = parseFloat(getComputedStyle(el).fontSize) || 0;
             if (fs < ctx.umur) continue;
-            if (r.top > y + ctx.tebal || r.bottom < y) continue;
+            if (r.top > bawah || r.bottom < atas) continue;
             if (r.right < kiri || r.left > kiri + panjang) continue;
             kena.push(`${el.tagName} ${Math.round(fs)}px`);
           }
@@ -681,26 +692,40 @@ for (const bab of [1, 2, 3, 4, 5]) {
         };
         return {
           bab: j.papan.bab,
-          baru: sayat(papan.bawah - window.scrollY + ctx.jarak),
-          lama: kotakPortal ? sayat(kotakPortal.top + ctx.lama) : [],
+          // Posisi asal yang terpasang di layar vs tepi bawah jangkar yang baru saja dibaca:
+          // pasangan ini juga menangkap titik asal yang tertinggal (belum digambar ulang
+          // sesudah gulir), bukan hanya jarak yang dibayar dua kali.
+          asal: Number.isFinite(j.asalY) ? +Math.abs(j.asalY - (papan.bawah - window.scrollY)).toFixed(2) : null,
+          baru: sayat(papan.bawah - window.scrollY + ctx.jarak - ctx.paruh),
+          lama: kotakPortal ? sayat(kotakPortal.top + ctx.lama - ctx.paruh) : [],
         };
       },
-      { jarak: JARAK_PAPAN_PX, tebal: TEBAL_BILAH_PX, lama: JARAK_LAMA_PX, umur: UMUR_TIP }
+      {
+        jarak: JARAK_PAPAN_PX,
+        pita: Math.max(TEBAL_BILAH_PX, TINGGI_MARKA_PX),
+        paruh: Math.max(TEBAL_BILAH_PX, TINGGI_MARKA_PX) / 2,
+        lama: JARAK_LAMA_PX,
+        umur: UMUR_TIP,
+      }
     );
     if (b) sapuJangkar.push({ bab, geser, ...b });
   }
 }
 const tabrakBaru = sapuJangkar.filter((s) => s.baru.length > 0);
 const tabrakLama = sapuJangkar.filter((s) => s.lama.length > 0);
+const asalBebas = sapuJangkar.filter((s) => s.asal === null || s.asal > 1);
 console.log(
   'jangkar  ',
   `titik=${sapuJangkar.length}`,
+  'asal meleset maks:',
+  Math.max(0, ...sapuJangkar.map((s) => s.asal ?? 99)).toFixed(2),
   'baru:',
   JSON.stringify(tabrakBaru.slice(0, 3)),
   '| lama:',
   JSON.stringify(tabrakLama.slice(0, 3))
 );
 cek('garis tidak menyayat tipografi besar di semua titik gulir', tabrakBaru.length, 0);
+cek('titik asal menempel di tepi jangkar di semua titik gulir', asalBebas.length, 0);
 cekMin('sapuan menyentuh lebih dari satu bab', new Set(sapuJangkar.map((s) => s.bab)).size, 3);
 cek('hukum lama akan ketahuan (gerbangnya bertaring)', tabrakLama.length > 0, true);
 

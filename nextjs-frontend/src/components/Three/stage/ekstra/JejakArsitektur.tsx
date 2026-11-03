@@ -162,9 +162,14 @@ const tulisJejakDebug = (a: AlatTulis, papan: Papan) => {
       anggaranPx: number;
       totalMs: number;
       tebalPx: number;
+      /** Tinggi unsur tertinggi (marka) — band tumbukan verifier memakai ini, bukan tebal bilah. */
+      tinggiMarkaPx: number;
       /** Baris header yang jadi jangkar, dalam ruang dokumen. */
       papan: { bab: number; kiri: number; bawah: number; lebar: number };
       jarakPapanPx: number;
+      /** Titik asal mesh pada frame terakhir, pixel CSS layar + gulir saat ia dipasang. */
+      asalY: number;
+      asalGulir: number;
     };
   };
   jendela.__jejak = {
@@ -176,8 +181,12 @@ const tulisJejakDebug = (a: AlatTulis, papan: Papan) => {
     anggaranPx: a.anggaranPx,
     totalMs: a.total,
     tebalPx: TEBAL_BILAH_PX,
+    tinggiMarkaPx: TINGGI_MARKA_PX,
     papan: { bab: papan.bab, kiri: papan.kiri, bawah: papan.bawah, lebar: papan.lebar },
     jarakPapanPx: JARAK_PAPAN_PX,
+    // NaN sampai useFrame memasang yang pertama: pembacaan basi tidak boleh lulus gerbang.
+    asalY: Number.NaN,
+    asalGulir: Number.NaN,
   };
 };
 
@@ -349,16 +358,28 @@ export const JejakArsitektur: React.FC<AktorProps> = ({ scrollProgressRef }) => 
     }
     const z = k.z + Z_DEPAN;
     const pxw = pxPerWorld(z);
-    // Titik asal mesh = kiri-bawah garis batas baris header, dinaikkan JARAK_PAPAN_PX.
+    // Titik asal mesh = kiri-bawah garis batas baris header, TANPA menambah jarak: yang
+    // menurunkan garis sejauh JARAK_PAPAN_PX adalah koordinat lokal instansnya (pasangJejak).
+    // Ditulis di dua tempat, jaraknya terbaca dua kali — terukur 28px, bukan 14px.
     // Papan diukur dalam ruang dokumen, jadi satu-satunya yang dibaca per frame adalah gulir:
     // tidak ada getBoundingClientRect di jalur render.
-    const atas = aktif.bawah - window.scrollY + JARAK_PAPAN_PX;
+    const atas = aktif.bawah - window.scrollY;
     im.position.set(
       (aktif.kiri - window.scrollX - size.width / 2) / pxw,
       -(atas - size.height / 2) / pxw,
       z
     );
     im.scale.setScalar(1 / pxw);
+    // Titik asal yang benar-benar terpasang, dilaporkan dalam pixel CSS (y layar menghadap
+    // ke bawah, y dunia ke atas — tanda dibalik terhadap im.position.y). Verifier menuntut
+    // angka ini sama dengan tepi bawah baris jangkar pada gulir yang sama: jarak ke garis
+    // waktu hanya boleh dibayar satu kali, dan pembayaran dua kali (asal + instans) tidak
+    // akan kelihatan dari panjang segmen mana pun.
+    const j = (window as unknown as { __jejak?: { asalY: number; asalGulir: number } }).__jejak;
+    if (j) {
+      j.asalY = size.height / 2 - im.position.y * pxw;
+      j.asalGulir = window.scrollY;
+    }
   });
 
   if (reduceMotion || !adaJejak) return null;
