@@ -18,6 +18,7 @@ import type { RepoBerlian } from "@/lib/server/github";
 import type { Perjalanan } from "@/lib/server/journey";
 import type { Certificate } from "@/lib/server/certificates";
 import type { Experience } from "@/lib/server/experience";
+import type { UkurPerKartu } from "@/lib/ukurFormat";
 
 const GlobalEditorialCanvas = dynamic(
   () => import("@/components/Three/GlobalEditorialCanvas"),
@@ -57,6 +58,8 @@ interface PageClientProps {
   perjalanan: Perjalanan[];
   certificates: Certificate[];
   experiences: Experience[];
+  /** Sudah disaring umurnya di server; null berarti kartu proyek tercetak "BELUM TERUKUR". */
+  metrikKartu: UkurPerKartu | null;
 }
 
 const EditorialInner: React.FC<PageClientProps> = ({
@@ -64,6 +67,7 @@ const EditorialInner: React.FC<PageClientProps> = ({
   perjalanan,
   certificates,
   experiences,
+  metrikKartu,
 }) => {
   const { scrollProgressRef, scrollVelocityRef, scrollToChapter } = useScrollData();
   const [hoveredProject, setHoveredProject] = useState<number | null>(null);
@@ -101,6 +105,7 @@ const EditorialInner: React.FC<PageClientProps> = ({
         <ChapterHub />
         <ChapterArchives
           repos={repos}
+          metrikKartu={metrikKartu}
           hoveredProject={hoveredProject}
           onHoverProject={setHoveredProject}
         />

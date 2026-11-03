@@ -1,0 +1,120 @@
+{
+  "dibuat": "2026-11-03T14:18:15.332Z",
+  "sumber": "docs/verify/drawcall-probe.mjs --tulis",
+  "jendela_ukur": {
+    "lebar": 1440,
+    "tinggi": 900,
+    "dpr": 1,
+    "perangkat_gambar": "ANGLE (NVIDIA, Vulkan 1.4.329 (NVIDIA NVIDIA GeForce RTX 2050 (0x000025AD)), NVIDIA)"
+  },
+  "catatan": [
+    "fps diukur dari selisih counter frame PengukurRender selama 1,5 s jendela ukur, bukan rata-rata browser.",
+    "perangkat_gambar GPU keras: angkanya berlaku pada mesin + driver yang namanya tercetak di jendela_ukur, bukan pada pengunjung lain.",
+    "puncak geometri/tekstur adalah jumlah alokasi yang masih hidup (gl.info.memory), bukan byte — three tidak mengekspos ukuran per alokasi.",
+    "aset_unduhan.mb = encodedBodySize yang diterima browser (termampatkan), jadi lebih kecil dari ukuran file di disk.",
+    "objek = sensus objek yang ikut digambar pada frame tersibuk bab itu.",
+    "sepi_setelah_ms = lama tunggu dari akhir jendela aktif sampai counter frame berhenti naik; angka ini adalah sisa perjalanan kartu, bukan waktu idle yang diizinkan.",
+    "puncak null dan frame_terukur 0 berarti kanvas tidak menulis satu pun frame selama 1,5 s jendela ukur — bukan nol alokasi."
+  ],
+  "puncak_aktif_global": 6,
+  "aset_unduhan": [
+    {
+      "nama": "FotoDiriFix.webp",
+      "mb": 0.19
+    },
+    {
+      "nama": "sf26-livery.glb",
+      "mb": 1.38
+    },
+    {
+      "nama": "sf26.glb",
+      "mb": 0.82
+    }
+  ],
+  "bab": [
+    {
+      "bab": 1,
+      "frame_terukur": 15,
+      "puncak": {
+        "calls": 3,
+        "segitiga": 18460,
+        "titik": 0,
+        "garis": 0,
+        "geometri": 5,
+        "tekstur": 2
+      },
+      "objek": [
+        "Mesh",
+        "bilah",
+        "jejak"
+      ],
+      "fps": 59.9,
+      "sepi_setelah_ms": 7255,
+      "frame_saat_diam": 0,
+      "objek_saat_diam": []
+    },
+    {
+      "bab": 2,
+      "frame_terukur": 15,
+      "puncak": {
+        "calls": 3,
+        "segitiga": 18460,
+        "titik": 0,
+        "garis": 0,
+        "geometri": 5,
+        "tekstur": 2
+      },
+      "objek": [
+        "Mesh",
+        "bilah",
+        "jejak"
+      ],
+      "fps": 59.9,
+      "sepi_setelah_ms": 7255,
+      "frame_saat_diam": 0,
+      "objek_saat_diam": []
+    },
+    {
+      "bab": 3,
+      "frame_terukur": 15,
+      "puncak": {
+        "calls": 3,
+        "segitiga": 18460,
+        "titik": 0,
+        "garis": 0,
+        "geometri": 6,
+        "tekstur": 2
+      },
+      "objek": [
+        "Mesh",
+        "bilah",
+        "jejak"
+      ],
+      "fps": 59.9,
+      "sepi_setelah_ms": 7255,
+      "frame_saat_diam": 0,
+      "objek_saat_diam": []
+    },
+    {
+      "bab": 4,
+      "frame_terukur": 15,
+      "puncak": {
+        "calls": 3,
+        "segitiga": 18460,
+        "titik": 0,
+        "garis": 0,
+        "geometri": 6,
+        "tekstur": 2
+      },
+      "objek": [
+        "Mesh",
+        "bilah",
+        "jejak"
+      ],
+      "fps": 60.6,
+      "sepi_setelah_ms": 7255,
+      "frame_saat_diam": 0,
+      "objek_saat_diam": []
+    }
+  ]
+}

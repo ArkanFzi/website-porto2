@@ -37,10 +37,13 @@ export interface CaseStudyData {
 interface StripProps {
   /** Selalu data yang utuh: strip hanya dimount oleh baris yang sedang terbuka. */
   caseStudy: CaseStudyData;
+  /** Asal-usul angka: apa yang diukur, berapa sampel, dan apa yang tidak termasuk. Null untuk
+   *  kartu yang memang tidak punya alat ukur — paragraf lama tetap tercetak di sana. */
+  catatanUkur?: string | null;
   onClose: () => void;
 }
 
-export const CaseStudyStrip: React.FC<StripProps> = ({ caseStudy, onClose }) => {
+export const CaseStudyStrip: React.FC<StripProps> = ({ caseStudy, catatanUkur, onClose }) => {
   const bingkai = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -106,8 +109,8 @@ export const CaseStudyStrip: React.FC<StripProps> = ({ caseStudy, onClose }) => 
         </div>
       </div>
       <p className="font-mono text-[10px] leading-relaxed text-white/40 mb-6">
-        Both figures are measured on the project itself, sample size written inline. Where
-        there is no measurement there is no number.
+        {catatanUkur ??
+          "Both figures are measured on the project itself, sample size written inline. Where there is no measurement there is no number."}
       </p>
 
       <div className="space-y-2 mb-6">

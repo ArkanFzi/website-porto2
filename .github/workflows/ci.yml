@@ -112,6 +112,17 @@ jobs:
       - name: Kontrak API (tripwire)
         run: node tools/ci/api-contract-check.mjs
 
+      # continue-on-error: SENGAJA, atas persetujuan eksplisit. Yang diperiksa hanya
+      # src/data/metrikKartu.ts — artefak komit yang umurnya dibandingkan BATAS_USIA_HARI.
+      # Artefak menua berarti "angka kartu belum disegarkan dari mesin yang memegang
+      # korpusnya", bukan produksinya rusak; dan UI-nya sudah bereaksi dengan mengubah
+      # baris TERUKUR jadi BELUM TERUKUR (saringMetrik), jadi tidak ada angka basi yang
+      # sempat tampil. Merahkan run untuk itu berarti membunyikan alarm yang salah —
+      # preseden yang sama dipakai watch.yml untuk "cloud tidak terbaca".
+      - name: Asal-usul angka terukur di kartu editorial
+        continue-on-error: true
+        run: node tools/ci/ukur-kartu.mjs --validasi
+
       - name: Anggaran aset halaman depan
         run: node tools/ci/perf-budget.mjs
         # Diukur dari HTML hasil build rute /, jadi butuh langkah Build di atas.

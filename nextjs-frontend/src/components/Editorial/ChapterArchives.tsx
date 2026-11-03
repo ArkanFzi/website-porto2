@@ -7,11 +7,15 @@ import type { RepoBerlian } from "@/lib/server/github";
 import { usePortfolioMode } from "@/context/PortfolioModeContext";
 import { DURASI, EASE } from "@/lib/motion";
 import { CaseStudyStrip, CaseStudyData } from "@/components/UI/CaseStudyStrip";
+import { barisKartu, catatanUkur, selUkur, BELUM_TERUKUR, type IndexKartu, type UkurPerKartu } from "@/lib/ukurFormat";
 import MeshPortal from "./MeshPortal";
 import audioEngine from "@/lib/audioEngine";
 
 interface ArchivesProps {
   repos?: RepoBerlian[];
+  /** Angka terukur per kartu, sudah disaring umurnya di server (lihat src/lib/ukurFormat.ts).
+   *  null = artefaknya tua atau belum ada, dan kartu tercetak "BELUM TERUKUR". */
+  metrikKartu?: UkurPerKartu | null;
   onHoverProject: (index: number | null) => void;
   hoveredProject: number | null;
 }
@@ -38,7 +42,9 @@ const PORTAL_BUKA =
 const KOLOM_BUKA = "xl:max-w-[var(--strip-lebar)]";
 
 interface ArchiveItem {
-  index: string;
+  /** Kunci ke artefak ukur; ditahan sebagai literal supaya kartu tanpa cabang formatter tidak
+   *  bisa lolos typecheck. */
+  index: IndexKartu;
   name: string;
   title: string;
   url: string;
@@ -47,7 +53,10 @@ interface ArchiveItem {
   // Engineer mode fields
   engineerCategory: string;
   engineerStack: string;
-  engineerMetric: string;
+  /** Tidak ada lagi `engineerMetric` di sini: dulu field ini tempat mengetik "4.170 QUERIES
+   *  TERUKUR" dan "60 FPS @1440×900", dan angka itu membeku pada hari terakhir seseorang
+   *  mengukur. Yang tercetak sekarang dihitung tools/ci/ukur-kartu.mjs dari artefak
+   *  pengukuran nyata dan lewat barisKartu() — lihat src/data/metrikKartu.ts. */
   // Creator mode fields
   creatorCategory: string;
   creatorCraft: string;
@@ -65,7 +74,6 @@ const FEATURED_ARCHIVES: ArchiveItem[] = [
     starsFallback: "OPEN SOURCE",
     engineerCategory: "GNOME SHELL EXTENSION SUITE",
     engineerStack: "GJS / ST-CLUTTER / DCONF / DBUS",
-    engineerMetric: "6 EXTENSIONS IN-PROCESS • NO DAEMON",
     creatorCategory: "BESPOKE WORKSTATION UI",
     creatorCraft: "SHELL CSS OVERRIDE • MONZA RED AESTHETICS",
     creatorTag: "SPATIAL DESKTOP",
@@ -78,7 +86,7 @@ const FEATURED_ARCHIVES: ArchiveItem[] = [
       architecture: "GJS extensions running inside the gnome-shell process on the St/Clutter scene graph; state through gsettings/dconf schemas and D-Bus signals for media and battery. Wayland cannot restart the shell, so JS changes need a session reload.",
       databaseSchema: ["extensions/noir-island@arkan/extension.js", "settings/noir.dconf", "theme/overrides/gnome-shell"],
       latencyP99: "n/a — in-process, no IPC",
-      concurrencyRps: "6 extensions, 1 shell process",
+      concurrencyRps: BELUM_TERUKUR,
       stack: ["Ubuntu 24.04 LTS", "GNOME Shell 46", "GJS", "D-Bus / gsettings", "Wayland"],
     },
   },
@@ -91,7 +99,6 @@ const FEATURED_ARCHIVES: ArchiveItem[] = [
     starsFallback: "OPEN SOURCE",
     engineerCategory: "GENERATIVE AI & MOBILE BACKEND",
     engineerStack: "EXPO 54 / POCKETBASE / TYPESCRIPT",
-    engineerMetric: "589–774ms SYNTHESIS TERUKUR • 10 REQ/MIN",
     creatorCategory: "GENERATIVE AI EXPERIENCE",
     creatorCraft: "NATURAL CONVERSATION • FLUID GENERATIVE UI",
     creatorTag: "AI EXPERIENCE",
@@ -103,8 +110,8 @@ const FEATURED_ARCHIVES: ArchiveItem[] = [
       desc: "Meeting intelligence converting messy multi-timezone conversational chat logs into structured calendar slots through Gemini 3.5 Flash-Lite, called from a PocketBase JS hook rather than the client.",
       architecture: "Expo SDK 54 client + PocketBase backend. pb_hooks/ai_proxy.pb.js pins the model name, requests structured JSON output, enforces a 10 request/min fixed window per account and streams task updates over SSE (3–6 ms measured).",
       databaseSchema: ["Tasks", "Focus_Sessions", "Workspace_Events", "Profiles"],
-      latencyP99: "589–774 ms (Gemini call, n=3)",
-      concurrencyRps: "10 req/min per account",
+      latencyP99: "tidak diukur — tidak ada artefak waktu di repo ini",
+      concurrencyRps: BELUM_TERUKUR,
       stack: ["Expo SDK 54", "React Native", "PocketBase", "Gemini 3.5 Flash-Lite", "TypeScript"],
     },
   },
@@ -117,7 +124,6 @@ const FEATURED_ARCHIVES: ArchiveItem[] = [
     starsFallback: "OPEN SOURCE",
     engineerCategory: "AGENT GUARDRAILS & GRAPH OPS",
     engineerStack: "BASH / PYTHON / CHROMADB / GIT HOOKS",
-    engineerMetric: "657–706 NODES/SEC TERUKUR • OFFLINE EXTRACT",
     creatorCategory: "CODEBASE KNOWLEDGE GRAPH",
     creatorCraft: "INTERACTIVE TOPOLOGY • GOD NODE MAPPING",
     creatorTag: "DATA VISUALIZATION",
@@ -130,7 +136,7 @@ const FEATURED_ARCHIVES: ArchiveItem[] = [
       architecture: "Parsing and graph analysis are done by the upstream graphifyy engine (Tree-Sitter based, by Graphify-Labs). This repo adds the post-commit hook, a background worker, a ChromaDB sync for embeddings and a stdlib HTTP server feeding the viewer.",
       databaseSchema: ["bin/graphify-git-hook", "bin/graphify-bg-worker", "bin/graphify-chroma-sync"],
       latencyP99: "not measured — querylog off by default",
-      concurrencyRps: "657–706 nodes/sec (n=2 runs)",
+      concurrencyRps: BELUM_TERUKUR,
       stack: ["Bash", "Python 3", "graphifyy (upstream)", "ChromaDB", "Git hooks"],
     },
   },
@@ -143,7 +149,6 @@ const FEATURED_ARCHIVES: ArchiveItem[] = [
     starsFallback: "ENTERPRISE",
     engineerCategory: "MISSION-CRITICAL ENTERPRISE BACKEND",
     engineerStack: "PHP 8.3 / LARAVEL 11 / POSTGRESQL / REDIS",
-    engineerMetric: "4.170 QUERIES TERUKUR • p99 1.5MS • MAX 13.2MS",
     creatorCategory: "ENTERPRISE PRODUCT DESIGN",
     creatorCraft: "HIGH-DENSITY DATA HIERARCHY • TELEMETRY",
     creatorTag: "DESIGN SYSTEM",
@@ -155,8 +160,8 @@ const FEATURED_ARCHIVES: ArchiveItem[] = [
       desc: "HRIS multi-tenant untuk absensi dan payroll: empat aplikasi Laravel 11 (admin, ESS, LND, job portal) di atas PostgreSQL, dengan Redis, MongoDB, dan antrean RabbitMQ. Angka query di panel ini hasil ukur, bukan asumsi vendor.",
       architecture: "Four Laravel 11 apps over one PostgreSQL database with company-scoped queries, predis for cache and queues, a MongoDB connection for activity logs, and RabbitMQ for deferred jobs — watched by a daily GitHub Actions probe.",
       databaseSchema: ["companies (id, name, tenant_slug)", "employees (id, company_id, nip, email, department_id)", "attendance_logs (id, employee_id, check_in_time, geo_coords, face_hash)"],
-      latencyP99: "1.5ms (per statement, n=4.170)",
-      concurrencyRps: "n/a — tidak ada load test",
+      latencyP99: BELUM_TERUKUR,
+      concurrencyRps: BELUM_TERUKUR,
       stack: ["PHP 8.3", "Laravel 11", "PostgreSQL", "Redis (predis)", "RabbitMQ", "MongoDB"],
     },
   },
@@ -169,7 +174,6 @@ const FEATURED_ARCHIVES: ArchiveItem[] = [
     starsFallback: "PUBLIC REPO",
     engineerCategory: "GPU SHADER PIPELINE & RENDERING",
     engineerStack: "R3F / THREE.JS GLSL / LENIS / TAILWIND",
-    engineerMetric: "60 FPS @1440×900 • n=360 • 0 DROP",
     creatorCategory: "SPATIAL 3D & SHADER CRAFT",
     creatorCraft: "LUMINANCE RELIEF • FLUID CHROMATIC SHIFT",
     creatorTag: "SPATIAL 3D",
@@ -181,8 +185,8 @@ const FEATURED_ARCHIVES: ArchiveItem[] = [
       desc: "Editorial spatial experience combining Swiss typographic discipline with real-time GPU shader computation. The canvas is fixed and pointer-events-none, so it never participates in layout.",
       architecture: "One react-three-fiber Canvas running a hand-written GLSL vertex/fragment pair whose uniforms (uTime, uMouse, uVelocity, uScroll, uPersona) are driven by Lenis scroll refs, plus edge APIs for telemetry, journey and contact.",
       databaseSchema: ["/api/telemetry (measured, no invented numbers)", "/api/journey + /api/certificates (PostgreSQL)", "/api/visit + /api/visits (counter, privacy-preserving)"],
-      latencyP99: "16.7 ms median frame",
-      concurrencyRps: "60.0 FPS (GPU) • 23.5 FPS (software)",
+      latencyP99: BELUM_TERUKUR,
+      concurrencyRps: BELUM_TERUKUR,
       stack: ["Three.js 0.186", "React Three Fiber 9", "GLSL Shaders", "Tailwind CSS v4", "Next.js 16"],
     },
   },
@@ -190,6 +194,7 @@ const FEATURED_ARCHIVES: ArchiveItem[] = [
 
 export const ChapterArchives: React.FC<ArchivesProps> = ({
   repos,
+  metrikKartu,
   onHoverProject,
   hoveredProject,
 }) => {
@@ -302,7 +307,8 @@ export const ChapterArchives: React.FC<ArchivesProps> = ({
               return (
                 <CaseStudyStrip
                   key={item.index}
-                  caseStudy={item.caseStudy}
+                  caseStudy={{ ...item.caseStudy, ...(selUkur(item.index, metrikKartu) ?? {}) }}
+                  catatanUkur={catatanUkur(item.index, metrikKartu)}
                   onClose={tutupSpec}
                 />
               );
@@ -371,7 +377,7 @@ export const ChapterArchives: React.FC<ArchivesProps> = ({
                     </span>
                     <span className="font-mono text-[9px] tracking-[0.2em] uppercase text-[#6E6A64] mt-0.5">
                       {mode === "engineer" 
-                        ? `${liveStars} • ${item.engineerMetric}` 
+                        ? `${liveStars} • ${barisKartu(item.index, metrikKartu) ?? BELUM_TERUKUR}` 
                         : `${liveStars} • ${item.creatorTag}`}
                     </span>
                   </div>

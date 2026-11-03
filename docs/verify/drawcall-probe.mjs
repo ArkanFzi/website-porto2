@@ -3,6 +3,7 @@
 //   node docs/verify/drawcall-probe.mjs            # laporkan
 //   node docs/verify/drawcall-probe.mjs --batas 3  # gagal bila puncak aktif > 3
 //   node docs/verify/drawcall-probe.mjs --tulis docs/verify/anggaran.json  # + simpan angka
+//   node docs/verify/drawcall-probe.mjs --gpu --tulis docs/verify/anggaran-gpu.json  # GPU keras
 //
 // Dua hal yang diukur per bab, pada 1440x900:
 //   AKTIF  = puncak gl.info.render.calls selama 1,5 s setelah gulir (frame jalan)
@@ -52,10 +53,21 @@ if (iTulis >= 0 && !argv[iTulis + 1]) {
 }
 const jalurTulis = iTulis >= 0 ? resolve(argv[iTulis + 1]) : null;
 
+// Perangkat gambar default = SwiftShader, dan itu sengaja: angka di anggaran.json dipakai untuk
+// membandingkan antar-run di mesin yang sama, jadi pembandingnya tidak boleh berubah diam-diam
+// saat seseorang punya GPU. `--gpu` memindah jendela ukur ke GPU keras ANGLE/Vulkan — dan
+// satu-satunya alasan flag itu ada adalah kartu /05 yang mengklaim fps; klaim itu tidak boleh
+// lagi bersumber dari peranti lunak. String perangkat selalu ikut ditulis, jadi tidak ada
+// cara menuliskan angka GPU ke anggaran SwiftShader atau sebaliknya.
+const GPU = argv.includes('--gpu');
+const ARG_PERANGKAT = GPU
+  ? ['--no-sandbox', '--disable-dev-shm-usage', '--use-gl=angle', '--use-angle=vulkan']
+  : ['--no-sandbox', '--disable-dev-shm-usage', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'];
+
 const browser = await puppeteer.launch({
   executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome',
   headless: 'new',
-  args: ['--no-sandbox', '--disable-dev-shm-usage', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+  args: ARG_PERANGKAT,
 });
 const page = await browser.newPage();
 await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
@@ -193,7 +205,9 @@ if (jalurTulis) {
     jendela_ukur: { lebar: 1440, tinggi: 900, dpr: 1, perangkat_gambar: perangkat },
     catatan: [
       'fps diukur dari selisih counter frame PengukurRender selama 1,5 s jendela ukur, bukan rata-rata browser.',
-      'perangkat_gambar bukan GPU keras: angka dipakai untuk membandingkan antar-run di mesin yang sama, bukan sebagai target 60fps pengguna.',
+      GPU
+        ? 'perangkat_gambar GPU keras: angkanya berlaku pada mesin + driver yang namanya tercetak di jendela_ukur, bukan pada pengunjung lain.'
+        : 'perangkat_gambar bukan GPU keras: angka dipakai untuk membandingkan antar-run di mesin yang sama, bukan sebagai target 60fps pengguna.',
       'puncak geometri/tekstur adalah jumlah alokasi yang masih hidup (gl.info.memory), bukan byte — three tidak mengekspos ukuran per alokasi.',
       'aset_unduhan.mb = encodedBodySize yang diterima browser (termampatkan), jadi lebih kecil dari ukuran file di disk.',
       'objek = sensus objek yang ikut digambar pada frame tersibuk bab itu.',
