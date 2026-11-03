@@ -176,7 +176,7 @@ const NDC_MOBIL = { value: new THREE.Vector2(2 / 1440, 2 / 900) };
 
 const Mobil: React.FC<AktorProps> = ({ scrollProgressRef, scrollVelocityRef, hoveredProject }) => {
   const { nodes } = useGLTF(ALAMAT);
-  const { size, viewport, camera } = useThree();
+  const { size, viewport, camera, invalidate } = useThree();
   const portal = usePortalRegistry();
   const kurangiGerak = useSyncExternalStore(
     dengarKurangiGerak,
@@ -314,6 +314,10 @@ const Mobil: React.FC<AktorProps> = ({ scrollProgressRef, scrollVelocityRef, hov
     if (hidup !== hidupRef.current) {
       hidupRef.current = hidup;
       setTerpasang(hidup);
+      // Pemasangan/pelepasan ini mengubah sensus, dan frame yang menulis census terakhir
+      // bisa jadi frame yang sama: tanpa permintaan explisit, kanvas demand yang baru saja
+      // kehabisan silang tidak pernah melukis keadaan "mobil sudah lepas".
+      invalidate();
     }
     if (!hidup || !aset) return;
 

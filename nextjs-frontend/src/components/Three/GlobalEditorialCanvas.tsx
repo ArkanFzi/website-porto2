@@ -1,7 +1,7 @@
 "use client";
 
 import React, { Suspense, useEffect, useState, useSyncExternalStore } from "react";
-import { Canvas } from "@react-three/fiber";
+import { Canvas, invalidate } from "@react-three/fiber";
 import { PerformanceMonitor } from "@react-three/drei";
 import { AktorPotret, type AktorProps } from "./stage/AktorPotret";
 import { AktorSF26 } from "./stage/ekstra/AktorSF26";
@@ -53,6 +53,15 @@ export const GlobalEditorialCanvas: React.FC<CanvasProps> = ({
   // Pengunjung yang minta gerakan dikurangi tidak pernah menggerakkan shader, jadi loop-nya
   // dibiarkan diam.
   const frameloop = useDiamKanvas(!reduceMotion);
+
+  // Pengunjung yang mengganti aba-aba gerakan di OS sementara halaman terbuka tidak pernah
+  // menggerakkan apa pun, jadi loop sudah tidur saat objek-objek ekstra lepas dari scene
+  // graph — dan frame terakhir keadaan lamanya tetap tertinggal di layar. Minta satu frame
+  // saat aba-aba berubah: tanpa ini "reduce-motion menghapus objek" hanya benar di keadaan,
+  // tidak di gambar.
+  useEffect(() => {
+    invalidate();
+  }, [reduceMotion]);
 
   // Pengukur ritme frame halaman + pelapor ke /api/telemetry, sekali per mount.
   // Loop-nya berhenti sendiri saat tab tersembunyi (lihat lib/perfStats.ts).

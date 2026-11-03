@@ -46,6 +46,14 @@ const KECEPATAN_PENUH = 25;
 /** Konstanta waktu pegas dolly, detik. */
 const TAU_DOLLY = 0.14;
 
+/** Laju silang potret→mobil per detik. Setara dengan alpha 0,1 per frame pada 60 fps
+ *  (−ln(0,9)·60 ≈ 6,3), jadi terasa sama di layar yang sehat. */
+const SILANG_LAJU = 6.3;
+
+/** Di bawah selisih ini tujuan dianggap sudah dicapai: 0,002 alpha ≈ setengah langkah
+ *  nilai 8-bit, tak terlihat, dan memaksa angka mendarat PERSIS di 0 atau 1. */
+const SILANG_HABIS = 0.002;
+
 /** Setengah lebar inti sapuan, dalam t koreografi. Di dalam inti ini kartu tertutup
  *  habis. */
 const SAPUAN_INTI = 0.08;
@@ -432,14 +440,28 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
     // tanpa pengganti. Angkanya dibagikan ke AktorSF26 lewat SILANG_MOBIL, jadi tidak ada
     // penghalusan kedua yang bisa tertinggal satu frame di antaranya.
     const targetMobil = mobilDipanggil(k.babDari, hoveredProject, kurangiGerak) ? 1.0 : 0.0;
-    mat.uniforms.uMobil.value = THREE.MathUtils.lerp(mat.uniforms.uMobil.value, targetMobil, 0.1);
+    // Pegasnya per-detik, bukan alpha per-frame, dan ditutup dengan snap. Alpha 0,1 per
+    // frame membuat lama perpindahan = jumlah frame, dan jumlah frame bukan milik kita:
+    // diukur 1–3 frame per 250 ms pada swiftshader, silang berhenti di 0,9114 saat dipanggil
+    // dan 0,0012 saat dilepas — kartu tertinggal setengah crossfade permanen di mesin lambat,
+    // dan mobil yang belum habis silangnya tetap menahan tiga draw call-nya.
+    const silangLama = mat.uniforms.uMobil.value;
+    const selisihMobil = targetMobil - silangLama;
+    const silang =
+      Math.abs(selisihMobil) < SILANG_HABIS
+        ? targetMobil
+        : silangLama + selisihMobil * (1 - Math.exp(-SILANG_LAJU * Math.min(delta, 0.05)));
+    mat.uniforms.uMobil.value = silang;
     // Holder module-level ditulis ULANG, bukan dipercaya sudah ditulis: R3F menyalin setiap
     // entri props `uniforms` ke objek baru saat memasang <shaderMaterial uniforms=…>
     // (@react-three/fiber applyProps: uniforms[name] = { ...uniform }), jadi
     // mat.uniforms.uMobil BUKAN SILANG_MOBIL. Yang dibagikan ke AktorSF26 adalah angka ini,
     // satu lerp, satu frame — mobil membaca holder-nya sendiri lewat material yang dibuat
     // imperatif (di sana tidak ada applyProps, identitasnya utuh).
-    SILANG_MOBIL.value = mat.uniforms.uMobil.value;
+    SILANG_MOBIL.value = silang;
+    // Frame berikutnya hanya ada selama silang masih dikejar; sampai di tujuan permintaan
+    // berhenti sendiri, jadi "nol frame saat diam" tetap utuh.
+    if (silang !== targetMobil) invalidate();
 
     const layarX = size.width;
     const layarY = size.height;

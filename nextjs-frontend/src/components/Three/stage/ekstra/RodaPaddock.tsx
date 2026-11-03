@@ -107,14 +107,9 @@ export const RodaPaddock: React.FC<AktorProps> = ({ scrollProgressRef, scrollVel
       bergulirRef.current = jalan;
       setBergulir(jalan);
     }
-
-    const roda = meshRef.current;
-    if (!roda || !k || !diPaddock) return;
-
+    if (!k) return;
     // Jari-jari dibatasi lebar portal, dan posisi dihitung dari jari-jari yang sama, jadi
     // cincin tetap seluruhnya di dalam portal pada layar sempit.
-    const dpp = viewport.width / size.width;
-    const pxw = (1 / dpp) * (camera.position.z / (camera.position.z - k.z));
     const jari = Math.min(JARI_PX, k.kotak.lebar * JARI_MAKS_RASIO);
 
     // Jarak gulir frame ini dibagi keliling roda: arah putaran mengikuti tanda velositas dan
@@ -122,8 +117,23 @@ export const RodaPaddock: React.FC<AktorProps> = ({ scrollProgressRef, scrollVel
     // px/detik sengaja tidak dipakai — dengan itu roda sekecil ini menempuh ~9 putaran per
     // detik pada gulir cepat, dan yang terlihat mata hanya blur, bukan gulir.
     const langkah = (vel / jari) * KELILING * Math.min(delta, 0.05);
-    sudut.current = (sudut.current + langkah) % KELILING;
-    putaran.current += langkah / KELILING;
+
+    // Oleng — jarak yang sudah ditempuh — dihitung SEBELUM mesh-nya ada. `bergulir` adalah
+    // state React, jadi frame pertama velositas selalu datang tanpa roda di panggung; buang
+    // frame itu berarti menghapus jarak yang benar-benar ditempuh, dan pada gulir pendek
+    // (terukur: satu lompatan = satu frame velositas) rodanya tidak pernah berputar sama
+    // sekali. Yang butuh mesh hanya gambar: rotasi, posisi, skala.
+    if (jalan) {
+      sudut.current = (sudut.current + langkah) % KELILING;
+      putaran.current += langkah / KELILING;
+      tulisRodaDebug(sudut.current, vel, jari, putaran.current);
+    }
+
+    const roda = meshRef.current;
+    if (!roda || !diPaddock) return;
+
+    const dpp = viewport.width / size.width;
+    const pxw = (1 / dpp) * (camera.position.z / (camera.position.z - k.z));
     roda.rotation.z = -sudut.current;
 
     roda.position.set(

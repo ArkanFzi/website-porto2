@@ -62,12 +62,19 @@ page.on('response', async (res) => {
 await page.goto(FE + '/', { waitUntil: 'domcontentloaded', timeout: 60000 });
 await new Promise((r) => setTimeout(r, 6000));
 
-const parkir = async (f) => {
-  await page.evaluate(async (fr) => {
-    const maks = document.documentElement.scrollHeight - window.innerHeight;
-    window.scrollTo(0, Math.round(fr * maks));
+const parkirY = async (y) => {
+  await page.evaluate(async (v) => {
+    window.scrollTo(0, Math.round(v));
     await new Promise((r) => setTimeout(r, 1500));
-  }, f);
+  }, y);
+};
+
+const parkir = async (f) => {
+  const y = await page.evaluate(
+    (fr) => Math.round(fr * (document.documentElement.scrollHeight - window.innerHeight)),
+    f
+  );
+  await parkirY(y);
 };
 
 const foto = (nama) => page.screenshot({ path: `${OUT}/${nama}.png` });
@@ -114,6 +121,31 @@ const serap = async (durasiMs, jedaMs = 40) => {
   return { puncak, nama, terakhir };
 };
 
+/** Sensus SATU frame setelah keadaan berhenti berubah: daftar objek yang sama bertahan
+ *  selama `stabilMs`. `serap` sengaja mengambil union semua frame di dalam jendelanya —
+ *  itu yang membuktikan objek muncul — tapi di atas perubahan media query union itu
+ *  mencampur keadaan lama dengan yang baru, dan unmount objek ekstra butuh re-render React
+ *  plus beberapa frame pegas (terukur: pada 300–400 ms daftar masih membekas sf26-*, pada
+ *  bacaan berikutnya sudah bersih). Gerbang "objeknya hilang" harus membaca keadaan, bukan
+ *  perjalanannya. */
+const sensusTetap = async (stabilMs = 150, plafonMs = 8000) => {
+  const akhir = Date.now() + plafonMs;
+  let dahulu = null;
+  let sejak = Date.now();
+  while (Date.now() < akhir) {
+    const s = await medan();
+    const kini = s ? (s.objek ?? []).join('+') : null;
+    if (kini !== null && kini === dahulu) {
+      if (Date.now() - sejak >= stabilMs) return { puncak: s, nama: s.objek, terakhir: s };
+    } else {
+      dahulu = kini;
+      sejak = Date.now();
+    }
+    await new Promise((r) => setTimeout(r, 60));
+  }
+  return null;
+};
+
 const hasil = [];
 const cek = (nama, dapat, harus) => {
   hasil.push({ nama, ok: dapat === harus, dapat: String(dapat), harus: String(harus) });
@@ -124,7 +156,9 @@ const cekMin = (nama, dapat, harus) => {
 const ada = (daftar, nama) => daftar.includes(nama);
 
 // ── 1. Keadaan diam: hanya data yang sudah punya angka yang boleh menambah kartu ──
-await parkir(0.05);
+const yDiam1 = await yRumah(1, [0.02, 0.005, 0.04, 0.06]);
+cek('bab 01 punya tempat parkir yang diam', yDiam1 !== null, true);
+await parkirY(yDiam1 ?? 0);
 const diam = await serap(300);
 await foto('01-bab1-diam');
 console.log('diam     ', JSON.stringify(diam.puncak), JSON.stringify(diam.nama), 't=' + diam.terakhir?.t);
@@ -228,7 +262,7 @@ const lepasHover = async () => {
 };
 
 /** Tunggu Lenis berhenti: enam pembacaan scrollY yang tidak bergeser. */
-const diamDiTempat = async () => {
+async function diamDiTempat() {
   let terakhir = -1;
   let diam = 0;
   for (let i = 0; i < 40; i++) {
@@ -239,7 +273,37 @@ const diamDiTempat = async () => {
     if (diam >= 3) return kini;
   }
   return terakhir;
-};
+}
+
+/** Cari y tempat kartu DIAM di rumah satu bab, lewat keadaan yang terbaca (`babDari` + `t`),
+ *  bukan lewat pecahan halaman. Pecahan pernah cukup; sejak hub menambah satu section
+ *  (maxScroll jadi 6.057) dan satu portal (bab 5), 0,05 jatuh di tengah perpindahan —
+ *  terukur t=0,0144 dan jahitan rosso terpasang — dan 0,3 jatuh di panggung hub, yang
+ *  rumahnya kartu pada z=-0,045, bukan z=0. Gerbang "keadaan diam" menuntut keadaan diam:
+ *  kalau park-nya di tengah perpindahan, yang diukur adalah perpindahan.
+ *  Yang dibaca `babDari`, bukan `babKe`: kartu yang diam di bab 1 dilaporkan sebagai
+ *  babDari=1, babKe=2, t=0 — sama seperti yang ditagih cariBabArsip di bagian SF-26.
+ *  Mengembalikan null bila tidak ada kandidat yang mendarat; pemanggil menagih null itu
+ *  sebagai kegagalan, bukan diam-diam kembali ke pecahan buta. */
+async function yRumah(babDari, kandidat) {
+  const maks = await page.evaluate(
+    () => document.documentElement.scrollHeight - window.innerHeight
+  );
+  for (const fr of kandidat) {
+    const y = Math.round(maks * fr);
+    await page.evaluate((v) => window.scrollTo(0, v), y);
+    await diamDiTempat();
+    await new Promise((r) => setTimeout(r, 700));
+    const b = await page.evaluate(() => ({
+      babDari: window.__panggung?.babDari ?? null,
+      t: window.__panggung?.t ?? null,
+    }));
+    if (b.babDari === babDari && b.t === 0) return y;
+    console.log(`  yRumah(${babDari}) tolak fr=${fr} →`, JSON.stringify(b));
+  }
+  return null;
+}
+
 
 // Lenis adalah pemilik posisi gulir, jadi window.scrollTo native bisa ditimpa kembali ke
 // nilai animasinya (terukur: target 3019, halaman bertahan di 2443 dan baris arsip tidak
@@ -267,6 +331,14 @@ const parkirKeBaris = async () => {
   };
 };
 
+// Bagian ini menuntut SATU baris yang diam di bawah pointer. Sejak hub menempati 0,62–0,68,
+// lanjut gulir dari 0,375 bisa berhenti di tengah perpindahan (terukur babDari=5, t=0,879):
+// kartu bergerak, baris bergerak di bawah titik hover, dan "sebelum vs sesudah" membandingkan
+// dua baris yang berbeda — sangkar tertinggal di census, selisih garis terbaca 0. Jadi dicari
+// dulu rumah bab 03 yang benar-benar diam, baru roda dipakai untuk merapikan barisnya.
+const yBab3 = await yRumah(3, [0.7, 0.66, 0.74, 0.62, 0.78]);
+cek('bab 03 punya tempat parkir yang diam', yBab3 !== null, true);
+await parkirY(yBab3 ?? (await page.evaluate(() => Math.round((document.documentElement.scrollHeight - window.innerHeight) * 0.375))));
 const parkir4 = await parkirKeBaris();
 const target = await bacaBaris();
 let sbl = await serap(300);
@@ -312,15 +384,24 @@ cek('sangkar ada saat hover', ada(sts.nama, 'sangkar'), true);
 cekMin('sangkar menyumbang 12 segmen LINES', sts.puncak.garis - sbl.puncak.garis, SISI_SANGKAR);
 
 // ── 5. prefers-reduced-motion: semua objek ekstra hilang, kartu tetap ──
-await parkir(0.375);
+// DIBACA DI KEADAAN DIAM, bukan di jendela waktu: `parkir(0,375)` lama bisa mendarat di tengah
+// perpindahan (bab 5/hub), dan sensus union atas keadaan itu melaporkan objek yang sedang
+// berangkat, bukan yang tersisa. Yang ditagih gerbang ini adalah keadaan setelah aba-aba
+// bekerja, jadi keduanya — parkir dan bacaan — diambil dari keadaan yang terbaca.
+const yDiam5 = await yRumah(2, [0.16, 0.2, 0.24, 0.12]);
+cek('bab 02 punya tempat parkir yang diam untuk uji reduce', yDiam5 !== null, true);
+await parkirY(yDiam5 ?? (await page.evaluate(() => Math.round((document.documentElement.scrollHeight - window.innerHeight) * 0.375))));
 const sebelum5 = (await serap(300)).nama;
+// 700 ms, bukan 150: frame yang membuktikan perubahan media query itu TERGAMBAR sekitar
+// 250–300 ms setelah aba-aba diterima (terukur: frame 26 → 28 pada t=300 ms, dan pada t=100 ms
+// sensusnya masih keadaan lama). Jendela stabil yang lebih pendek mengembalikan bacaan basi
+// sebagai "keadaan tetap" — persis kegagalan yang sedang dikejar di bagian ini.
 await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
-await new Promise((r) => setTimeout(r, 700));
-const kurangi = await serap(400);
+const kurangi = (await sensusTetap(700)) ?? (await serap(400));
 await foto('07-bab2-reduce-motion');
 await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }]);
-await new Promise((r) => setTimeout(r, 700));
-const pulih = (await serap(300)).nama;
+const pulihState = (await sensusTetap(700)) ?? (await serap(300));
+const pulih = pulihState.nama;
 console.log('reduce   sebelum:', JSON.stringify(sebelum5), '| reduce:', JSON.stringify(kurangi.nama), JSON.stringify(kurangi.terakhir), '| pulih:', JSON.stringify(pulih));
 cek('reduce-motion menghapus semua objek ekstra', EKSTRA.some((n) => ada(kurangi.nama, n)), false);
 cek('reduce-motion tidak menghapus kartu', (kurangi.terakhir?.segitiga ?? 0) > 0, true);
@@ -958,7 +1039,12 @@ cek(
   true
 );
 
-const diTengah = await bacaDiam(Math.round(maksY * 0.3));
+// Bab tengah yang ditagih adalah bab 02 di rumahnya sendiri, bukan "30 % dari halaman":
+// sejak panggung hub masuk, 0,3 mendarat di bab 5 dan z rumahnya -0,045 — gerbang di bawah
+// (z ≈ 0, kabur = 0) justru menuduh kartu kabur padahal yang dibaca adalah panggung lain.
+const yTengah = await yRumah(2, [0.16, 0.2, 0.24, 0.12]);
+cek('bab 02 punya tempat parkir yang diam', yTengah !== null, true);
+const diTengah = await bacaDiam(yTengah ?? Math.round(maksY * 0.3));
 console.log('dof tengah', JSON.stringify(diTengah.f));
 cek('bacaan tengah diambil setelah kartu mendarat', Math.abs(diTengah.f?.z ?? 1) <= 0.01, true);
 cek('kartu yang diam di bab tengah tidak kabur', diTengah.f?.kabur, 0);
