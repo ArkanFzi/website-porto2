@@ -40,8 +40,12 @@ const LEBAR_DANA_RASIO = 0.6;
 const TEBAL_BILAH_PX = 3;
 const TEBAL_MARKA_PX = 1;
 const TINGGI_MARKA_PX = 9;
-/** Turun dari tepi atas kotak, supaya tidak bertumpuk dengan bilah telemetri di bawah. */
-const JARAK_ATAS_PX = 14;
+/** Turun dari tepi atas kotak, supaya tidak bertumpuk dengan bilah telemetri di bawah DAN
+ *  tidak jatuh di atas label bab. Portal menempel 20vh dari puncak layar sementara baris
+ *  "CHAPTER 0N // …" duduk tepat di bawah pita HUD: pada 14 px garis waktu ini mendarat di
+ *  tengah label bab 02 (terukur: label 192..209, garis 194..199). 40 px menaruh garis di
+ *  bawah label, di atas kepala kartu — tempat yang sama di semua bab dan semua ukuran. */
+const JARAK_ATAS_PX = 40;
 const Z_DEPAN = 0.35;
 const KERTAS = 0xf7f5f0;
 const MERAH = 0xd41e12;

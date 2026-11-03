@@ -32,9 +32,24 @@ const JUMLAH_BILAH = JUMLAH_BUKET;
 /** Marka ambang ikut sebagai instans terakhir supaya tetap satu draw call: dia bukan
  *  bilah data, tapi garis acuan di ketinggian r = 1. */
 const JUMLAH_INSTANS = JUMLAH_BILAH + 1;
-const TINGGI_DASAR_RASIO = 0.42;
+/** Satu bilah dasar = 20 pixel CSS, BUKAN pecahan tinggi portal. Dengan rasio 0,42 dulu,
+ *  bilah di atas ambang (tinggiBilah boleh sampai 2,2) tumbuh menjadi 0,92 × 60vh —
+ *  sebuah kolom setinggi layar yang memanjat keluar dari tapaknya dan memotong judul bab
+ *  04 dan nama raksasa bab 01. Angka yang sama tetap terbaca: yang berubah hanya satuan
+ *  pengali, dan marka (r = 1) ikut satuan itu, jadi verifier masih menagih
+ *  `tinggiPx / markaPx == tinggiBilah(rasio)`.
+ *
+ *  RodaPaddock duduk di kanan-bawah dengan jari 26 + margin 14, jadi baris ini tetap di
+ *  kiri-bawah dan harus cukup ramping untuk tidak menyentuh kolom nilai panel dispatch. */
+const TINGGI_DASAR_PX = 20;
+/** Di bawah tinggi portal ini baris bilah tidak lagi punya tempat. Portal tingginya 60vh,
+ *  jadi ambang 400 pixel berarti layar yang lebih pendek dari ±667 pixel: di situ tepi bawah
+ *  portal jatuh di dalam tipografi bab (terukur: 1100×620, judul bab 04 berakhir 17 pixel di
+ *  atas dasar portal), bukan di bawahnya. Tanpa tempat berarti tanpa bentuk — sama seperti
+ *  slot tanpa angka — dan angkanya tetap terbaca di laci HUD. */
+const BATAS_RUANG_PX = 400;
 const JARAK_PX = 4;
-const LEBAR_MAKS_PX = 16;
+const LEBAR_MAKS_PX = 10;
 const TINGGI_MARKA_PX = 2;
 /** Sedikit di depan kartu agar tidak terpotong shader kartu (uMask memotong pada z kartu). */
 const Z_DEPAN = 0.35;
@@ -141,7 +156,7 @@ const pasangBilah = (im: THREE.InstancedMesh, kunci: Kunci[], a: AlatTulis) => {
   const lebar = Math.min(LEBAR_MAKS_PX, (lebarDana - (JUMLAH_BILAH - 1) * jarak) / JUMLAH_BILAH);
   if (lebar <= 0) return;
 
-  const tinggiDasar = tinggiDana * TINGGI_DASAR_RASIO;
+  const tinggiDasar = tinggiDana < BATAS_RUANG_PX ? 0 : TINGGI_DASAR_PX;
   const baris = JUMLAH_BILAH * lebar + (JUMLAH_BILAH - 1) * jarak;
   const { matriks, posisi, skala, warna } = a;
 
@@ -161,7 +176,7 @@ const pasangBilah = (im: THREE.InstancedMesh, kunci: Kunci[], a: AlatTulis) => {
   }
 
   posisi.set(baris / 2, tinggiDasar, 0);
-  skala.set(baris, TINGGI_MARKA_PX, 1);
+  skala.set(baris, tinggiDasar > 0 ? TINGGI_MARKA_PX : 0, 1);
   matriks.compose(posisi, PUTARAN_NOL, skala);
   im.setMatrixAt(JUMLAH_BILAH, matriks);
   warna.setRGB(1, 1, 1);
