@@ -16,6 +16,7 @@ import { PengukurRender } from "./stage/PengukurRender";
 import { mulai, mulaiLapor, setDprKanvas } from "@/lib/perfStats";
 import { mulaiBacaTelemetri } from "@/lib/bacaTelemetri";
 import { useDiamKanvas } from "@/lib/diamKanvas";
+import { SISA_PANGGUNG } from "./stage/usePanggung";
 import {
   bacaKurangiGerak,
   bacaKurangiGerakSaatSSR,
@@ -51,8 +52,9 @@ export const GlobalEditorialCanvas: React.FC<CanvasProps> = ({
 
   // Hukum diam tinggal di lib/diamKanvas: panggung kedua memakainya tanpa menyalin angkanya.
   // Pengunjung yang minta gerakan dikurangi tidak pernah menggerakkan shader, jadi loop-nya
-  // dibiarkan diam.
-  const frameloop = useDiamKanvas(!reduceMotion);
+  // dibiarkan diam. SISA_PANGGUNG ikut diserahkan supaya "diam" hanya pernah berarti "tidak
+  // ada gerakan yang berutang", bukan "empat detik tanpa peristiwa pointer".
+  const frameloop = useDiamKanvas(!reduceMotion, SISA_PANGGUNG);
 
   // Pengunjung yang mengganti aba-aba gerakan di OS sementara halaman terbuka tidak pernah
   // menggerakkan apa pun, jadi loop sudah tidur saat objek-objek ekstra lepas dari scene

@@ -54,6 +54,18 @@ const TAU_DOLLY = 0.14;
  *  yang membaca angka yang sama — terukur huruf berhenti di −8,99px dari tujuan +34px. */
 const PELICIN_LAJU = 5;
 
+/** Panggung masih berutang gerakan: pegas sikap, sisa pointer, flip MODE, atau silang
+ *  wajah yang belum sampai. Ditulis setiap frame, dibaca hukum diam kanvas
+ *  (`useDiamKanvas`) sebelum ia membolehkan loop pindah ke "demand".
+ *
+ *  Tanpa rem ini tidurnya datang di tengah penerbangan: flip "always → demand" pernah
+ *  mematikan loop pada frame yang SUDAH memanggil `invalidate()` dengan sisa 0,0043 unit
+ *  (≈1px) terbuka — `__render.frame` berhenti maju tiga jeda penuh, dan baru lanjut lagi
+ *  setelah ada peristiwa pointer. Di mesin lambat geyang pointer lalu mendarat di tengah
+ *  jalan (terukur huruf berhenti di 19,24px dari tujuan 22,16px) dan verifier membaca
+ *  sikap yang belum selesai sebagai sikap akhir. */
+export const SISA_PANGGUNG = { hidup: false };
+
 /** Laju silang potret→mobil per detik. Setara dengan alpha 0,1 per frame pada 60 fps
  *  (−ln(0,9)·60 ≈ 6,3), jadi terasa sama di layar yang sehat. */
 const SILANG_LAJU = 6.3;
@@ -594,7 +606,7 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
     // angkanya masih satu putaran penuh: tanpa frame penutup itu mesh berhenti di
     // rotY = sikap + 2π, yang secara visual sama tapi membuat siapa pun yang membandingkan
     // sikap membaca satu putaran yang tidak pernah ada.
-    if (
+    const adaSisa =
       balik.current > 0 ||
       sudutBalik > 0 ||
       sisaPointer > 1e-4 ||
@@ -603,9 +615,11 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
       Math.abs((mat.uniforms.uPersona.value as number) - targetPersona) > 1e-3 ||
       Math.abs((mat.uniforms.uMobil.value as number) - targetMobil) > 1e-3 ||
       Math.abs(sisaDolly) > 1e-4 ||
-      sisaSikap > 1e-3
-    )
-      invalidate();
+      sisaSikap > 1e-3;
+    // Angka yang sama dipakai hukum diam kanvas untuk memutuskan boleh tidurnya loop:
+    // selama panggung masih berutang gerakan, flip "always → demand" ditunda.
+    SISA_PANGGUNG.hidup = adaSisa;
+    if (adaSisa) invalidate();
 
     // ── PARALAKS TIPOGRAFI ──
     // Huruf besar di DOM digeser oleh proyeksi offset dunia yang SAMA dengan yang
