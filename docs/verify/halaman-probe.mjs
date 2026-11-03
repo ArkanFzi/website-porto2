@@ -566,7 +566,7 @@ const ganjel = await pageUtama.evaluate(() => {
 console.log('ganjel   ', JSON.stringify(ganjel));
 cek('kolom HUD menerbitkan --hud-atas yang terbaca', /^[0-9]+px$/.test(ganjel.variabel), true);
 cek('data-hud-atas mencetak angka yang sama dengan variabelnya', ganjel.dicetak, ganjel.variabel.replace('px', ''));
-cek('empat bab ikut diuji gerbang ganjelan', ganjel.bab.length, 4);
+cek('lima section ikut diuji gerbang ganjelan', ganjel.bab.length, 5);
 cek(
   'tidak ada bab yang anak pertamanya terganjel di bawah kolom HUD',
   ganjel.bab.filter((b) => !b.aman).map((b) => `${b.id} top=${b.top} hud=${b.hudBawah}`).join(' | '),
@@ -763,6 +763,126 @@ cek(
   [...temuanAyunan].join(' | '),
   ''
 );
+
+// ── 5f · hub akses: tujuh node, satu hukum diam ──
+// Hub adalah section aliran dokumen antara bab 02 dan 03 dengan PanggungKecil sendiri.
+// Yang ditagih: kelengkapan menunya (tujuh node, href sama dengan daftar terkunci HUD),
+// mobilnya benar-benar menoleh ke node yang ditunjuk, dan kanvas baru ini tidak merusak
+// invariant "nol frame saat diam". Counter frame PengukurRender dipakai bersama kedua
+// kanvas, jadi satu selisih menagih keduanya sekaligus.
+// Parkir harus lewat batas portal hub (t + 60), bukan sebelum puncak section: di dalam pita
+// perpindahan kanvas global memang wajib hidup — ia menggeser kartu — dan angka frame jendela
+// diam akan menagih gerak yang benar itu sebagai pelanggaran. Marginnya cuma 60 px dan itu
+// disengaja: kolom HUD fixed sampai --hud-atas (160 px), dan panggung hub yang gelap masuk ke
+// bawah kolom itu begitu section dinaikkan ±120 px — terukur, screenshot-nya jadi terlihat
+// seperti kanvas yang bocor, padahal kertas HUD yang menimpa.
+await pageUtama.evaluate(() => {
+  const el = document.getElementById('chapter-hub');
+  window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY + 60);
+});
+await jeda(4500); // aset glb baru diminta saat section mendekat (rootMargin 60%)
+
+const hub = await pageUtama.evaluate(() => {
+  const seksi = document.getElementById('chapter-hub');
+  const urut = [...document.querySelectorAll('main section')].map((s) => s.id);
+  const node = [...document.querySelectorAll('[data-hub-node]')].filter((e) => e.offsetParent !== null);
+  const pr = seksi?.querySelector('[data-portal="5"]')?.getBoundingClientRect();
+  return {
+    antara:
+      urut.indexOf('chapter-02') + 1 === urut.indexOf('chapter-hub') &&
+      urut.indexOf('chapter-hub') + 1 === urut.indexOf('chapter-03'),
+    jumlah: node.length,
+    daftar: [...new Set(node.map((e) => e.getAttribute('href').replace(/^\//, '')))].sort().join(','),
+    kanvas: !!seksi?.querySelector('[data-panggung-kecil]'),
+    // Portal adalah jangkar viewport sedangkan panggung mengalir di dokumen: satu lompatan
+    // gulir menggeser stage 996 px sementara tingginya 520 px, jadi tidak ada kotak fixed yang
+    // bisa tertutup panggung di sepanjang rentang parkir (terukur). Yang bisa ditagih adalah
+    // kartu tidak pernah menabrak isi hub: kotaknya duduk di kiri luar viewport.
+    portalLuar: !!pr && pr.right <= 0,
+    baca: window.__hub ?? null,
+  };
+});
+console.log('hub      ', JSON.stringify(hub));
+cek('hub akses duduk antara bab 02 dan 03', hub.antara, true);
+cek('hub punya tujuh node menu yang terlihat', hub.jumlah, 7);
+cek('node hub menunjuk tujuh rute yang sama dengan HUD', hub.daftar, 'arsip,baca,iris,meja,peta,sangkar,waktu');
+cek('panggung hub adalah island kanvas sendiri', hub.kanvas, true);
+cek('kartu potret diparkir di luar isi hub, bukan di atasnya', hub.portalLuar, true);
+cek(
+  'mobil hub ada dan parkir saat tidak ada yang menunjuk',
+  hub.baca !== null && Math.abs(hub.baca.yaw - hub.baca.target) < 0.01,
+  true
+);
+
+// Tunjuk satu node: haluan harus benar-benar berubah — ditagih dari angka debug mobil,
+// bukan dari tebakan pixel. Selisih target vs parkir dibatasi panjang langkah node,
+// bukan konstanta yang disalin dari komponen.
+const parkir = hub.baca?.target ?? 0;
+await pageUtama.hover('[data-hub-node="2"]');
+await jeda(1200);
+const hubTunjuk = await pageUtama.evaluate(() => window.__hub ?? null);
+cek(
+  'menunjuk node mengubah haluan yang dituju mobil',
+  hubTunjuk?.node === 2 && Math.abs(hubTunjuk.target - parkir) > 0.3,
+  true
+);
+
+// Hukum diam: hover adalah pointermove, jadi fase "always" dihitung dari sana dan baru
+// berakhir IDLE_MS (4000 ms) kemudian. Tapi itu belum semuanya: kartu editorial mendarat
+// dengan lurp 8% per frame, jadi SATU lompatan gulir menuntut ±90 frame sebelum sisanya
+// turun di bawah 1e-3 (terukur: counter naik sampai ±11 s di swiftshader, lalu berhenti
+// sendiri — dan sama besarnya di bab 02/03, jadi ini bukan biaya hub). Jendela diam karena
+// itu dibuka setelah counter benar-benar berhenti naik, bukan dari jam yang dikira-kira:
+// yang ditagih hukum diamnya, bukan kecepatan mesin ukur.
+const tungguSepi = async (p, { contohMs = 250, tenangMs = 1500, batasMs = 30000 } = {}) => {
+  const mulai = Date.now();
+  let lalu = await p.evaluate(() => window.__render?.frame ?? -1);
+  let naik = lalu;
+  let terakhir = Date.now();
+  while (Date.now() - mulai < batasMs) {
+    await jeda(contohMs);
+    const kini = await p.evaluate(() => window.__render?.frame ?? -1);
+    if (kini !== lalu) { lalu = kini; terakhir = Date.now(); }
+    else if (Date.now() - terakhir >= tenangMs) return { frame: kini, sejakMs: Date.now() - mulai };
+    naik = kini;
+  }
+  return { frame: naik, sejakMs: -batasMs };
+};
+const sepi = await tungguSepi(pageUtama);
+console.log('hub-sepi', JSON.stringify(sepi));
+const f1 = await pageUtama.evaluate(() => window.__render?.frame ?? -1);
+await jeda(1200);
+const f2 = await pageUtama.evaluate(() => window.__render?.frame ?? -1);
+cek('nol frame saat pengunjung diam di hub', f2 - f1, 0);
+await foto(pageUtama, '06-hub-akses');
+
+// Layar sempit: panggung di-display:none di bawah md, jadi di sinilah dua bug yang tidak
+// bisa dilihat probe desktop ditangkap. (1) sebelum ada gerbang breakpoint, ponsel 390x844
+// tetap membuka context WebGL dan memasang Mobil ke kotak 300x150 yang tidak akan pernah
+// terlihat; (2) tinta daftar fallback dulu white/70 — warna untuk panggung gelap — sehingga
+// tujuh label nyaris hilang di atas kertas terang.
+await pageUtama.setViewport({ width: 390, height: 844, deviceScaleFactor: 1 });
+await jeda(1400);
+const sempit = await pageUtama.evaluate(() => {
+  const tautan = [...document.querySelectorAll('#chapter-hub [data-hub-node]')].filter(
+    (e) => e.offsetParent !== null
+  );
+  const gelap = tautan.filter((e) => {
+    const [r, g, b] = getComputedStyle(e).color.match(/\d+/g).map(Number);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b < 128;
+  }).length;
+  return {
+    kanvas: !!document.querySelector('#chapter-hub canvas'),
+    tautan: tautan.length,
+    gelap,
+    contoh: tautan[0] ? getComputedStyle(tautan[0]).color : '',
+  };
+});
+console.log('hub-sempit', JSON.stringify(sempit));
+cek('ponsel 390px tidak memasang kanvas hub', sempit.kanvas, false);
+cek('daftar fallback hub punya tujuh tautan yang terlihat', sempit.tautan, 7);
+cek('tujuh label fallback hub terbaca di latar terang', sempit.gelap, 7);
+await foto(pageUtama, '06b-hub-ponsel');
 
 // ── 6 · penjaga jalur: apa yang boleh dibaca crawler dan apa yang tidak ──
 // /cv-layout adalah kertas render untuk /api/cv, bukan halaman. robots.txt sudah menolaknya;
@@ -1145,7 +1265,10 @@ await pageMeja.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
 const rMeja = await pageMeja.goto(`${FE}/meja`, { waitUntil: 'domcontentloaded', timeout: 45000 });
 cek('/meja menjawab 200', rMeja.status(), 200);
 cek('/meja mendeklarasikan canonical sendiri', (rMeja.headers()['content-type'] || '').includes('text/html'), true);
-await jeda(1600);
+// Di dev, window.__meja baru tertulis ±1,7 s setelah goto (compile rute + hidrasi + frame
+// pertama). Jam tetap yang lebih pendek dari itu meruntuhkan delapan gerbang di bawahnya
+// sekaligus, jadi tunggu verifiernya benar-benar ada — gerbangnya tetap menilai "ada".
+await pageMeja.waitForFunction(() => !!window.__meja, { timeout: 15000, polling: 200 }).catch(() => null);
 const mejaAwal = await bacaMeja(pageMeja);
 console.log('meja-awal', JSON.stringify(mejaAwal.meja));
 cek('verifier meja terpasang', !!mejaAwal.meja, true);

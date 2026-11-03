@@ -11,6 +11,7 @@ import TelemetryDrawer from "@/components/UI/TelemetryDrawer";
 import TerminalModal from "@/components/UI/TerminalModal";
 import ChapterPrologue from "./ChapterPrologue";
 import ChapterDuality from "./ChapterDuality";
+import ChapterHub from "./ChapterHub";
 import ChapterArchives from "./ChapterArchives";
 import ChapterPaddock from "./ChapterPaddock";
 import type { RepoBerlian } from "@/lib/server/github";
@@ -97,6 +98,7 @@ const EditorialInner: React.FC<PageClientProps> = ({
           certificates={certificates}
           experiences={experiences}
         />
+        <ChapterHub />
         <ChapterArchives
           repos={repos}
           hoveredProject={hoveredProject}

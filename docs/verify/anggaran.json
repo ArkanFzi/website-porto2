@@ -1,5 +1,5 @@
 {
-  "dibuat": "2026-11-02T08:26:53.182Z",
+  "dibuat": "2026-11-03T00:30:27.558Z",
   "sumber": "docs/verify/drawcall-probe.mjs --tulis",
   "jendela_ukur": {
     "lebar": 1440,
@@ -13,6 +13,7 @@
     "puncak geometri/tekstur adalah jumlah alokasi yang masih hidup (gl.info.memory), bukan byte — three tidak mengekspos ukuran per alokasi.",
     "aset_unduhan.mb = encodedBodySize yang diterima browser (termampatkan), jadi lebih kecil dari ukuran file di disk.",
     "objek = sensus objek yang ikut digambar pada frame tersibuk bab itu.",
+    "sepi_setelah_ms = lama tunggu dari akhir jendela aktif sampai counter frame berhenti naik; angka ini adalah sisa perjalanan kartu, bukan waktu idle yang diizinkan.",
     "puncak null dan frame_terukur 0 berarti kanvas tidak menulis satu pun frame selama 1,5 s jendela ukur — bukan nol alokasi."
   ],
   "puncak_aktif_global": 5,
@@ -31,59 +32,85 @@
       "bab": 1,
       "frame_terukur": 15,
       "puncak": {
-        "calls": 5,
+        "calls": 3,
         "segitiga": 18460,
-        "titik": 140,
-        "garis": 2,
+        "titik": 0,
+        "garis": 0,
         "geometri": 5,
         "tekstur": 2
       },
       "objek": [
         "Mesh",
-        "debu",
-        "kompas",
         "bilah",
         "jejak"
       ],
-      "fps": 15.9,
-      "frame_saat_diam": 0
+      "fps": 11.4,
+      "sepi_setelah_ms": 9260,
+      "frame_saat_diam": 0,
+      "objek_saat_diam": []
     },
     {
       "bab": 2,
-      "frame_terukur": 0,
-      "puncak": null,
-      "objek": [],
-      "fps": null,
-      "frame_saat_diam": 0
+      "frame_terukur": 15,
+      "puncak": {
+        "calls": 3,
+        "segitiga": 18460,
+        "titik": 0,
+        "garis": 0,
+        "geometri": 5,
+        "tekstur": 2
+      },
+      "objek": [
+        "Mesh",
+        "bilah",
+        "jejak"
+      ],
+      "fps": 12.8,
+      "sepi_setelah_ms": 8508,
+      "frame_saat_diam": 0,
+      "objek_saat_diam": []
     },
     {
       "bab": 3,
-      "frame_terukur": 0,
-      "puncak": null,
-      "objek": [],
-      "fps": null,
-      "frame_saat_diam": 0
+      "frame_terukur": 15,
+      "puncak": {
+        "calls": 3,
+        "segitiga": 18460,
+        "titik": 0,
+        "garis": 0,
+        "geometri": 6,
+        "tekstur": 2
+      },
+      "objek": [
+        "Mesh",
+        "bilah",
+        "jejak"
+      ],
+      "fps": 21.4,
+      "sepi_setelah_ms": 9007,
+      "frame_saat_diam": 0,
+      "objek_saat_diam": []
     },
     {
       "bab": 4,
       "frame_terukur": 15,
       "puncak": {
-        "calls": 5,
+        "calls": 3,
         "segitiga": 18460,
-        "titik": 140,
-        "garis": 2,
-        "geometri": 5,
+        "titik": 0,
+        "garis": 0,
+        "geometri": 6,
         "tekstur": 2
       },
       "objek": [
         "Mesh",
-        "debu",
-        "kompas",
         "bilah",
         "jejak"
       ],
-      "fps": 17.8,
-      "frame_saat_diam": 0
+      "fps": 7.8,
+      "sepi_setelah_ms": 11260,
+      "frame_saat_diam": 0,
+      "objek_saat_diam": []
     }
   ]
 }

@@ -6,9 +6,16 @@
 //
 // Dua hal yang diukur per bab, pada 1440x900:
 //   AKTIF  = puncak gl.info.render.calls selama 1,5 s setelah gulir (frame jalan)
-//   DIAM   = adakah frame yang masih ditulis 7 s setelah gulir terakhir
-//            (IDLE_MS kanvas = 4000 ms, jadi setelah 7 s loop harus sudah demand dan
-//            tidak ada satu pun penulisan ulang window.__render)
+//   DIAM   = adakah frame yang masih ditulis setelah halaman benar-benar berhenti
+//            (counter frame tidak naik lagi ≥ 1,2 s, batas tunggu 30 s) dan satu
+//            jendela 1,5 s sesudahnya. Dulu jendela ini dibuka pada jam tetap 7 s
+//            setelah gulir; sejak hub menambah satu portal lagi (dan satu kanvas lagi)
+//            di antara bab 02 dan 03, satu lompatan jauh masih punya sisa perjalanan
+//            pada 7 s — terukur: benang rosso hidup sampai ±10 s di SwiftShader. Yang
+//            ditagih hukum diam, bukan kecepatan mesin, jadi jendelanya dibuka setelah
+//            sepi, bukan setelah jam.
+//            (counter frame PengukurRender dipakai bersama semua kanvas di halaman ini;
+//            sensus objek pada tiap sampel menyebut kanvas mana yang menulis terakhir.)
 // Butuh `next dev`; window.__render ditulis stage/PengukurRender hanya di development.
 //
 // --tulis menyimpan anggaran per bab apa adanya: panggilan, segitiga, titik, garis,
@@ -21,6 +28,11 @@ import { dirname, resolve } from 'node:path';
 const require = createRequire(new URL('../../nextjs-frontend/package.json', import.meta.url));
 const puppeteer = require('puppeteer');
 const FE = process.env.FE_URL ?? 'http://localhost:3001';
+// Bab yang ditagih lewat section-nya sendiri (anchor #chapter-0N di aluraman). Hub (bab 5)
+// sengaja tidak ikut daftar ini: satu window.__render untuk semua kanvas di halaman (yang
+// menulis terakhir yang terbaca), jadi angka per-bab hanya bermakna untuk kanvas editorial —
+// draw call panggung hub (lima objek: lantai, sirkuit, sasis, dua instanced roda) dibaca
+// lewat sensus window.__render di gerbang 5f halaman-probe.
 const BAB = [1, 2, 3, 4];
 
 const argv = process.argv.slice(2);
@@ -71,12 +83,21 @@ let buruk = 0;
 console.log('bab  puncak_aktif  frame_saat_diam  keterangan');
 for (const bab of BAB) {
   const hasil = await page.evaluate(async (n) => {
-    const el = document.querySelector(`[data-portal="${n}"]`);
+    // Jangkar = section di aliraman, bukan kartu: [data-portal] itu position:fixed, jadi
+    // rect-nya melekat pada layar dan "target" yang dihitung darinya nyaris sama dengan
+    // scrollY saat ini — probe tidak pernah benar-benar berpindah bab, dan puncak yang
+    // tercatat adalah kanvas di tempat page kebetulan berhenti (bukan bab yang ditagih).
+    const el = document.querySelector(`#chapter-${String(n).padStart(2, '0')}`);
     if (!el) return { aktif: -1, diam: -1, sampel: 0, puncak: null, fps: null, objek: [] };
     const r = el.getBoundingClientRect();
     const maks = document.documentElement.scrollHeight - window.innerHeight;
     const target = Math.max(0, Math.min(maks, window.scrollY + r.top + r.height / 2 - window.innerHeight / 2));
     window.scrollTo(0, target);
+    // Jeda dulu sebelum menagih. Scroll ini melompat dari tempat bab sebelumnya berdiri, dan
+    // gerbang "terlihat" kanvas tetangga baru dievaluasi IntersectionObserver beberapa
+    // milidetik kemudian — tanpa jeda, frame terakhir yang sedang dilewati (mis. panggung
+    // hub saat menuju bab 01) ikut tercatat sebagai puncak bab yang ditagih.
+    await new Promise((r2) => setTimeout(r2, 700));
     const AMBIL = () => window.__render ?? null;
     const puncak = { calls: 0, segitiga: 0, titik: 0, garis: 0, geometri: 0, tekstur: 0 };
     let sampel = 0;
@@ -94,19 +115,36 @@ for (const bab of BAB) {
       for (const k of Object.keys(puncak)) if (x[k] > puncak[k]) puncak[k] = x[k];
       if (x.calls >= puncak.calls) objek = x.objek;
     }
-    // Setelah 1,5 s halaman masih bergerak; tunggu sampai melewati IDLE_MS lalu
-    // lihat apakah ada frame baru yang ditulis.
-    await new Promise((r2) => setTimeout(r2, 5500));
+    // Setelah 1,5 s halaman masih bergerak: fase "always" hukum diam (4000 ms dari peristiwa
+    // terakhir) plus sisa perjalanan kartu ke portal baru. Tunggu counter benar-benar
+    // berhenti, baru tagih nol frame.
+    const mulaiSepi = performance.now();
+    let frameLalu = AMBIL()?.frame ?? -1;
+    let saatNaik = mulaiSepi;
+    while (performance.now() - mulaiSepi < 30000) {
+      await new Promise((r2) => setTimeout(r2, 250));
+      const x = AMBIL();
+      const f = x ? x.frame : -1;
+      if (f !== frameLalu) { frameLalu = f; saatNaik = performance.now(); }
+      // Tenang harus lebih panjang dari IDLE_MS (4000 ms) plus satu margin: perpindahan
+      // "always" -> "demand" itu sendiri masih melukis frame terakhir, dan burst itu datang
+      // persis 4 s sesudah peristiwa terakhir — jendela 1,2 s terbukti menangkapnya.
+      else if (performance.now() - saatNaik >= 5200) break;
+    }
+    const sepiMs = Math.round(performance.now() - mulaiSepi);
     window.__render = null;
     await new Promise((r2) => setTimeout(r2, 1500));
+    const sepi = AMBIL();
     const selangMs = awal && akhir ? akhir.t - awal.t : 0;
     const lampan = awal && akhir ? akhir.frame - awal.frame : 0;
     return {
       aktif: puncak.calls,
-      diam: window.__render ? window.__render.calls : 0,
+      diam: sepi ? sepi.calls : 0,
+      diamObjek: sepi ? sepi.objek : [],
       sampel,
       puncak: sampel ? puncak : null,
       objek,
+      sepiMs,
       fps: selangMs > 0 ? (lampan * 1000) / selangMs : null,
     };
   }, bab);
@@ -119,11 +157,13 @@ for (const bab of BAB) {
     puncak: hasil.puncak,
     objek: hasil.objek,
     fps: hasil.fps === null ? null : Math.round(hasil.fps * 10) / 10,
+    sepi_setelah_ms: hasil.sepiMs,
     frame_saat_diam: hasil.diam,
+    objek_saat_diam: hasil.diamObjek,
   });
   console.log(
     `${String(bab).padStart(3)}  ${String(hasil.aktif).padStart(12)}  ${String(hasil.diam).padStart(15)}  ` +
-      `${diamBaik ? 'loop berhenti saat diam' : 'MASIH MENGGAMBAR SAAT DIAM'}${aktifBaik ? '' : ` | lewat batas ${batas}`}`
+      `${diamBaik ? `loop berhenti saat diam (sepi ${hasil.sepiMs} ms)` : `MASIH MENGGAMBAR SAAT DIAM: ${hasil.diamObjek.join(',')}`}${aktifBaik ? '' : ` | lewat batas ${batas}`}`
   );
 }
 
@@ -154,6 +194,7 @@ if (jalurTulis) {
       'puncak geometri/tekstur adalah jumlah alokasi yang masih hidup (gl.info.memory), bukan byte — three tidak mengekspos ukuran per alokasi.',
       'aset_unduhan.mb = encodedBodySize yang diterima browser (termampatkan), jadi lebih kecil dari ukuran file di disk.',
       'objek = sensus objek yang ikut digambar pada frame tersibuk bab itu.',
+      'sepi_setelah_ms = lama tunggu dari akhir jendela aktif sampai counter frame berhenti naik; angka ini adalah sisa perjalanan kartu, bukan waktu idle yang diizinkan.',
       'puncak null dan frame_terukur 0 berarti kanvas tidak menulis satu pun frame selama 1,5 s jendela ukur — bukan nol alokasi.',
     ],
     puncak_aktif_global: puncakAktif,

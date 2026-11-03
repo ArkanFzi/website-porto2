@@ -22,6 +22,12 @@ interface Props {
   className?: string;
   kamera?: [number, number, number];
   fov?: number;
+  /** Palsu = adegan sedang tidak dilihat siapa pun: hukum diam tidak mendaftar listener
+   *  sama sekali, jadi kanvas ini tidak ikut terbangun oleh peristiwa di bagian halaman
+   *  lain. Dipakai halaman utama, tempat panggung ini hidup berdampingan dengan kanvas
+   *  editorial — tanpa gerbang ini, satu gulir di ujung halaman dibayar dua kanvas.
+   *  Default true: panggung per-rute tidak punya tetangga. */
+  aktif?: boolean;
   children: React.ReactNode;
 }
 
@@ -29,6 +35,7 @@ export const PanggungKecil: React.FC<Props> = ({
   className = "",
   kamera = [0, 0, 5],
   fov = 42,
+  aktif = true,
   children,
 }) => {
   const reduceMotion = useSyncExternalStore(
@@ -36,7 +43,7 @@ export const PanggungKecil: React.FC<Props> = ({
     bacaKurangiGerak,
     bacaKurangiGerakSaatSSR
   );
-  const frameloop = useDiamKanvas(!reduceMotion);
+  const frameloop = useDiamKanvas(!reduceMotion && aktif);
 
   return (
     <div aria-hidden="true" data-panggung-kecil="" className={`relative overflow-hidden ${className}`}>
