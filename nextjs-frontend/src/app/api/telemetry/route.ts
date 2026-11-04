@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { bacaStatusWatch } from "@/lib/server/statusWatch";
 import {
   JUMLAH_BUKET,
@@ -11,6 +11,11 @@ import {
 
 // Semua angka di respons ini adalah hasil pengukuran pada request itu juga. Tidak ada konstanta
 // hiasan: kalau sesuatu tidak bisa diukur, field-nya null dan yang menampilkannya wajib menulis "—".
+//
+// Respons ini publik — dia dipoll setiap 20 detik dari halaman yang dilihat siapa pun. Sebagian
+// field isinya bukan pengukuran untuk pengunjung melainkan diagnostik mesin (versi runtime, isi
+// heap, komit yang melayani, status ping database). Field itu sekarang null untuk yang tidak
+// bersesi admin, sehingga "—" punya dua sebab: tidak terukur, atau tidak untuk mata publik.
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +52,44 @@ async function probeBackend(backendUrl: string): Promise<BackendProbe> {
     // Abort (timeout), DNS mati, atau backend tidak berjalan: tidak ada pengukuran yang bisa
     // dilaporkan, jadi rttMs tetap null dan bukan angka terendah yang kebetulan enak dibaca.
     return { reachable: false, db: null, rttMs: null };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const NAMA_COOKIE_SESI = "porto_sesi";
+
+// Penilaian sesi dikerjakan backend, bukan di sini. JWT_SECRET tidak (dan tidak boleh) ada di
+// proses Next — memverifikasi tanda tangan sendiri berarti menyimpan setengah kredensial di dua
+// tempat, dan dua tempat berarti dua yang bisa lupa dirotasi.
+//
+// Kontrak yang dipakai adalah guard NoRoute go-backend: path di bawah /api/admin/ yang TIDAK
+// terdaftar dijawab 401 untuk token rusak/kedaluwarsa/revoked, dan 404 {"error":"Not found"} untuk
+// token sah. Nama `__sesi` sengaja bukan rute yang mungkin jadi nyata, jadi kontraknya tidak bisa
+// bergeser diam-diam oleh fitur baru.
+//
+// Status 404 saja TIDAK cukup dan itu terukur di mesin ini: port 8080 di laptop ini pernah
+// ditempati Adminer, yang menjawab 404 HTML untuk path apa pun — aturan "404 = sah" akan membuka
+// diagnostik ke token karangan siapa pun. Karena itu yang ditagih adalah sampul respons backend
+// secara utuh: 404 + JSON + persis {"error":"Not found"}. Selain itu — 401, 5xx, backend mati,
+// timeout, HTML — dianggap tidak bersesi (fail-closed).
+async function sesiTervalidasi(req: NextRequest, backendUrl: string): Promise<boolean> {
+  const token = req.cookies.get(NAMA_COOKIE_SESI)?.value;
+  if (!token) return false;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 800);
+  try {
+    const res = await fetch(`${backendUrl}/api/admin/__sesi`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (res.status !== 404) return false;
+    if (!res.headers.get("content-type")?.includes("application/json")) return false;
+    const body = (await res.json().catch(() => null)) as { error?: unknown } | null;
+    return body?.error === "Not found";
+  } catch {
+    return false;
   } finally {
     clearTimeout(timer);
   }
@@ -183,7 +226,7 @@ export async function POST(req: Request) {
   );
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const started = performance.now();
   const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8080";
   const probe = await probeBackend(backendUrl);
@@ -191,6 +234,11 @@ export async function GET() {
 
   latencySamples.push(latencyMs);
   if (latencySamples.length > MAX_SAMPLES) latencySamples.shift();
+
+  // Sengaja diukur setelah latencyMs ditutup: `latencyMs` adalah lama probe /api/health, dan
+  // membledekkan pemeriksaan sesi ke dalamnya membuat angka itu berubah makna tiap kali admin
+  // membuka halaman. Yang tidak membawa cookie pulang tanpa round-trip tambahan sama sekali.
+  const hanyaAdmin = await sesiTervalidasi(req, backendUrl);
 
   const heapMb =
     typeof process !== "undefined" && typeof process.memoryUsage === "function"
@@ -210,17 +258,22 @@ export async function GET() {
         ? "DATABASE ERROR"
         : "BACKEND NO HEALTH FIELD";
 
+  // `status` tetap publik: dia verdict kasar yang memang ditunjukkan ke pengunjung. Yang
+  // dikembalikan sebagai null adalah angka identifikasi mesin dan kolom diagnostiknya sendiri.
   return NextResponse.json(
     {
       status,
       latencyMs,
       latencySamples: [...latencySamples],
-      heapMb,
-      backend: { reachable: probe.reachable, db: probe.db, rttMs: probe.rttMs },
-      runtime: { node: process.versions.node ?? null, next: next ? next : null },
+      heapMb: hanyaAdmin ? heapMb : null,
+      backend: { reachable: probe.reachable, db: hanyaAdmin ? probe.db : null, rttMs: probe.rttMs },
+      runtime: {
+        node: hanyaAdmin ? (process.versions.node ?? null) : null,
+        next: hanyaAdmin && next ? next : null,
+      },
       clientFrames: agregatFrame(),
       watch: bacaStatusWatch(),
-      gitCommit: commit ? commit : null,
+      gitCommit: hanyaAdmin && commit ? commit : null,
       timestamp: new Date().toISOString(),
     },
     {

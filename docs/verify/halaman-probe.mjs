@@ -1,5 +1,5 @@
 // Verifikasi dua lorong rincian di belakang halaman editorial: /tulisan (index repo) dan
-// /statistik (telemetri proses). Yang ditagih di sini bukan "halamannya ada", tapi tiga hukum
+// /statistik (telemetri proses). Yang ditagih di sini bukan "halamannya ada", tapi empat hukum
 // yang sudah berlaku di halaman utama dan tidak boleh dilanggar oleh halaman baru:
 //
 //   1. ANTI-KARANGAN — setiap angka di /tulisan harus ada di respons /api/github-repos, pada
@@ -8,6 +8,8 @@
 //      nol bilah, dan setiap sel ukuran tercetak "—".
 //   3. ANGKA DARI RESPONS YANG DIBACA — sel di /statistik harus cocok dengan payload yang benar-
 //      benar dikonsumsi halaman itu, bukan dengan fetch tambahan.
+//   4. IDENTITAS MESIN BUKAN UNTUK PUBLIK — heap, runtime, komit, dan ping postgres null di wire
+//      bagi yang tidak membawa sesi admin sah (bagian 2b), dan "—" di halaman bagi pengunjung.
 //
 // Bagian 5 adalah penjaga langkah berikutnya (tautan masuk di bar bawah HUD yang posisinya
 // fixed): tinggi dokumen tidak boleh berubah dan setiap sasaran interaktif yang lewat di
@@ -311,6 +313,89 @@ cek('blok apa yang tidak disimpan dicetak di halaman', hidup.privasi, true);
 cek('halaman tidak melempar error saat data datang', galatArsip.length, 0);
 cek('/tulisan tidak melempar error saat dimuat', galatBaca.length, 0);
 await foto(pageArsip, '02-arsip-hidup');
+
+// ── 2b · diagnostik mesin tidak ikut mengalir ke yang tidak bersesi admin ──
+//
+// /api/telemetry adalah satu-satunya rute publik yang tahu versi runtime, besarnya heap, komit
+// yang melayani, dan hasil ping postgres — semuanya identitas mesin, bukan angka untuk pengunjung.
+// Yang ditagih di sini adalah isi WIRE-nya, bukan cuma yang tercetak: field itu wajib null di
+// respons, sehingga tidak ada penampil yang bisa diam-diam mulai memakainya lagi.
+//
+// Arah sebaliknya (sesi sah ⇒ field terisi) tidak bisa ditagih dari probe ini: ia butuh kredensial
+// admin dan backend nyata, sementara probe berjalan tanpa keduanya. Gerbang di bawah karena itu
+// mengunci SIFAT yang bisa dirusak tanpa kredensial — token sesi karangan sendiri tidak membuka
+// apa pun — dan penilaian sisanya tetap dikerjakan backend (guard NoRoute di go-backend: 401
+// untuk token mati, 404 {"error":"Not found"} untuk token sah).
+const SUMBER_ROTE = readFileSync(
+  new URL('../../nextjs-frontend/src/app/api/telemetry/route.ts', import.meta.url),
+  'utf8'
+);
+// Nama cookie tidak diketik tangan di sini: probe membacanya dari rute yang sama yang memakainya.
+const namaKukiSesi = SUMBER_ROTE.match(/const NAMA_COOKIE_SESI = "([^"]+)"/)?.[1] ?? '';
+cek('rute membaca cookie sesi backend, bukan nama karangan probe', namaKukiSesi, 'porto_sesi');
+
+const FIELD_MESIN = ['heapMb', 'gitCommit', 'runtime.node', 'runtime.next', 'backend.db'];
+const isi = (obj, jalur) => jalur.split('.').reduce((v, k) => v?.[k], obj);
+
+const bacaWire = async (kuki) => {
+  const res = await fetch(`${FE}/api/telemetry`, {
+    headers: { 'cache-control': 'no-store', ...(kuki ? { cookie: kuki } : {}) },
+  });
+  return { status: res.status, body: await res.json().catch(() => null) };
+};
+
+const anonim = await bacaWire(null);
+cek('GET /api/telemetry tanpa sesi tetap menjawab', anonim.status, 200);
+for (const jalur of FIELD_MESIN) {
+  cek(`${jalur} tidak dikirim ke yang tidak bersesi`, isi(anonim.body, jalur), null);
+}
+// Yang publik harus tetap terukur — kalau semuanya jadi null, gerbang di atas lolos karena
+// endpointnya mati, bukan karena datanya dibatasi.
+cek('latency tetap terukur tanpa sesi', Number.isFinite(anonim.body?.latencyMs), true);
+cek('status tetap terisi tanpa sesi', typeof anonim.body?.status === 'string' && !!anonim.body.status, true);
+cek('reachability backend tetap dijawab tanpa sesi', typeof anonim.body?.backend?.reachable === 'boolean', true);
+cekMin('sampel latency tetap dikirim ke publik', anonim.body?.latencySamples?.length ?? 0, 1);
+// rttMs sengaja tetap publik (itu bahan garis arsitektur di halaman): satu-satunya sebab ia null
+// adalah backend yang memang tidak terjawab — bukan karena ikut dibatasi.
+cek(
+  'rtt backend null hanya kalau backend tidak terjawab',
+  anonim.body ? anonim.body.backend.reachable === (anonim.body.backend.rttMs !== null) : false,
+  true
+);
+
+// Token JWT palsu yang bentuknya meyakinkan: pembukanya bukan siapa pun yang bisa menempel kuki.
+const tokenPalsu =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.' +
+  'eyJ1c2VybmFtZSI6ImFkbWluIiwiaWF0IjoxNzk2MDAwMDAwLCJleHAiOjE5OTYwMDAwMDB9.' +
+  'sAnd1eZx0kQ9mQ8pY7uT2vB3nR5cD4fE6gH8jK0lM2o';
+const palsu = await bacaWire(`${namaKukiSesi}=${tokenPalsu}`);
+for (const jalur of FIELD_MESIN) {
+  cek(`${jalur} tetap tertutup untuk token karangan`, isi(palsu.body, jalur), null);
+}
+cek(
+  'token palsu tidak mengubah verdict publik',
+  anonim.body?.status === palsu.body?.status,
+  true
+);
+
+// Efeknya di halaman: sel mesin di /statistik harus tercetak "—" untuk pengunjung, sementara
+// hop dan latency tetap angka. Sebelum pemisahan ini sel 'node' terisi versi Node proses server.
+const SEL_MESIN = {
+  heapMb: 'heap',
+  gitCommit: 'commit',
+  'runtime.node': 'node',
+  'runtime.next': 'next',
+  'backend.db': 'backend-db',
+};
+const bocor = Object.entries(SEL_MESIN)
+  .filter(([, sel]) => hidup.sel[sel] !== '—')
+  .map(([jalur, sel]) => `${sel}=${hidup.sel[sel]} padahal wire ${jalur} null`);
+hasil.push({
+  nama: 'HUD publik tidak mengarang angka untuk field yang tidak dikirim',
+  ok: bocor.length === 0,
+  dapat: bocor.length ? bocor.join(' | ') : 'semua "—"',
+  harus: '0 sel berisi angka',
+});
 
 // ── 3 · mock: sumber menjawab TANPA angka — halaman tidak boleh mengarang bentuk ──
 const payloadKosong = (tambahan = {}) => ({
