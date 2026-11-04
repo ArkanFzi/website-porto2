@@ -1,0 +1,53 @@
+Logo bahasa di panggung 3D — atribusi dan provenansi
+─────────────────────────────────────────────────────
+
+Bentuk yang dipakai src/components/Three/stage/ekstra/bentukLogo.ts diambil dari
+src/data/logoBahasa.ts. Data itu disalin utuh (tidak disederhanakan, tidak ditebalkan,
+tidak di-vendor ulang lewat tool) dari simple-icons.
+
+Sumber
+* Projek    : simple-icons — https://github.com/simple-icons/simple-icons
+* Berkas    : icons/{javascript,typescript,python,go}.svg
+              (diambil dari https://simpleicons.org/icons/<nama>.svg)
+* Pengarang : masing-masing logo adalah merek dagang proyek yang dinamai, dan
+              diunggah ke simple-icons oleh kontributornya:
+                JavaScript  → https://www.javascript.com
+                TypeScript  → https://www.typescriptlang.org
+                Python      → https://www.python.org
+                Go          → https://go.dev
+* Lisensi   : CC0-1.0 (https://creativecommons.org/publicdomain/zero/1.0/)
+              simple-icons melepas seluruh hak atas data ikonnya, jadi menyalin path
+              untuk dipakai sebagai objek 3D tidak butuh izin dan tidak mewajibkan
+              kredit — kredit ini tetap ditulis karena logo itu bukan hasil kerja kita
+              dan karena bentuknya adalah merek dagang orang lain.
+
+Verifikasi
+Setiap `d` di logoBahasa.ts diuji byte-per-byte terhadap berkas yang diunduh. sha256
+dari string path data (bukan dari seluruh SVG-nya, karena atribut width/height/title
+boleh berbeda antar rilis simple-icons):
+
+  javascript  27c1064711b931170dffa437191ad2ff8dad7001cc04cbce4f55ca7234ec73af   (860 karakter)
+  typescript  0495469640c3e57c65b6ed68dad9ae5d220e557b34bc1db84443d14c69f23ac9  (1180 karakter)
+  python      1c07087808fe0432848a476f74e612cb00455be939a2bd9814bf56f20b863242   (876 karakter)
+  go          c57431b778937ddf039562957ffd2f4443cc44973437713c71bd24fd15e2cfa5  (1530 karakter)
+Berkas SVG utuh yang diunduh pada 2026-11-04:
+
+  javascript  c9be35a7a861ebe80ae4ee706d05004b99ee59fc63db69da6dcc10776718434b   (974 byte)
+  typescript  7f023e8d1e767370306ec9437d2de5d5af97491d6208dd7799a3808a7c10a36a  (1294 byte)
+  python      a90c00fd441482b4867ad5d7fa68db56aab4891f1b1e6879fe1ea3b355cf378f   (986 byte)
+  go          36a745fe15584bf138d02ae6abcbdd155bc1cd4f4976634ad34861b2059db559  (1636 byte)
+
+Keempat SVG berisi tepat satu elemen <path> dengan viewBox "0 0 24 24". Itu yang
+membuat satu logo = satu Shape[] = satu BufferGeometry = satu draw call.
+
+Catatan pemakaian
+Ini penggunaan deskriptif: logo menempel pada baris yang menyebut bahasa yang memang
+dominan di repo itu menurut pengukuran tools/ci/ukur-kartu.mjs, bukan sebagai penanda
+sponsorship, afiliasi, atau endorsement. Tidak ada klaim kepemilikan atas merek dagang
+tersebut. Nama proyek (Ferrari, simple-icons, tiap bahasa) tetap milik pemiliknya.
+
+Modifikasi
+Satu-satunya perubahan dari bentuk asli terjadi di mesin, bukan di data: sumbu Y
+dibalik saat path SVG dikonversi jadi THREE.Shape (eks SVG y-nya ke bawah), dan
+geser-tengah + skala seragam supaya logo apa pun muat di bujur sangkar satuan.
+Ekstrusi, bevel, dan kedalaman adalah pilihan pemrogram, bukan bagian dari karya asal.
