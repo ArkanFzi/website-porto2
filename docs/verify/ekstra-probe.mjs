@@ -19,7 +19,7 @@ const TITIK_BENANG = 24; // harus sama dengan TITIK di BenangRosso.tsx
 const SISI_SANGKAR = 12; // EdgesGeometry balok = 12 segmen
 const SEG_KOMPAS = 2; // jarum + ekor
 const PARTIKEL_DEBU = 140;
-const EKSTRA = ['bilah', 'benang', 'debu', 'jejak', 'kompas', 'roda', 'sangkar', 'sf26-ban', 'sf26-pelek', 'sf26-sasis'];
+const EKSTRA = ['bahasa-logo', 'bilah', 'benang', 'debu', 'jejak', 'kompas', 'roda', 'sangkar', 'sf26-ban', 'sf26-pelek', 'sf26-sasis'];
 
 const browser = await puppeteer.launch({
   executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome',
@@ -92,6 +92,17 @@ const medan = () =>
       garis: r.garis,
       objek: r.objek ?? [],
       t: p?.t ?? null,
+      /** Silang pengganti-kartu: 0 kartu penuh, 1 objek punya tempatnya. Nama kuncinya
+       *  masih `mobil` karena itulah yang pertama memanggilnya. */
+      silang: p?.mobil ?? null,
+      /** Keputusan aturan pengganti frame ini — 'mobil', 'bahasa', atau null. Ini yang
+       *  membuktikan objek datang dari pengukuran, bukan dari hover sembarangan. */
+      aktor: p?.aktor ?? null,
+      hovered: p?.hovered ?? null,
+      /** Berapa frame yang benar-benar digambar saat sensus ditulis. Readout ditulis
+       *  SESUDAH scene digambar dan React memasang/melepas setelah frame itu, jadi angka
+       *  ini yang membedakan "keadaan" dari "perjalanan". */
+      frame: r.frame ?? null,
     };
   });
 
@@ -131,14 +142,24 @@ const serap = async (durasiMs, jedaMs = 40) => {
 const sensusTetap = async (stabilMs = 150, plafonMs = 8000) => {
   const akhir = Date.now() + plafonMs;
   let dahulu = null;
+  let frame = null;
   let sejak = Date.now();
   while (Date.now() < akhir) {
     const s = await medan();
-    const kini = s ? (s.objek ?? []).join('+') : null;
+    // Kunci settle = objek DAN silang, dibaca dari SATU frame yang sama (medan() mengambil
+    // keduanya dari __render/__panggung yang ditulis berpasangan). Daftar objek bisa tetap
+    // sementara silang masih berjalan, dan gerbang pelepasan menuntut keduanya berhenti.
+    const kini = s ? `${(s.objek ?? []).join('+')}|${(s.silang ?? -1).toFixed(4)}` : null;
     if (kini !== null && kini === dahulu) {
-      if (Date.now() - sejak >= stabilMs) return { puncak: s, nama: s.objek, terakhir: s };
+      // Dua frame yang BERBEDA harus sepakat. Tanpa syarat ini dua bacaan beruntun pada
+      // kanvas yang sama (poll 60 ms vs ±2 frame/detik di swiftshader) tampak seperti
+      // keadaan tetap padahal pegas masih bergerak — dan pembulatan 4 desimal membuat
+      // silang 0,0054 → 0,0048 terlihat tidak berubah. Kalau loop memang sudah tidur
+      // tidak ada frame kedua dan pemanggil jatuh ke `?? serap(...)` seperti sebelumnya.
+      if (s.frame !== frame && Date.now() - sejak >= stabilMs) return { puncak: s, nama: s.objek, terakhir: s };
     } else {
       dahulu = kini;
+      frame = s?.frame ?? null;
       sejak = Date.now();
     }
     await new Promise((r) => setTimeout(r, 60));
@@ -222,45 +243,54 @@ cek('sangkar tidak ikut muncul saat bergulir', ada(terlebar, 'sangkar'), false);
 // di bab 2, gerbang bab-nya dibaca sebagai hiasan, bukan sebagai keadaan panggung.
 cek('roda tidak ikut muncul saat bergulir di bab 2', ada(terlebar, 'roda'), false);
 
-// ── 4. RollCage: baris arsip tanpa hover vs dengan hover ──
-// Baris arsip = div[data-magnetic] di #chapter-03 (ChapterArchives.tsx:263). Kelas pl-6
-// hanya menempel saat hoveredProject === idx, jadi padding-left adalah bukti bahwa hover
-// benar-benar sampai ke state React, bukan hanya event yang dikirim ke elemen yang salah.
+// ── 4. RollCage: keadaan diam bab arsip vs satu baris yang ditunjuk ──
+// Baris arsip = div[data-magnetic] di #chapter-03 (ChapterArchives.tsx:344). Yang dibaca
+// sebagai bukti hover adalah KELAS yang di-commit React (`pl-4` hanya ada saat
+// hoveredProject === idx), BUKAN padding-left-nya: kelas berubah pada render yang sama
+// dengan keputusannya, sedangkan padding masih transisi 300 ms di atas halaman yang
+// frameloop-nya `demand` — terukur className sudah `pl-4 sm:pl-6` pada +120 ms dan
+// +400 ms sementara computed masih "0px", baru 24px pada +900 ms. Menagih angka yang
+// dianimasikan membuat gerbang ini hijau atau merah menurut jadwal frame, bukan menurut
+// perilaku. `i` adalah posisi di antara baris yang tertutup; ia hanya berarti kalau
+// `jumlah` = 5 (tidak ada strip yang membuka dirinya dan menggeser indeksnya).
 const bacaBaris = () =>
   page.evaluate(() => {
     const rows = [...document.querySelectorAll('#chapter-03 [data-magnetic]')];
     const ATAS = 90;
     const BAWAH = window.innerHeight - 90;
     let pilih = null;
-    for (const el of rows) {
+    rows.forEach((el, i) => {
       const b = el.getBoundingClientRect();
       const terlihat = Math.min(b.bottom, BAWAH) - Math.max(b.top, ATAS);
       // Baris arsip setinggi ~300px, jadi "seutuhnya terlihat" terlalu ketat; yang
       // dibutuhkan hanya satu titik tengah yang aman untuk ditiru pointer.
-      if (terlihat > 24 && (!pilih || terlihat > pilih.terlihat)) pilih = { el, terlihat, b };
-    }
+      if (terlihat > 24 && (!pilih || terlihat > pilih.terlihat)) pilih = { el, i, b };
+    });
     if (!pilih) return null;
-    const { el, b } = pilih;
+    const { el, i, b } = pilih;
     return {
       judul: el.querySelector('a')?.textContent?.trim().slice(0, 22) ?? '?',
       x: b.left + b.width / 2,
       y: Math.max(ATAS, Math.min(BAWAH, (b.top + b.bottom) / 2)),
       pl: getComputedStyle(el).paddingLeft,
+      i,
+      jumlah: rows.length,
+      diHover: el.classList.contains('pl-4'),
     };
   });
 
 // Posisi pointer dari bagian 3 sudah jatuh di atas baris arsip setelah parkir, jadi
 // hover harus dilepas lebih dulu — kalau tidak, "sebelum" dan "sesudah" membacanya sama.
-// Yang ditunggu adalah keadaannya, bukan waktunya: padding-left masih transisi 300ms di
-// atas re-render React, dan baseline yang keburu terbaca 24px membuat gerbang membandingkan
-// dua keadaan hover yang identik.
+// Yang ditunggu adalah kelas yang di-commit, bukan padding yang dianimasikan: pada +120 ms
+// kelasnya sudah lepas sementara computed padding-nya masih 24px, dan menunggu angka itu
+// berarti menambah jam tunggu di atas keadaan yang sebenarnya sudah selesai.
 const lepasHover = async () => {
   await page.mouse.move(8, 8);
   for (let i = 0; i < 12; i++) {
     await new Promise((r) => setTimeout(r, 150));
     const bersih = await page.evaluate(() =>
       [...document.querySelectorAll("#chapter-03 [data-magnetic]")].every(
-        (el) => getComputedStyle(el).paddingLeft === "0px"
+        (el) => !el.classList.contains("pl-4")
       )
     );
     if (bersih) return;
@@ -405,7 +435,16 @@ const parkir4 = await parkirKeBaris();
 const target = await bacaBaris();
 let sbl = await serap(300);
 let sts = sbl;
-let plLepas = null;
+let keadaanLepas = null;
+// Keputusan aturan dibaca dari `__panggung.hovered` — channel yang sama yang dipakai
+// `aktorDipanggil` untuk menentukan pengganti kartu. Padding/kelas adalah akibatnya di DOM;
+// kalau keduanya berbeda, yang paling dekat dengan perilaku objek adalah keputusan ini.
+const bacaKeputusan = () =>
+  page.evaluate(() => ({
+    hovered: window.__panggung?.hovered ?? null,
+    aktor: window.__panggung?.aktor ?? null,
+  }));
+let keputusan = { hovered: null, aktor: null };
 // Hover pointer adalah peristiwa asinkron yang bisa hilang saat halaman masih settling
 // setelah gulir roda di bagian 3; tanpa percobaan ulang bagian ini jadi flaky (pernah
 // gagal sekali dari tiga jalan). Tiga percobaan dengan jeda melepas hover membuat hasilnya
@@ -413,25 +452,30 @@ let plLepas = null;
 for (let percobaan = 1; percobaan <= 3 && target; percobaan++) {
   await lepasHover();
   sbl = await serap(300);
-  // Baseline padding dibaca SETELAH hover dilepas, bukan dari `target`: pointer bagian 3
-  // bisa sudah jatuh di atas baris yang sama saat `target` diambil, sehingga pl-nya sudah
-  // 24px dan "sebelum vs sesudah" memperbandingkan dua keadaan hover yang identik.
-  plLepas = (await bacaBaris())?.pl ?? plLepas;
+  // Baseline dibaca SETELAH hover dilepas, bukan dari `target`: pointer bagian 3 bisa sudah
+  // jatuh di atas baris yang sama saat `target` diambil, sehingga keadaannya sudah hover dan
+  // "sebelum vs sesudah" memperbandingkan dua keadaan yang identik.
+  keadaanLepas = await bacaBaris();
   if (percobaan === 1) await foto('05-bab3-tanpa-hover');
   await page.mouse.move(target.x, target.y);
   await new Promise((r) => setTimeout(r, 250 * percobaan));
   sts = await serap(300);
   const kini = await bacaBaris();
-  if (kini && plLepas && kini.pl !== plLepas) break;
+  if (!kini || !keadaanLepas || kini.diHover === keadaanLepas.diHover) continue;
+  keputusan = await bacaKeputusan();
+  if (keputusan.hovered !== null) break;
 }
 const barisKini = await bacaBaris();
+keputusan = await bacaKeputusan();
 await foto('06-bab3-hover');
 console.log(
   'sangkar  ',
   JSON.stringify(parkir4),
   JSON.stringify(target),
-  '| pl lepas:',
-  plLepas,
+  '| keadaanLepas:',
+  JSON.stringify(keadaanLepas && { i: keadaanLepas.i, pl: keadaanLepas.pl, diHover: keadaanLepas.diHover }),
+  '| keputusan:',
+  JSON.stringify(keputusan),
   '| sebelum:',
   JSON.stringify(sbl.nama),
   JSON.stringify(sbl.puncak.garis),
@@ -440,10 +484,21 @@ console.log(
   JSON.stringify(sts.puncak.garis)
 );
 cek('baris arsip terlihat setelah parkir', !!target, true);
-cek('hover baris arsip sampai ke state', !!target && !!plLepas && barisKini?.pl !== plLepas, true);
-cek('sangkar tidak ada tanpa hover', ada(sbl.nama, 'sangkar'), false);
-cek('sangkar ada saat hover', ada(sts.nama, 'sangkar'), true);
-cekMin('sangkar menyumbang 12 segmen LINES', sts.puncak.garis - sbl.puncak.garis, SISI_SANGKAR);
+// Indeks baris hanya berarti kalau tidak ada strip yang membuka dirinya dan menggeser
+// posisinya di antara [data-magnetic]; itu yang membuat `hovered === i` bisa ditagih.
+cek('daftar arsip masih tertutup penuh', target?.jumlah ?? null, 5);
+cek('hover baris arsip sampai ke state', !!target && !!keadaanLepas && keadaanLepas.diHover === false && barisKini?.diHover === true, true);
+cek('hover baris arsip sampai ke aturan pengganti', `${keputusan.hovered}/${barisKini?.i}`, `${barisKini?.i}/${barisKini?.i}`);
+// Sangkar tidak lagi menunggui hover: ia mengikuti silang pengganti, dan di bab arsip silang
+// itu bernilai penuh bahkan saat pointer diam (kotak tidak pernah kosong lagi). Jadi gerbang
+// "tidak ada tanpa hover" sudah bukan keadaan halaman ini — yang ditagih sekarang adalah
+// (a) ada di diam, (b) tidak bertambah oleh hover baris /01, (c) 12 segmen dibaca ABSOLUT,
+// bukan sebagai delta terhadap tanpa-hover, karena tanpa-hover kini juga berdarah. Lepasnya
+// sangkar ditagih di bagian 10 tempat halaman benar-benar meninggalkan bab arsip.
+cek('sangkar hidup di keadaan diam bab arsip', ada(sbl.nama, 'sangkar'), true);
+cek('sangkar masih ada saat baris /01 di-hover', ada(sts.nama, 'sangkar'), true);
+cekMin('sangkar menyumbang 12 segmen LINES', sbl.puncak.garis, SISI_SANGKAR);
+cek('hover /01 tidak menambah segmen garis', sts.puncak.garis - sbl.puncak.garis, 0);
 
 // ── 5. prefers-reduced-motion: semua objek ekstra hilang, kartu tetap ──
 // DIBACA DI KEADAAN DIAM, bukan di jendela waktu: `parkir(0,375)` lama bisa mendarat di tengah
@@ -996,17 +1051,29 @@ cek('reduce-motion menghapus roda', tanpaGerak.ada, 0);
 await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }]);
 await new Promise((r) => setTimeout(r, 700));
 
-// ── 10. SF-26 (ide 21): mobil mengambil tempat kartu saat baris /01 dipanggil ──
-// Satu angka, dua objek: usePanggung menulis SILANG_MOBIL ke alpha kartu dan AktorSF26
-// membaca OBJEK YANG SAMA untuk alpha-nya sendiri. Gerbang yang membandingkan bacaan kartu
-// dengan bacaan mobil karena itu membuktikan satu sumber — dua penghalusan terpisah akan
-// tertinggal satu frame dan perpindahan terbaca sebagai dua kejadian.
+// ── 10. Pengganti kartu di bab WORKS: diam = /01 = mobil, hover memindahkan tempat ke baris lain ──
+// Satu angka, dua objek: usePanggung menulis SILANG_MOBIL ke alpha kartu dan aktor membaca
+// angka yang sama untuk alpha-nya sendiri. Gerbang yang membandingkan bacaan kartu dengan
+// bacaan objek membuktikan satu sumber — dua penghalusan terpisah akan tertinggal satu frame
+// dan perpindahan terbaca sebagai dua kejadian.
+//
+// Keadaan diam sudah berubah: di bab arsip silang bernilai PENUH tanpa pointer apa pun,
+// karena kotak tidak pernah kosong lagi (pengganti = aktorDipanggil, diam = BARIS_DIAM).
+// Konsekuensinya, dan ini yang bikin bagian ini tidak bisa cuma ditambah gerbang:
+//   · "mobil tidak ada tanpa hover" bukan lagi kebenaran halaman ini — yang diuji sekarang
+//     mobil ADA di diam, dan hover /01 harus delta nol terhadapnya;
+//   · kontribusi mobil tidak bisa diukur sebagai selisih terhadap tanpa-hover (tanpa-hover
+//     sudah memuat mobil), jadi baseline kartu diambil dari bab tengah tempat silang 0;
+//   · silang tidak pernah menuju 0 di dalam bab arsip — menukar baris = menukar objek pada
+//     alpha penuh. Yang menagih "lepas setelah silang habis" adalah keberangkatan dari bab.
 const TRI_BULAT = [40000, 60000]; // anggaran ±50.000 triangle per frame hasil pipeline
+const TETAS_LEPAS = 0.001; // harus sama dengan TETAS di AktorSF26/AktorBahasa/RollCage
 
 const bacaMobil = () =>
   page.evaluate(() => {
     const m = window.__sf26;
     const p = window.__panggung;
+    const b = window.__bahasa;
     const objek = window.__render?.objek ?? [];
     return {
       silang: p?.mobil ?? null,
@@ -1017,17 +1084,29 @@ const bacaMobil = () =>
       t: p?.t ?? null,
       objek,
       ada: objek.filter((n) => n.startsWith('sf26-')).length,
+      logo: objek.filter((n) => n === 'bahasa-logo').length,
+      bahasaId: b?.id ?? null,
+      bahasaTri: b?.tris ?? null,
+      bahasaSilang: b?.silang ?? null,
+      /** Putusan aturan pengganti frame ini — satu-satunya sumber yang boleh dipakai
+       *  untuk menuduh objek "datang dari pengukuran". */
+      aktor: p ? p.aktor ?? null : 'TIDAK ADA READOUT',
+      hovered: p?.hovered ?? null,
       calls: window.__render?.calls ?? null,
       segitiga: window.__render?.segitiga ?? null,
+      garis: window.__render?.garis ?? null,
+      frame: window.__render?.frame ?? null,
       jumlahObjek: objek.length,
     };
   });
 
-// Baris /01 = [data-magnetic] PERTAMA di #chapter-03 (ChapterArchives.tsx:326, idx 0), dan
-// hover-nya yang memasang hoveredProject === BARIS_FERRARI.
-const bacaBarisFerrari = () =>
-  page.evaluate(() => {
-    const el = document.querySelector('#chapter-03 [data-magnetic]');
+// Baris ke-N = [data-magnetic] ke-N di #chapter-03. /01 = indeks 0 = BARIS_FERRARI, dan
+// hover-nya yang membuat aktor = mobil. `data-bahasa` adalah angka pengukuran yang sama
+// yang dipakai generator (ukur-kartu.mjs), jadi objek bisa ditagih terhadap ukuran yang
+// memanggilnya.
+const barisKe = (ke) =>
+  page.evaluate((v) => {
+    const el = document.querySelectorAll('#chapter-03 [data-magnetic]')[v];
     if (!el) return null;
     const b = el.getBoundingClientRect();
     const ATAS = 90;
@@ -1035,28 +1114,37 @@ const bacaBarisFerrari = () =>
     const terlihat = Math.min(b.bottom, BAWAH) - Math.max(b.top, ATAS);
     if (terlihat <= 24) return null;
     return {
-      judul: el.textContent?.trim().slice(0, 24) ?? '?',
-      // Baris ini harus baris FERRARI: judul yang ditampilkan di DOM terpotong di 24 karakter
-      // untuk log, jadi identitasnya dibaca dari teks penuh, bukan dari cuplikan itu.
-      ferrari: /ferrari/i.test(el.textContent ?? ''),
+      judul: el.querySelector('a')?.textContent?.trim().slice(0, 22) ?? '?',
+      // Baris 0 harus baris FERRARI: identitasnya dibaca dari teks penuh, bukan dari
+      // cuplikan 22 karakter yang dipakai log.
+      ferrari: v === 0 ? /ferrari/i.test(el.querySelector('a')?.textContent ?? '') : true,
+      bahasa: el.dataset.bahasa ?? null,
       x: b.left + b.width / 2,
       y: Math.max(ATAS, Math.min(BAWAH, (b.top + b.bottom) / 2)),
     };
-  });
+  }, ke);
 
-/** Parkir di bab arsip: kartu duduk tepat pada kunci bab 3, dan itu yang mengizinkan mobil
- *  dipanggil (usePanggung:359 memakai k.babDari). "Duduk tepat pada kunci" bukan berarti
- *  babDari === babKe: sikap() hanya mengembalikan pasangan bab yang sama di ujung pertama dan
- *  ujung terakhir dokumen, sementara di tengah bab ia mengembalikan babDari=3, babKe=4, t=0.
- *  Jadi gerbangnya babDari === 3 && t === 0. Pecahan dibaca sebagai percobaan, bukan asumsi —
- *  batas tiap bab datang dari posisi section di dokumen dan bisa bergeser kalau isi bab
- *  berubah. Sweep 0.40–0.84 memberi pita 0.62–0.76 dengan keadaan itu. */
-const cariBabArsip = async () => {
-  for (const fr of [0.66, 0.62, 0.7, 0.64, 0.72, 0.68]) {
-    await parkir(fr);
-    const b = await page.evaluate(() => window.__panggung ?? null);
-    const baris = await bacaBarisFerrari();
-    if (b?.babDari === 3 && b?.t === 0 && baris) return { fr, baris, b };
+/** Parkir di bab arsip: kartu duduk tepat pada kunci bab 3, dan itu yang mengizinkan
+ *  pengganti kartu dipanggil (usePanggung memakai k.babDari). "Duduk tepat pada kunci" bukan
+ *  berarti babDari === babKe: sikap() hanya mengembalikan pasangan bab yang sama di ujung
+ *  pertama dan ujung terakhir dokumen, sementara di tengah bab ia mengembalikan
+ *  babDari=3, babKe=4, t=0. Jadi gerbangnya babDari === 3 && t === 0. Pecahan dibaca sebagai
+ *  percobaan, bukan asumsi — batas tiap bab datang dari posisi section di dokumen dan bisa
+ *  berubah kalau isi bab berubah. Baris yang dicari ikut parameter karena tinggi bab 02
+ *  membuat tidak semua baris muat pada satu titik parkir. */
+const cariBabArsip = async (ke = 0, bolehJalan = false) => {
+  for (let pass = 0; pass < (bolehJalan ? 2 : 1); pass++) {
+    for (const fr of [0.66, 0.62, 0.7, 0.64, 0.72, 0.68, 0.76, 0.58, 0.8, 0.54]) {
+      await parkir(fr);
+      const b = await page.evaluate(() => window.__panggung ?? null);
+      const baris = await barisKe(ke);
+      if (b?.babDari !== 3 || !baris) continue;
+      // Pass 1 menuntut kartu duduk tepat pada kunci bab (t=0); pass 2 menerima pecahan apa
+      // pun asalkan pemanggilnya tidak membandingkan dua keadaan. Baris bawah daftar tidak
+      // pernah terlihat pada t=0 di jendela 1440x900 — tinggi bab 02 yang berubah membuat
+      // daftar bergerak, dan menolak itu berarti menolak barisnya, bukan panggungnya.
+      if (b?.t === 0 || pass === 1) return { fr, baris, b, jalan: pass === 1 };
+    }
   }
   return null;
 };
@@ -1079,28 +1167,104 @@ const tungguSilang = async (arah, titik) => {
   return kini;
 };
 
+/** Tunggu PUTUSAN aturan, bukan penghalusan. Menukar baris di dalam bab arsip tidak
+ *  menyentuh silang (ia tetap penuh — kartu memang tidak pernah kembali), jadi menunggui
+ *  silang di sini akan selalu pulang dalam keadaan lama. Yang menandai selesai adalah
+ *  aktor yang diputuskan `aktorDipanggil` sudah terpasang di scene. */
+const tungguAktor = async (arah, titik, plafonMs = 12000) => {
+  const akhir = Date.now() + plafonMs;
+  let kini = await bacaMobil();
+  let i = 0;
+  while (Date.now() < akhir) {
+    if (titik) await page.mouse.move(titik.x + (i % 2 ? 2 : -2), titik.y);
+    kini = await bacaMobil();
+    const punya = arah === 'bahasa' ? kini.logo : kini.ada;
+    if (kini.aktor === arah && punya > 0) return kini;
+    if (arah === null && kini.aktor === null && kini.logo === 0 && kini.ada === 0) return kini;
+    await new Promise((r) => setTimeout(r, 120));
+    i++;
+  }
+  return kini;
+};
+
+/** Bangunkan loop beberapa frame lalu baca sensus terakhir — pola yang sama dengan blok
+ *  pelepasan di bawah: frame yang membuktikan pelepasan adalah frame TERAKHIR, dan ia baru
+ *  ada kalau ada satu peristiwa yang membangunkan kanvas. */
+const sensusSetelah = async (titik, jedaMs = 90) => {
+  for (let i = 0; i < 3; i++) {
+    await page.mouse.move((titik?.x ?? 8) + i * 3, titik?.y ?? 8);
+    await new Promise((r) => setTimeout(r, jedaMs));
+  }
+  return bacaMobil();
+};
+
+// Baseline KARTU MURNI: bab tengah tempat tidak ada satu pun baris yang dipanggil. Angka
+// inilah pembanding kontribusi mobil dan logo — di dalam bab arsip pembanding lama
+// ("keadaan tanpa hover") sudah tidak ada lagi, karena diam di sana berarti berobjek.
+// Rumahnya dipakai ulang dari bagian 5: yRumah menyapu seluruh peta gulir dan itu bukan
+// harga yang boleh dibayar dua kali untuk titik yang sama.
+await parkirY(yDiam5 ?? (await page.evaluate(() => Math.round((document.documentElement.scrollHeight - window.innerHeight) * 0.2))));
+const habisBas = await tungguSilang('habis', { x: 8, y: 8 });
+const kartu = await sensusSetelah({ x: 8, y: 8 });
+console.log(
+  'baseline ',
+  'bab=' + kartu.bab,
+  'silang=' + kartu.silang,
+  'calls=' + kartu.calls,
+  'tri=' + kartu.segitiga,
+  'garis=' + kartu.garis,
+  JSON.stringify(kartu.objek)
+);
+cek('baseline kartu: silang habis', (habisBas.silang ?? 1) <= TETAS_LEPAS, true);
+cek('baseline: tidak ada satu pun objek pengganti', kartu.ada + kartu.logo, 0);
+cek('baseline: sangkar mati bersama silang', ada(kartu.objek, 'sangkar'), false);
+cek('baseline: calls = jumlah objek pada frame yang sama', kartu.calls === kartu.jumlahObjek, true);
+const TRI_KARTU = kartu.segitiga;
+
 const parkir3 = await cariBabArsip();
 const titik = parkir3?.baris ?? null;
 await lepasHover();
-const habisSebelum = await tungguSilang('habis', null);
-const tanpa = await serap(300);
+const penuhDiam = await tungguSilang('penuh', { x: 8, y: 8 });
+const diamArsip = await sensusSetelah({ x: 8, y: 8 });
 console.log(
   'sf26     ',
   'fr=' + (parkir3?.fr ?? null),
   JSON.stringify(parkir3?.baris?.judul ?? null),
-  'bab=' + habisSebelum.bab,
-  'tanpa hover:',
-  JSON.stringify(tanpa.nama),
-  'calls=' + tanpa.puncak.calls,
-  'tri=' + tanpa.puncak.segitiga
+  'bab=' + diamArsip.bab,
+  'diam:',
+  JSON.stringify(diamArsip.objek),
+  'calls=' + diamArsip.calls,
+  'tri=' + diamArsip.segitiga,
+  'silang=' + diamArsip.silang,
+  'aktor=' + JSON.stringify(diamArsip.aktor)
 );
-cek('panggung parkir di bab arsip saat mobil diuji', parkir3?.b?.babDari ?? null, 3);
+cek('panggung parkir di bab arsip saat pengganti diuji', parkir3?.b?.babDari ?? null, 3);
 cek('baris /01 adalah baris Ferrari', parkir3?.baris?.ferrari ?? false, true);
-cek('mobil tidak ada tanpa hover', habisSebelum.ada, 0);
+// Ini gerbang yang dulu berbunyi "mobil tidak ada tanpa hover". Keadaan diam bab arsip kini
+// justru SELALU punya objek — dan itu keputusan, bukan kebetolan — jadi yang ditagih adalah
+// isi keadaan diam baru: mobil, aktor yang memutuskan, silang penuh, tanpa logo.
+cek('keadaan diam bab arsip memuat mobil', diamArsip.ada, 3);
+cek('keadaan diam bab arsip: aktor = mobil, hovered = null', `${diamArsip.aktor}/${diamArsip.hovered}`, 'mobil/null');
+cek('keadaan diam bab arsip: silang pengganti penuh', (penuhDiam.silang ?? 0) >= 0.98, true);
+cek('keadaan diam /01 tidak memanggil logo', `${diamArsip.logo}/${JSON.stringify(diamArsip.bahasaId)}`, '0/null');
+cek('sangkar hidup bersama isinya di keadaan diam', ada(diamArsip.objek, 'sangkar'), true);
+cek('calls = jumlah objek pada frame yang sama (diam arsip)', diamArsip.calls === diamArsip.jumlahObjek, true);
+cekMin('sangkar = 12 segmen di keadaan diam', diamArsip.garis, SISI_SANGKAR);
+// Kontribusi mobil diukur terhadap kartu murni, bukan terhadap "tanpa hover" — mobil sudah
+// duduk di sana sebelum pointer mana pun datang. Satu call dikurangi untuk sangkar (garis,
+// nol triangle) yang ikut keadaan diam tapi bukan bagian dari mobil.
+cek('mobil = tiga draw call di atas baseline kartu', diamArsip.calls - kartu.calls - 1, 3);
+const TRI_MOBIL = diamArsip.segitiga - TRI_KARTU;
+cek(
+  'mobil membawa ±50.000 triangle',
+  TRI_MOBIL >= TRI_BULAT[0] && TRI_MOBIL <= TRI_BULAT[1],
+  true
+);
+cek('segitiga baseline tidak ikut berubah oleh kehadiran mobil', TRI_KARTU > 0, true);
 
 await page.mouse.move(titik?.x ?? 8, titik?.y ?? 8);
-const penuh = await tungguSilang('penuh', titik);
-const dengan = await serap(400);
+const penuh = await tungguAktor('mobil', titik);
+const dengan = await sensusSetelah(titik);
 console.log(
   'sf26 hover',
   'silang kartu=' + penuh.silang,
@@ -1111,28 +1275,18 @@ console.log(
   'objek=' + JSON.stringify(penuh.objek)
 );
 await foto('11-bab3-mobil');
-// Sangkar (RollCage) ikut bangun oleh hover yang sama dan ia LineSegments: satu call,
-// nol triangle. Delta mentah akan menuduh mobil punya empat draw call dan mobil nol
-// triangle kalau angka totalnya dibaca apa adanya — jadi keduanya dipisah.
-const objekBaru = (dengan.nama ?? []).filter((n) => !tanpa.nama.includes(n));
-const mobilBaru = objekBaru.filter((n) => n.startsWith('sf26-'));
-const sangkarBaru = objekBaru.includes('sangkar') ? 1 : 0;
-cek('mobil menambah tepat tiga objek', mobilBaru.length, 3);
+// Hover baris /01 sekarang memanggil aktor yang SUDAH terpasang di keadaan diam. Kalau
+// aturan diam berubah lagi dan /01 tidak lagi jadi diam, gerbang delta-nol ini yang merah —
+// itu memang maksudnya: ia mengunci pilihan BARIS_DIAM = BARIS_FERRARI.
+cek('/01 memanggil mobil, bukan logo', `${penuh.aktor}/${penuh.logo}`, 'mobil/0');
+cek(
+  'hover /01 identik dengan keadaan diam (delta nol)',
+  `${dengan.calls}/${dengan.segitiga}/${dengan.jumlahObjek}`,
+  `${diamArsip.calls}/${diamArsip.segitiga}/${diamArsip.jumlahObjek}`
+);
 cek('mobil terpasang saat baris /01 di-hover', penuh.ada, 3);
-cek(
-  'tiga objek mobil = tiga draw call',
-  dengan.puncak.calls - tanpa.puncak.calls - sangkarBaru,
-  3
-);
-cek(
-  'mobil membawa ±50.000 triangle',
-  dengan.puncak.segitiga - tanpa.puncak.segitiga >= TRI_BULAT[0] &&
-    dengan.puncak.segitiga - tanpa.puncak.segitiga <= TRI_BULAT[1],
-  true
-);
-cek('calls = jumlah objek pada frame yang sama (mobil)', penuh.calls === penuh.jumlahObjek, true);
-cek('silang kartu mencapai penuh', (penuh.silang ?? 0) >= 0.98, true);
-cek('kartu dan mobil membaca angka yang sama', Math.abs((penuh.silang ?? -1) - (penuh.sf26 ?? -2)) < 0.002, true);
+cek('silang kartu mencapai penuh', (dengan.silang ?? 0) >= 0.98, true);
+cek('kartu dan mobil membaca angka yang sama', Math.abs((dengan.silang ?? -1) - (dengan.sf26 ?? -2)) < 0.002, true);
 
 // Hukum roda: sama seperti RodaPaddock — sudut DIJUMLAH dari velositas, dan membeku saat
 // loop demand tidur. Notches kecil (3 × 60 px) supaya pointer tetap jatuh di atas baris
@@ -1188,45 +1342,172 @@ const beku2 = await bacaMobil();
 console.log('sf26 beku', JSON.stringify({ sebelum: beku1.sudut, sesudah: beku2.sudut, silang: beku2.silang }));
 cek('roda membeku saat gulir diam', Math.abs((beku2.sudut ?? NaN) - (beku1.sudut ?? NaN)) < 1e-6, true);
 
-// Hover dilepas: mobil baru boleh lepas SETELAH silang habis — kartunya menahan alpha pada
-// angka yang sama, jadi lepas lebih awal meninggalkan portal kosong satu detik.
-await page.mouse.move(8, 8);
-const pulang = await tungguSilang('habis', null);
-// Sensusnya tungguSilang belum boleh ditagih untuk dua alasan: mobil baru boleh lepas SETELAH
-// silang habis (jadi frame terakhir itu memang masih memuatnya), dan sensus hanya ditulis pada
-// frame yang benar-benar digambar — begitu silang sampai nol tidak ada lagi yang membangunkan
-// loop, jadi bacaan berikutnya adalah frame TERAKHIR sebelum tidur. Pointer digeser di sudut
-// kosong: satu peristiwa, loop bangun lagi, frame baru mencatat scene yang sudah dilepas.
-for (let i = 0; i < 3; i++) {
-  await page.mouse.move(8 + i * 3, 8);
-  await new Promise((r) => setTimeout(r, 90));
-}
-const lepas = await serap(300);
-const tersisa = ['sf26-ban', 'sf26-pelek', 'sf26-sasis'].filter((n) => ada(lepas.nama, n));
-console.log('sf26 pulang', 'silang=' + pulang.silang, 'tersisa=' + JSON.stringify(tersisa), 'calls=' + lepas.puncak.calls, JSON.stringify(lepas.nama));
-cek('silang kembali ke nol setelah hover lepas', (pulang.silang ?? 1) <= 0.001, true);
-cek('mobil lepas setelah silang habis', tersisa.length, 0);
-cek('panggil-lepas kembali ke anggaran tanpa hover', lepas.puncak.calls, tanpa.puncak.calls);
+/** Sampel per FRAME, bukan union lintas frame. Pertanyaan "pernahkah mobil dan logo tampil
+ *  bersamaan" hanya bisa dijawab oleh daftar objek satu frame — dan justru frame penukaran
+ *  yang ditagih, karena itu tempat bug pemilik-sisa muncul dulu. */
+const awasiBersama = async (titik, durasiMs = 1600) => {
+  const akhir = Date.now() + durasiMs;
+  let tabrakan = 0;
+  const frame = new Set();
+  let i = 0;
+  while (Date.now() < akhir) {
+    await page.mouse.move((titik?.x ?? 8) + (i % 2 ? 2 : -2), titik?.y ?? 8);
+    const m = await bacaMobil();
+    if (m.ada > 0 && m.logo > 0) tabrakan++;
+    if (m.frame !== null) frame.add(m.frame);
+    i++;
+    await new Promise((r) => setTimeout(r, 45));
+  }
+  return { tabrakan, frame: frame.size };
+};
 
-// Reduce-motion: mobil dipasang LEBIH DULU (hover lagi), lalu aba-aba menyala. Urutan ini
-// penting: kalau aba-aba menyala saat mobil belum pernah ada, "tidak ada mobil" juga akan
-// dihasilkan oleh hover yang tidak pernah sampai.
-await page.mouse.move(titik?.x ?? 8, titik?.y ?? 8);
-await tungguSilang('penuh', titik);
+// Melepas pointer dari baris /01 TIDAK mengirim silang ke nol: penggantinya adalah baris diam,
+// dan itu isi keputusan "kotak selalu berisi objek 3D". Yang tetap ditagih: pelepasan tidak
+// boleh meninggalkan dua objek sekaligus, dan anggaran harus pulang ke keadaan diam.
+await page.mouse.move(8, 8);
+const lepas = await sensusSetelah(null);
+console.log(
+  'sf26 pulang',
+  'silang=' + lepas.silang,
+  'aktor=' + JSON.stringify(lepas.aktor),
+  'calls=' + lepas.calls,
+  JSON.stringify(lepas.objek)
+);
+cek('melepas hover kembali ke aktor diam', `${lepas.aktor}/${lepas.ada}/${lepas.logo}`, 'mobil/3/0');
+cek('panggil-lepas kembali ke anggaran keadaan diam', lepas.calls, diamArsip.calls);
+
+// Reduce-motion: mobil dipasang LEBIH DULU (keadaan diam sudah memuatnya), lalu aba-aba
+// menyala. Urutan ini penting: kalau aba-aba menyala saat mobil belum pernah ada, "tidak ada
+// mobil" juga akan dihasilkan oleh hover yang tidak pernah sampai. Dibaca dari sensus yang
+// SETTLE, bukan dari timeout buta — pada swiftshader jalur ini digambar ±2 frame per detik,
+// jadi 1200 ms bisa jatuh di tengah penghalusan dan menuduh kode yang benar.
 await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
-await new Promise((r) => setTimeout(r, 1200));
-const tanpaGerakMobil = await bacaMobil();
+const habisReduce = await tungguSilang('habis', { x: 8, y: 8 });
+const tanpaGerakMobil = await sensusSetelah({ x: 8, y: 8 }, 260);
 console.log('sf26 reduce', 'ada=' + tanpaGerakMobil.ada, 'silang=' + tanpaGerakMobil.silang, JSON.stringify(tanpaGerakMobil.objek));
 cek('reduce-motion menghapus mobil', tanpaGerakMobil.ada, 0);
-// Bacaan 1,2 s di atas bisa saja masih di tengah penghalusan — itu bukan kegagalan, tapi
-// juga bukan bukti. Kartu tidak boleh dibiarkan redup permanen: mobil dilepas, jadi silang
-// harus pulang ke nol dengan sendirinya, tanpa satu pun peristiwa pointer yang
-// membangunkan loop.
-const pulangReduce = await tungguSilang('habis', null);
-console.log('sf26 reduce pulang', 'silang=' + pulangReduce.silang, 'objek=' + JSON.stringify(pulangReduce.objek));
-cek('reduce-motion mengembalikan kartu penuh', (pulangReduce.silang ?? 1) <= 0.001, true);
+cek('reduce-motion menghapus logo', tanpaGerakMobil.logo, 0);
+cek('reduce-motion mematikan sangkar', ada(tanpaGerakMobil.objek, 'sangkar'), false);
+cek('reduce-motion menghapus SEMUA objek ekstra', EKSTRA.filter((n) => ada(tanpaGerakMobil.objek, n)).join('+'), '');
+// Kartu tidak boleh dibiarkan redup permanen: begitu aba-aba menyala silang harus pulang ke
+// nol dan berhenti di sana.
+cek('reduce-motion mengembalikan kartu penuh', (habisReduce.silang ?? 1) <= TETAS_LEPAS, true);
+cek('reduce-motion: calls = objek pada frame yang sama', tanpaGerakMobil.calls === tanpaGerakMobil.jumlahObjek, true);
 await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }]);
-await new Promise((r) => setTimeout(r, 700));
+const pulihReduce = await tungguSilang('penuh', { x: 8, y: 8 });
+console.log('sf26 pulih', 'silang=' + pulihReduce.silang, 'ada=' + pulihReduce.ada, JSON.stringify(pulihReduce.objek));
+cek('aba-aba dicabut: mobil kembali ke tempatnya', `${pulihReduce.aktor}/${pulihReduce.ada}`, 'mobil/3');
+
+// ── 10b. Logo bahasa: baris /02-/05 memanggil objek dari ANGKA, bukan dari hover ──
+// Tiap baris membawa data-bahasa — angka pengukuran yang sama yang menulis metrikKartu.
+// Jadi yang ditagih di sini bukan "ada bentuk", tapi "bentuk yang datang adalah bentuk dari
+// ukuran baris itu": satu objek, satu call, segitiga persis baseline kartu + tris logo, dan
+// id logo sama dengan dataset DOM. Baris tanpa bahasa terukur tidak boleh memudar sama sekali
+// — kasus itu tidak bisa diproduksi browser (kelima baris live terukur semua) dan karenanya
+// diuji di node-side test koreografi, bukan di sini.
+const BARIS_LOGO = [1, 2, 3, 4];
+for (const ke of BARIS_LOGO) {
+  const parkirRow = await cariBabArsip(ke, true);
+  const tRow = parkirRow?.baris ?? null;
+  if (!tRow) {
+    cek(`baris /0${ke + 1} terlihat dari suatu tempat parkir`, false, true);
+    continue;
+  }
+  await page.mouse.move(8, 8);
+  await tungguAktor('mobil', null);
+  // Baseline dibaca di TEMPAT PARKIR YANG SAMA dengan hover-nya, bukan dari kartu murni bab
+  // tengah: pecahan t tempat baris bawah terlihat bisa membangunkan benang rosso (23 segmen
+  // garis, satu call), dan selisih terhadap keadaan lain akan menuduh logo menambah dua call.
+  const sebelumRow = await sensusSetelah(null);
+  await page.mouse.move(tRow.x, tRow.y);
+  const penukar = await awasiBersama(tRow, 1400);
+  const logo = await tungguAktor('bahasa', tRow);
+  const settle = await sensusSetelah(tRow);
+  console.log(
+    `logo /0${ke + 1}`,
+    'data-bahasa=' + JSON.stringify(tRow.bahasa),
+    'parkir=' + (parkirRow.jalan ? 'dalam-perpindahan' : 'kunci-bab'),
+    'aktor=' + JSON.stringify(settle.aktor),
+    'id=' + JSON.stringify(settle.bahasaId),
+    'tris=' + settle.bahasaTri,
+    'calls=' + settle.calls,
+    'tri=' + settle.segitiga,
+    'silang=' + settle.silang,
+    'objek=' + JSON.stringify(settle.objek),
+    'frame=' + penukar.frame
+  );
+  await foto(`12-bab3-logo-${ke + 1}`);
+  cek(`baris /0${ke + 1} punya bahasa terukur di DOM`, !!tRow.bahasa, true);
+  cek(`baris /0${ke + 1} memanggil aktor bahasa`, settle.aktor, 'bahasa');
+  cek(`baris /0${ke + 1}: hovered sampai ke aturan`, settle.hovered, ke);
+  cek(`baris /0${ke + 1} memuat tepat satu objek bahasa-logo`, settle.logo, 1);
+  cek(`baris /0${ke + 1} melepas mobil sebelum logo terpasang`, settle.ada, 0);
+  cek(`baris /0${ke + 1}: satu frame pun tidak memuat keduanya`, penukar.tabrakan, 0);
+  cek(`baris /0${ke + 1}: calls = jumlah objek pada frame yang sama`, settle.calls === settle.jumlahObjek, true);
+  // Tiga call keluar (mobil), satu call masuk (logo). Sangkar tidak ikut berubah karena ia
+  // LineSegments: satu call yang sama di kedua keadaan, nol triangle di keduanya.
+  cek(`baris /0${ke + 1} menukar tiga call mobil dengan satu call logo`, settle.calls - sebelumRow.calls, -2);
+  // Hukum segitiga EKSKLUSIF: selisih terhadap keadaan mobil sebelumnya harus persis bentuk
+  // yang dilaporkan komponennya sendiri, dikurangi mobil. Tidak ada ruang ±, jadi bentuk yang
+  // diam-diam digabung dua material atau diam-diam tidak dibuang akan merah di sini.
+  cek(
+    `baris /0${ke + 1} segitiga = keadaan mobil - mobil + tris logo`,
+    settle.bahasaTri !== null &&
+      settle.segitiga === sebelumRow.segitiga - TRI_MOBIL + settle.bahasaTri,
+    true
+  );
+  cek(`baris /0${ke + 1} segitiga absolut = baseline kartu + tris logo`, settle.segitiga === TRI_KARTU + settle.bahasaTri, true);
+  cek(`baris /0${ke + 1} membawa segitiga dalam anggaran bentuk`, settle.bahasaTri >= 500 && settle.bahasaTri <= 6000, true);
+  // Ini gerbang yang membuktikan "objek datang dari pengukuran": id yang dipakai membangun
+  // bentuk harus sama dengan data-bahasa yang ditulis generator di baris DOM.
+  cek(
+    `baris /0${ke + 1}: bentuk logo sama dengan bahasa terukur`,
+    `${String(settle.bahasaId).toLowerCase()}/${String(tRow.bahasa).toLowerCase()}`,
+    `${String(tRow.bahasa).toLowerCase()}/${String(tRow.bahasa).toLowerCase()}`
+  );
+  cek(`baris /0${ke + 1}: silang dibaca dari angka yang sama`, Math.abs((settle.silang ?? -1) - (settle.bahasaSilang ?? -2)) < 0.002, true);
+  cek(`baris /0${ke + 1} silang pengganti penuh`, (logo.silang ?? settle.silang ?? 0) >= 0.98, true);
+  cek(`baris /0${ke + 1} sangkar tetap hidup bersamanya`, ada(settle.objek, 'sangkar'), true);
+}
+
+// Pulang ke baris /01: logo boleh lepas SETELAH tempatnya diserahkan, dan anggaran harus
+// persis keadaan diam — tidak ada call yang tertinggal dari bentuk yang sudah pergi.
+// Perbandingannya HANYA sah di tempat parkir yang sama dengan pengukuran keadaan diam:
+// baris /05 terlihat dari pecahan di dalam perpindahan, dan di sana benang rosso ikut
+// terpasang (satu call, nol triangle). Menagih `calls` lintas tempat akan menuduh logo
+// meninggalkan call yang sebenarnya milik benang.
+await page.mouse.move(8, 8);
+const pulangLogo = await tungguAktor('mobil', null);
+const parkirPulang = await cariBabArsip();
+const pulangSettle = await sensusSetelah(null);
+cek('pulang: mendarat kembali di kunci bab arsip', `${parkirPulang?.b?.babDari}/${parkirPulang?.b?.t}`, '3/0');
+console.log(
+  'logo pulang',
+  'parkir=' + JSON.stringify(parkirPulang?.fr ?? null),
+  'aktor=' + JSON.stringify(pulangSettle.aktor),
+  'diputuskan=' + JSON.stringify(pulangLogo.aktor),
+  'calls=' + pulangSettle.calls,
+  'tri=' + pulangSettle.segitiga,
+  JSON.stringify(pulangSettle.objek)
+);
+cek('logo lepas saat tempatnya kembali ke /01', `${pulangSettle.logo}/${pulangSettle.ada}`, '0/3');
+cek('pulang dari logo kembali ke anggaran keadaan diam', `${pulangSettle.calls}/${pulangSettle.segitiga}`, `${diamArsip.calls}/${diamArsip.segitiga}`);
+
+// Hukum lepas yang sebenarnya: meninggalkan bab arsip. Di dalam bab silang tidak pernah nol
+// lagi, jadi keberangkatan adalah satu-satunya tempat "objek hanya boleh pergi setelah
+// silang habis" masih bisa diuji. Ujung dokumen dipakai langsung, bukan yRumah(4): di ujung
+// sikap() melaporkan t=1 (bukan t=0) sehingga penanggung kandidat itu akan menyapu seluruh
+// peta gulir untuk kemudian menolak semuanya.
+const yUjung = await page.evaluate(() => Math.round(document.documentElement.scrollHeight - window.innerHeight));
+await parkirY(yUjung);
+const habisPergi = await tungguSilang('habis', { x: 8, y: 8 });
+const pergi = await sensusSetelah({ x: 8, y: 8 });
+console.log('bab pergi', 'bab=' + pergi.bab, 'silang=' + pergi.silang, 'calls=' + pergi.calls, 'tri=' + pergi.segitiga, JSON.stringify(pergi.objek));
+cek('berangkat dari bab arsip: aktor tidak dipanggil', pergi.aktor, null);
+cek('berangkat dari bab arsip menghapus mobil dan logo', pergi.ada + pergi.logo, 0);
+cek('berangkat dari bab arsip mematikan sangkar', ada(pergi.objek, 'sangkar'), false);
+cek('silang habis setelah berangkat', (habisPergi.silang ?? 1) <= TETAS_LEPAS, true);
+cek('anggaran berangkat sama dengan baseline kartu', `${pergi.calls}/${pergi.segitiga}`, `${kartu.calls}/${TRI_KARTU}`);
 await page.mouse.move(8, 8);
 
 // ── 11. Kabur karena jarak (ide 10): potret tajam + salinan ¼-res, tanpa pass pasca-proses ──

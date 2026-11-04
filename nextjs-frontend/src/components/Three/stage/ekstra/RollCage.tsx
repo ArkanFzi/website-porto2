@@ -1,17 +1,18 @@
 "use client";
 
-/** RollCage: sangkar kawat dua belas sisi yang membingkai kartu potret saat satu baris
- *  arsip di-hover.
+/** RollCage: sangkar kawat dua belas sisi yang membingkai objek yang menempati kotak
+ *  pada bab arsip.
  *
- *  Satu `<lineSegments>` = satu draw call, dan objeknya TIDAK ADA sama sekali saat tidak
- *  ada baris yang di-hover. Kanvas berjalan pada frameloop "demand" dan berhenti total
- *  setelah pengunjung diam, jadi objek tambahan yang hidup terus akan menghapus nol-frame
- *  itu; sangkar harus ikut mati bersama hover-nya. */
-import React, { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+ *  Satu `<lineSegments>` = satu draw call. Hukum hidupnya bukan hover, melainkan silang
+ *  pengganti (`SILANG_MOBIL`): selama kotak dipegang oleh mobil atau logo, sangkarnya
+ *  ikut; begitu silang habis, keduanya hilang bersama. Kanvas berjalan pada frameloop
+ *  "demand" dan berhenti total setelah pengunjung diam, jadi sangkar tidak boleh hidup
+ *  terus-menerus di luar bab arsip — angka penentunya satu sumber dengan isinya. */
+import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import type { AktorProps } from "../AktorPotret";
-import { RASIO_POTRET, muatKartu } from "../chiaroscuroMaterial";
+import { RASIO_POTRET, SILANG_MOBIL, muatKartu } from "../chiaroscuroMaterial";
 import { sikap } from "../koreografi";
 import { usePortalRegistry } from "../usePortalRegistry";
 
@@ -19,6 +20,9 @@ const WARNA_KAWAT = "#8A8A8A";
 const OPASITAS = 0.9;
 /** Kedalaman sangkar dalam satuan dunia — sumbu Z tidak ikut diturunkan dari portal. */
 const KEDALAMAN = 0.7;
+/** Ambang yang sama dengan pemakai SILANG_MOBIL yang lain: di bawah ini tidak ada pixel
+ *  pengganti yang tersisa, jadi bingkai tidak ada gunanya lagi. */
+const TETAS = 0.001;
 
 // MediaQueryList dibuat sekali di module scope, pola yang sama dengan
 // GlobalEditorialCanvas. Sangkar adalah gerakan yang mengikuti pointer, jadi ia tidak
@@ -34,9 +38,11 @@ const dengarKurangiGerak = (ubah: () => void) => {
 const bacaKurangiGerak = () => mediaKurangiGerak().matches;
 const bacaKurangiGerakSaatSSR = () => false;
 
-export const RollCage: React.FC<AktorProps> = ({ scrollProgressRef, hoveredProject }) => {
+export const RollCage: React.FC<AktorProps> = ({ scrollProgressRef }) => {
   const garisRef = useRef<THREE.LineSegments>(null);
-  const { size, viewport, camera } = useThree();
+  const hidupRef = useRef(false);
+  const [terpasang, setTerpasang] = useState(false);
+  const { size, viewport, camera, invalidate } = useThree();
   const portal = usePortalRegistry();
   const kurangiGerak = useSyncExternalStore(
     dengarKurangiGerak,
@@ -63,12 +69,23 @@ export const RollCage: React.FC<AktorProps> = ({ scrollProgressRef, hoveredProje
   );
 
   useFrame(() => {
-    const garis = garisRef.current;
-    if (!garis) return;
-
     const p = Math.max(0, Math.min(1, scrollProgressRef.current));
     const k = sikap(p, portal.current);
     if (!k) return;
+
+    // Bingkai mengikuti isinya, bukan pointer: `SILANG_MOBIL` adalah angka yang menulis
+    // alpha pengganti, jadi selama angkanya di atas nol ada benda yang perlu dibingkai.
+    const hidup = !kurangiGerak && SILANG_MOBIL.value > TETAS;
+    if (hidup !== hidupRef.current) {
+      hidupRef.current = hidup;
+      setTerpasang(hidup);
+      // Frame yang menulis sensus bisa jadi frame yang sama dengan pemasangan ini; tanpa
+      // permintaan eksplisit keadaan "sangkar sudah ada" tidak pernah tergambar.
+      invalidate();
+    }
+
+    const garis = garisRef.current;
+    if (!garis) return;
 
     const dpp = viewport.width / size.width;
     const camZ = camera.position.z;
@@ -88,7 +105,7 @@ export const RollCage: React.FC<AktorProps> = ({ scrollProgressRef, hoveredProje
     garis.rotation.y = k.rot;
   });
 
-  if (kurangiGerak || hoveredProject === null) return null;
+  if (!terpasang) return null;
 
   return (
     <lineSegments ref={garisRef} name="sangkar" geometry={kawat}>

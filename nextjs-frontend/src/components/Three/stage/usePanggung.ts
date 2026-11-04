@@ -24,7 +24,7 @@ import {
   SAPU_IRIS,
   SILANG_MOBIL,
 } from "./chiaroscuroMaterial";
-import { sikap, penggantiDipanggil, type BahasaBaris, type Sikap } from "./koreografi";
+import { sikap, aktorDipanggil, penggantiDipanggil, type AktorPanggung, type BahasaBaris, type Sikap } from "./koreografi";
 import {
   tulisParalaksTipografi,
   useParalaksTipografi,
@@ -144,6 +144,13 @@ export interface PembacaanPanggung {
   /** Dimensi salinan yang jadi sumber kabur: [lebar, tinggi, lebarSumber, tinggiSumber].
    *  Keempatnya nol kalau salinannya tidak berhasil dibangun, dan kabur akan ikut nol. */
   kaburSalinan: [number, number, number, number];
+  /** Baris arsip yang sedang di-hover pointer; null kalau tidak ada. */
+  hovered: number | null;
+  /** Putusan `aktorDipanggil` untuk keadaan ini — satu-satunya angka yang boleh membuat
+   *  kotak menyerahkan tempatnya ke objek 3D. Verifier membandingkannya dengan
+   *  `data-bahasa` di DOM baris: itu bukti bahwa objek yang dilukis datang dari angka
+   *  pengukuran, bukan dari karangan. */
+  aktor: AktorPanggung | null;
 }
 
 const bundar = (n: number) => Math.round(n * 1e4) / 1e4;
@@ -168,6 +175,8 @@ interface BacaanTambahan {
   mobil: number;
   kabur: number;
   kaburSalinan: [number, number, number, number];
+  hovered: number | null;
+  aktor: AktorPanggung | null;
 }
 
 const tulisPanggungDebug = (
@@ -190,6 +199,8 @@ const tulisPanggungDebug = (
     mobil,
     kabur,
     kaburSalinan,
+    hovered,
+    aktor,
   } = tambahan;
   const jendela = window as unknown as { __panggung?: PembacaanPanggung };
   jendela.__panggung = {
@@ -217,6 +228,8 @@ const tulisPanggungDebug = (
     mobil: bundar(mobil),
     kabur: bundar(kabur),
     kaburSalinan,
+    hovered,
+    aktor,
   };
 };
 
@@ -733,6 +746,8 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
         wipe,
         kabur: kaburTertinggi,
         kaburSalinan: salinanUkuran,
+        hovered: hoveredProject,
+        aktor: aktorDipanggil(k.babDari, hoveredProject, kurangiGerak, bahasaBaris),
       });
     }
   });

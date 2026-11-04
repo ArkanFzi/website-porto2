@@ -11,7 +11,8 @@
  *  jumlah segitiga antar muat. */
 import * as THREE from "three";
 import { SVGLoader } from "three/addons/loaders/SVGLoader.js";
-import { LOGO_BAHASA, type BahasaId } from "@/data/logoBahasa";
+import { PATH_BAHASA } from "@/data/logoPath";
+import type { BahasaId } from "@/data/logoBahasa";
 
 /** Pecahan contour yang dibagi dua ujung kurva. 4 menghasilkan 916–1972 segitiga per
  *  logo (terukur di swiftshader, lihat docs/verify/ekstra-probe.mjs seksi 10b) — cukup
@@ -52,7 +53,7 @@ const bentuk2D = (logo: { viewBox: string; d: string }): THREE.Shape[] => {
 };
 
 const bangun = (id: BahasaId): THREE.BufferGeometry | null => {
-  const logo = LOGO_BAHASA[id];
+  const logo = PATH_BAHASA[id];
 
   // Tapak 2D diukur dari titik hasil teselasi (extractPoints), bukan dari kurva asalnya:
   // itu titik-titik yang benar-benar dipakai ExtrudeGeometry, jadi angka penormilan dan

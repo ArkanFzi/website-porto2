@@ -40,10 +40,19 @@ interface StripProps {
   /** Asal-usul angka: apa yang diukur, berapa sampel, dan apa yang tidak termasuk. Null untuk
    *  kartu yang memang tidak punya alat ukur — paragraf lama tetap tercetak di sana. */
   catatanUkur?: string | null;
+  /** Seluruh peringkat bahasa yang terukur di repo ini, bukan hanya yang menang. Null berarti
+   *  barisnya belum terukur bahasanya (artefak gelap), dan tidak ada kalimat yang boleh
+   *  dikarang untuk mengisi tempatnya. */
+  peringkatBahasa?: string | null;
   onClose: () => void;
 }
 
-export const CaseStudyStrip: React.FC<StripProps> = ({ caseStudy, catatanUkur, onClose }) => {
+export const CaseStudyStrip: React.FC<StripProps> = ({
+  caseStudy,
+  catatanUkur,
+  peringkatBahasa,
+  onClose,
+}) => {
   const bingkai = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -119,6 +128,14 @@ export const CaseStudyStrip: React.FC<StripProps> = ({ caseStudy, catatanUkur, o
           <span className="text-sm font-bold text-[#D41E12]">{caseStudy.concurrencyRps}</span>
         </div>
       </div>
+      {/* Peringkat bahasa ditulis berbarengan dengan catatan angka: klaim "bahasa dominan"
+          hanya bisa dibaca kalau yang kalah ikut tercetak. */}
+      {peringkatBahasa && (
+        <p className="font-mono text-[10px] leading-relaxed text-white/60 mb-3" data-bahasa-peringkat>
+          BAHASA TERUKUR // {peringkatBahasa}
+        </p>
+      )}
+
       <p className="font-mono text-[10px] leading-relaxed text-white/40 mb-6">
         {catatanUkur ??
           "Both figures are measured on the project itself, sample size written inline. Where there is no measurement there is no number."}

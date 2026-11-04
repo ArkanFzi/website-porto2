@@ -9,6 +9,7 @@ import { DURASI, EASE } from "@/lib/motion";
 import { CaseStudyStrip, CaseStudyData } from "@/components/UI/CaseStudyStrip";
 import { barisKartu, catatanUkur, selUkur, BELUM_TERUKUR, type IndexKartu, type UkurPerKartu } from "@/lib/ukurFormat";
 import MeshPortal from "./MeshPortal";
+import type { BahasaBaris } from "@/components/Three/stage/koreografi";
 import audioEngine from "@/lib/audioEngine";
 
 interface ArchivesProps {
@@ -16,7 +17,14 @@ interface ArchivesProps {
   /** Angka terukur per kartu, sudah disaring umurnya di server (lihat src/lib/ukurFormat.ts).
    *  null = artefaknya tua atau belum ada, dan kartu tercetak "BELUM TERUKUR". */
   metrikKartu?: UkurPerKartu | null;
+  /** Bahasa dominan yang terukur per baris (indeks = indeks baris). Ditulis ke `data-bahasa`
+   *  pada baris supaya verifier bisa membandingkan objek 3D yang dilukis dengan angka
+   *  pengukuran yang diklaim menjadi sumbernya; tanpa atribut ini klaim "objeknya datang dari
+   *  pengukuran" tidak bisa dibuktikan dari browser. */
+  bahasaBaris?: BahasaBaris;
   onHoverProject: (index: number | null) => void;
+  /** Kalimat peringkat bahasa per baris, dari artefak ukur yang sama dengan `bahasaBaris`. */
+  peringkatBaris?: (string | null)[];
   hoveredProject: number | null;
 }
 
@@ -195,7 +203,9 @@ const FEATURED_ARCHIVES: ArchiveItem[] = [
 export const ChapterArchives: React.FC<ArchivesProps> = ({
   repos,
   metrikKartu,
+  bahasaBaris,
   onHoverProject,
+  peringkatBaris,
   hoveredProject,
 }) => {
   const { mode } = usePortfolioMode();
@@ -309,6 +319,7 @@ export const ChapterArchives: React.FC<ArchivesProps> = ({
                   key={item.index}
                   caseStudy={{ ...item.caseStudy, ...(selUkur(item.index, metrikKartu) ?? {}) }}
                   catatanUkur={catatanUkur(item.index, metrikKartu)}
+                  peringkatBahasa={peringkatBaris?.[idx] ?? null}
                   onClose={tutupSpec}
                 />
               );
@@ -335,6 +346,7 @@ export const ChapterArchives: React.FC<ArchivesProps> = ({
                   isHovered ? "bg-white/[0.03] pl-4 sm:pl-6" : "pl-0"
                 }`}
                 data-magnetic
+                data-bahasa={bahasaBaris?.[idx] ?? undefined}
               >
                 {/* Active Left Indicator Bar */}
                 <span

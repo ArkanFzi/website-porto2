@@ -54,6 +54,11 @@ export function saringArtefak(
  *  dari daftar, bukan dari penomoran manual. */
 const BARIS_KARTU: IndexKartu[] = ["01", "02", "03", "04", "05"];
 
+const ribu = (n: number) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+const desimal = (n: number, d = 1) => n.toFixed(d).replace(".", ",");
+const tanggal = (iso: string) =>
+  new Date(iso).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+
 export function bahasaPerBaris(
   artefak: { bahasa: MetrikKartu["bahasa"] } | null
 ): (string | null)[] {
@@ -61,10 +66,33 @@ export function bahasaPerBaris(
   return BARIS_KARTU.map((i) => artefak.bahasa[i]?.bahasa ?? null);
 }
 
-const ribu = (n: number) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-const desimal = (n: number, d = 1) => n.toFixed(d).replace(".", ",");
-const tanggal = (iso: string) =>
-  new Date(iso).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+/** Satu kalimat per baris arsip: SELURUH peringkat bahasa terukur, bukan hanya yang menang.
+ *  Pemecahannya disengaja: /02 unggul 1,20× atas JavaScript dan angka itu hilang kalau yang
+ *  ditulis cuma kata "TypeScript" — padahal ketipisan margin adalah bagian dari klaim.
+ *  Formatnya hidup di modul ini, sama seperti angka kartu yang lain, supaya strip dan alat
+ *  ukur tidak bisa berbeda kalimat. */
+function kalimatBahasa(u: MetrikKartu["bahasa"][IndexKartu]): string | null {
+  if (!u) return null;
+  const sisa = u.peringkat.slice(1);
+  const runnerUp = sisa.length
+    ? ` · lalu ${sisa.map((p) => `${p.bahasa} ${ribu(p.byte)} B`).join(" · ")}`
+    : " · tidak ada bahasa lain yang terklasifikasi";
+  const unggul = sisa.length
+    ? ` · unggul ${desimal(u.byte / Math.max(sisa[0].byte, 1), 2)}× atas ${sisa[0].bahasa}`
+    : "";
+  return (
+    `${u.bahasa} ${ribu(u.byte)} B pada ${u.berkas} berkas${runnerUp}` +
+    `${unggul} · korpus ${u.korpus === "git" ? "ter-commit" : "terpilih"} ` +
+    `${u.jumlahBerkas} berkas / ${ribu(u.byteTotal)} B`
+  );
+}
+
+export function peringkatPerBaris(
+  artefak: { bahasa: MetrikKartu["bahasa"] } | null
+): (string | null)[] {
+  if (!artefak) return BARIS_KARTU.map(() => null);
+  return BARIS_KARTU.map((i) => kalimatBahasa(artefak.bahasa[i]));
+}
 
 /** Nama pendek dari string WEBGL_debug_renderer_info yang panjangnya tidak muat di kartu.
  *  String utuh tetap ikut di strip SPEC, jadi ini hanya label. */

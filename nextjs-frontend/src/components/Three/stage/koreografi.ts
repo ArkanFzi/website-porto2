@@ -10,6 +10,13 @@
  * memakai `t = 1` sehingga `campur(rotDari, rotKe)` selalu jatuh ke `rotKe` = 0.
  * Akibatnya kartu selalu lurus saat diam dan kemiringannya hanya hidup di tengah
  * perjalanan — itu direplikasi di sini lewat `miring`, bukan lewat sikap diam. */
+// Relative + ekstensi eksplisit, bukan alias "@/data/...": modul ini diimpor sebagai NILAI
+// (bukan hanya tipe) dan jalannya ke logoBahasa harus bisa dibaca Node. Next 16 memuat graph
+// server lewat resolver ESM bawaan Node — yang tidak mengenal alias dari tsconfig — dan
+// `node --test` mengadili aturan ini langsung; keduanya gagal dengan ERR_MODULE_NOT_FOUND
+// pada "@/data" (terukur: halaman 500 di dev). Komponen yang hanya dimuat browser boleh
+// tetap menulis "@/data/logoBahasa".
+import { logoUntuk } from "../../../data/logoBahasa.ts";
 import type { PortalKotak } from "./usePortalRegistry";
 
 /** Bentuk kurva perpindahan. Nama dipinjam dari token gerak, tapi ini fungsi murahan
@@ -33,20 +40,28 @@ export type AktorPanggung = "mobil" | "bahasa";
  *  Ini angka hasil ukur, bukan karangan: tanpa baris yang terukur tidak ada bentuk. */
 export type BahasaBaris = readonly (string | null)[];
 
-/** Baris yang mengisi kotak saat TIDAK ada baris yang di-hover. `null` berarti tidak ada
- *  pengganti sama sekali dan potret tetap di tempatnya — keadaan diam hari ini. Mengganti
- *  angka ini dengan BARIS_FERRARI adalah satu baris perubahan yang memindahkan seluruh
- *  keadaan diam bab arsip dari potret ke objek 3D, dan itu wajib disertai tulis-ulang
- *  gerbang seksi 10 docs/verify/ekstra-probe.mjs, karena gerbang itu menguji keadaan diam. */
-export const BARIS_DIAM: number | null = null;
+/** Baris yang mengisi kotak saat TIDAK ada baris yang di-hover: baris Ferrari, jadi keadaan
+ *  diam bab arsip selalu punya objek tiga dimensi dan potret tidak pernah kembali ke sana
+ *  (kecuali saat pengunjung minta gerak dikurangi — `kurangiGerak` di atas menahan
+ *  seluruhnya, dan itu pilihan sadar: aturan "tanpa animasi" menang atas aturan "selalu
+ *  ada objek"). Mengubah angka ini kembali ke `null` memindahkan keadaan diam ke potret dan
+ *  itu wajib disertai tulis-ulang gerbang keadaan diam di docs/verify/ekstra-probe.mjs,
+ *  karena gerbang itu menguji angka ini. */
+export const BARIS_DIAM: number | null = BARIS_FERRARI;
 
 /** Putusan tunggal: baris mana memanggil aktor mana. `mobilDipanggil` yang lama adalah
  *  fungsi ini dengan satu cabang dihapus. Urutannya penting: baris 00 selalu mobil,
- *  berapa pun bahasa yang terukur di sana, supaya satu objek tidak pernah rebutan. */
+ *  berapa pun bahasa yang terukur di sana, supaya satu objek tidak pernah rebutan.
+ *
+ *  "Terukur" bukan syarat yang cukup — yang bersyarat adalah bahasa yang PUNYA BENTUK.
+ *  Generator mengeluarkan label yang whitelist logo tidak kenal (hari ini: `Bash`, yang
+ *  dominan di beberapa korpus sebagai runner-up), dan `AktorBahasa` mengembalikan null
+ *  untuk itu. Kalau aturan tetap menjawab "bahasa", kartu menyerahkan tempatnya untuk
+ *  objek yang tidak akan pernah datang: kotak kosong dengan sangkar di sekelilingnya. */
 export const aktorUntukBaris = (baris: number | null, bahasa: BahasaBaris): AktorPanggung | null => {
   if (baris === null) return null;
   if (baris === BARIS_FERRARI) return "mobil";
-  return bahasa[baris] ? "bahasa" : null;
+  return bahasa[baris] && logoUntuk(bahasa[baris]) ? "bahasa" : null;
 };
 
 /** Satu aturan, tiga pemakai — usePanggung (kartu mundur), AktorSF26 (mobil terpasang),

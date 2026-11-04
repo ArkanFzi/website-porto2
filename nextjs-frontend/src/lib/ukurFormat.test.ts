@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { saringMetrik, barisKartu } from "./ukurFormat.ts";
+import { peringkatPerBaris, saringMetrik, barisKartu } from "./ukurFormat.ts";
 import { BATAS_USIA_HARI } from "../data/metrikKartu.ts";
+import { METRIK_KARTU } from "../data/metrikKartu.ts";
 import type { MetrikKartu } from "../data/metrikKartu.ts";
 
 // `saringMetrik` adalah satu-satunya gerbang antara artefak ukur dan angka yang tercetak di
@@ -57,4 +58,46 @@ describe("stempel yang tidak terbaca tidak pernah meluluskan angka", () => {
       assert.equal(saringMetrik(kartu(stempel), SAI), null);
     });
   }
+});
+
+describe("strip menyebut SELURUH peringkat bahasa, bukan hanya yang menang", () => {
+  const BARIS = ["01", "02", "03", "04", "05"] as const;
+
+  it("artefak gelap membuat kalimatnya hilang, bukan kosong", () => {
+    assert.deepEqual(peringkatPerBaris(null), [null, null, null, null, null]);
+  });
+
+  it("kalimatnya memuat pemenang, runner-up, dan rasio yang sama dengan artefaknya", () => {
+    const kalimat = peringkatPerBaris({ bahasa: METRIK_KARTU.bahasa });
+    for (const [i, indeks] of BARIS.entries()) {
+      const u = METRIK_KARTU.bahasa[indeks];
+      if (!u) {
+        assert.equal(kalimat[i], null, `${indeks}: tidak terukur tapi kalimatnya terkarang`);
+        continue;
+      }
+      const k = kalimat[i]!;
+      assert.ok(k.startsWith(`${u.bahasa} `), `${indeks}: harus dimulai dengan bahasa dominan`);
+      for (const p of u.peringkat.slice(1)) {
+        assert.ok(k.includes(p.bahasa), `${indeks}: ${p.bahasa} tidak ikut tercetak`);
+      }
+      if (u.peringkat.length > 1) {
+        const rasio = (u.byte / u.peringkat[1].byte).toFixed(2).replace(".", ",");
+        assert.ok(k.includes(`unggul ${rasio}× atas ${u.peringkat[1].bahasa}`), `${indeks}: ${k}`);
+      } else {
+        assert.ok(!k.includes("unggul"), `${indeks}: rasio tanpa pembanding`);
+        assert.ok(k.includes("tidak ada bahasa lain yang terklasifikasi"), `${indeks}: ${k}`);
+      }
+      assert.ok(k.includes(`${u.jumlahBerkas} berkas`), `${indeks}: korpus tidak disebut`);
+    }
+  });
+
+  it("keunggulan tipis /02 tetap terbaca sebagai angka", () => {
+    // Alasan baris ini ada: "TypeScript" saja menyamarkan bahwa Pickertime hanya unggul
+    // tipis atas JavaScript. Yang diuji bukan nilainya (itu data), tapi bahwa selisihnya
+    // ikut tercetak.
+    const u = METRIK_KARTU.bahasa["02"];
+    assert.ok(u && u.peringkat.length > 1, "artefak /02 berubah bentuk");
+    const k = peringkatPerBaris({ bahasa: METRIK_KARTU.bahasa })[1]!;
+    assert.match(k, /unggul \d+,\d\d× atas /);
+  });
 });

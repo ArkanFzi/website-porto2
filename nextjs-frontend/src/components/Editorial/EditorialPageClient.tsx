@@ -65,6 +65,9 @@ interface PageClientProps {
    *  server bersama `metrikKartu`. Ini yang menentukan objek 3D mana yang menempati
    *  kotak; null pada sebuah indeks berarti baris itu tidak punya objek. */
   bahasaBaris: BahasaBaris;
+  /** Kalimat peringkat bahasa per baris, dibentuk di ukurFormat dari artefak yang sama;
+   *  null pada sebuah indeks berarti baris itu belum terukur bahasa sama sekali. */
+  peringkatBaris: (string | null)[];
 }
 
 const EditorialInner: React.FC<PageClientProps> = ({
@@ -74,6 +77,7 @@ const EditorialInner: React.FC<PageClientProps> = ({
   experiences,
   metrikKartu,
   bahasaBaris,
+  peringkatBaris,
 }) => {
   const { scrollProgressRef, scrollVelocityRef, scrollToChapter } = useScrollData();
   const [hoveredProject, setHoveredProject] = useState<number | null>(null);
@@ -114,6 +118,8 @@ const EditorialInner: React.FC<PageClientProps> = ({
         <ChapterArchives
           repos={repos}
           metrikKartu={metrikKartu}
+          bahasaBaris={bahasaBaris}
+          peringkatBaris={peringkatBaris}
           hoveredProject={hoveredProject}
           onHoverProject={setHoveredProject}
         />
