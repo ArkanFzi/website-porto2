@@ -2,8 +2,8 @@ import Link from "next/link";
 
 const links = [
   { label: "HOME", href: "/" },
-  { label: "DOSSIER", href: "/dossier" },
-  { label: "CONTACT", href: "/#contact" },
+  { label: "DOSSIER [PDF]", href: "/api/cv" },
+  { label: "CONTACT", href: "/#chapter-04" },
 ];
 
 export default function NotFound() {
@@ -12,7 +12,7 @@ export default function NotFound() {
       className="min-h-[100svh] flex flex-col items-center justify-center px-6 text-center"
       style={{ color: "var(--fg)", backgroundColor: "var(--bg)" }}
     >
-      <p className="text-micro uppercase tracking-[0.4em] text-accent-primary" style={{ fontFamily: "var(--f-sans)" }}>
+      <p className="text-micro uppercase tracking-[0.4em] text-rosso" style={{ fontFamily: "var(--f-sans)" }}>
         404
       </p>
 
@@ -20,7 +20,7 @@ export default function NotFound() {
         This page doesn&apos;t exist
       </h1>
 
-      <p className="text-body leading-[1.8] text-white/60 mt-6 max-w-md" style={{ fontFamily: "var(--f-sans)" }}>
+      <p className="text-body leading-[1.8] text-titanium mt-6 max-w-md" style={{ fontFamily: "var(--f-sans)" }}>
         The address you followed isn&apos;t part of this portfolio. Everything worth reading lives on the main page
         or in the dossier.
       </p>
@@ -30,7 +30,7 @@ export default function NotFound() {
           <Link
             key={l.href}
             href={l.href}
-            className="text-label uppercase tracking-[0.25em] text-white/70 hover:text-accent-primary transition-colors"
+            className="text-label uppercase tracking-[0.25em] text-obsidian/70 hover:text-rosso transition-colors"
             style={{ fontFamily: "var(--f-sans)" }}
           >
             {l.label}

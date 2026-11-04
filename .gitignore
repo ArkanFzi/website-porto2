@@ -8,6 +8,7 @@
 *.env
 .env.local
 .vscode/
+.worktrees/
 
 ##############################
 # NODE.JS / NEXT.JS IGNORE (nextjs-frontend)

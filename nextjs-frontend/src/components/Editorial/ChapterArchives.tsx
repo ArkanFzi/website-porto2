@@ -1,0 +1,438 @@
+"use client";
+
+import React, { useCallback, useState } from "react";
+import { ArrowUpRight } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import type { RepoBerlian } from "@/lib/server/github";
+import { usePortfolioMode } from "@/context/PortfolioModeContext";
+import { DURASI, EASE } from "@/lib/motion";
+import { CaseStudyStrip, CaseStudyData } from "@/components/UI/CaseStudyStrip";
+import { barisKartu, catatanUkur, selUkur, BELUM_TERUKUR, type IndexKartu, type UkurPerKartu } from "@/lib/ukurFormat";
+import MeshPortal from "./MeshPortal";
+import type { BahasaBaris } from "@/components/Three/stage/koreografi";
+import audioEngine from "@/lib/audioEngine";
+
+interface ArchivesProps {
+  repos?: RepoBerlian[];
+  /** Angka terukur per kartu, sudah disaring umurnya di server (lihat src/lib/ukurFormat.ts).
+   *  null = artefaknya tua atau belum ada, dan kartu tercetak "BELUM TERUKUR". */
+  metrikKartu?: UkurPerKartu | null;
+  /** Bahasa dominan yang terukur per baris (indeks = indeks baris). Ditulis ke `data-bahasa`
+   *  pada baris supaya verifier bisa membandingkan objek 3D yang dilukis dengan angka
+   *  pengukuran yang diklaim menjadi sumbernya; tanpa atribut ini klaim "objeknya datang dari
+   *  pengukuran" tidak bisa dibuktikan dari browser. */
+  bahasaBaris?: BahasaBaris;
+  onHoverProject: (index: number | null) => void;
+  /** Kalimat peringkat bahasa per baris, dari artefak ukur yang sama dengan `bahasaBaris`. */
+  peringkatBaris?: (string | null)[];
+  hoveredProject: number | null;
+}
+
+/** Lebar kolom baca saat sebuah spesifikasi terbuka. SATU angka untuk dua pemakai:
+ *  `max-width` isi bab dan tepi kiri portal bab 3 (`calc(3rem + var(--strip-lebar) + 3rem)`),
+ *  jadi kartu yang melebar tidak mungkin menutupi stripnya sendiri. Dipakai hanya dari
+ *  `xl` ke atas: di bawah itu kolom tidak boleh dipersempit (baris daftar menahan
+ *  `md:flex-nowrap` dan sudah meluber di 491px), dan strip menutup kartunya sendiri
+ *  dengan latar papannya. */
+const STRIP_LEBAR = "min(700px, 48vw)";
+
+/** Portal tertutup = ceruk di kanan papan. Portal terbuka = ceruk yang sama, tapi melebar
+ *  ke kiri sampai kolom baca menyerahkan sisanya (xl), atau melebar ke kanan dan ke bawah
+ *  di belakang panel strip (di bawah xl). */
+const PORTAL_TUTUP =
+  "left-[56vw] top-[20vh] h-[60vh] w-[23vw] xl:left-[calc(3rem+1000px+3rem)] xl:right-6 xl:w-auto";
+const PORTAL_BUKA =
+  "left-[56vw] top-[14vh] h-[72vh] w-[40vw] xl:left-[calc(3rem+var(--strip-lebar)+3rem)] xl:right-6 xl:w-auto xl:top-[16vh] xl:h-[68vh]";
+
+/** Kelas kolom baca saat strip terbuka — angka yang sama dengan tepi kiri portal di atas,
+ *  dan `xl:mx-0` yang sudah ada di kelas pembungkus membuat keduanya terukur dari tepi
+ *  yang sama. */
+const KOLOM_BUKA = "xl:max-w-[var(--strip-lebar)]";
+
+interface ArchiveItem {
+  /** Kunci ke artefak ukur; ditahan sebagai literal supaya kartu tanpa cabang formatter tidak
+   *  bisa lolos typecheck. */
+  index: IndexKartu;
+  name: string;
+  title: string;
+  url: string;
+  desc: string;
+  starsFallback: string;
+  // Engineer mode fields
+  engineerCategory: string;
+  engineerStack: string;
+  /** Tidak ada lagi `engineerMetric` di sini: dulu field ini tempat mengetik "4.170 QUERIES
+   *  TERUKUR" dan "60 FPS @1440×900", dan angka itu membeku pada hari terakhir seseorang
+   *  mengukur. Yang tercetak sekarang dihitung tools/ci/ukur-kartu.mjs dari artefak
+   *  pengukuran nyata dan lewat barisKartu() — lihat src/data/metrikKartu.ts. */
+  // Creator mode fields
+  creatorCategory: string;
+  creatorCraft: string;
+  creatorTag: string;
+  caseStudy: CaseStudyData;
+}
+
+const FEATURED_ARCHIVES: ArchiveItem[] = [
+  {
+    index: "01",
+    name: "ferrari-ubuntu",
+    title: "Ferrari Ubuntu Architecture",
+    url: "https://github.com/ArkanFzi/ferrari-ubuntu",
+    desc: "Six GNOME Shell 46 extensions plus a GDM theme and Plymouth splash that restyle Ubuntu 24.04 in Ferrari livery — GJS and shell CSS, not a GTK or systemd stack.",
+    starsFallback: "OPEN SOURCE",
+    engineerCategory: "GNOME SHELL EXTENSION SUITE",
+    engineerStack: "GJS / ST-CLUTTER / DCONF / DBUS",
+    creatorCategory: "BESPOKE WORKSTATION UI",
+    creatorCraft: "SHELL CSS OVERRIDE • MONZA RED AESTHETICS",
+    creatorTag: "SPATIAL DESKTOP",
+    caseStudy: {
+      index: "01",
+      name: "ferrari-ubuntu",
+      title: "Ferrari Ubuntu Shell Extension Suite",
+      url: "https://github.com/ArkanFzi/ferrari-ubuntu",
+      desc: "Full desktop look-and-feel shipped as own code: noir-island, noir-rail, noir-cluster, noir-clock, noir-startlights and noir-telemetry, plus a dconf profile, shell CSS overrides, GDM resource and Plymouth splash.",
+      architecture: "GJS extensions running inside the gnome-shell process on the St/Clutter scene graph; state through gsettings/dconf schemas and D-Bus signals for media and battery. Wayland cannot restart the shell, so JS changes need a session reload.",
+      databaseSchema: ["extensions/noir-island@arkan/extension.js", "settings/noir.dconf", "theme/overrides/gnome-shell"],
+      latencyP99: "n/a — in-process, no IPC",
+      concurrencyRps: BELUM_TERUKUR,
+      stack: ["Ubuntu 24.04 LTS", "GNOME Shell 46", "GJS", "D-Bus / gsettings", "Wayland"],
+    },
+  },
+  {
+    index: "02",
+    name: "pickertime",
+    title: "Pickertime Gemini AI Engine",
+    url: "https://github.com/ArkanFzi/pickertime",
+    desc: "AI-native meeting scheduler built as an Expo/React Native app on PocketBase, with a server-side Gemini proxy hook and a per-account request limiter.",
+    starsFallback: "OPEN SOURCE",
+    engineerCategory: "GENERATIVE AI & MOBILE BACKEND",
+    engineerStack: "EXPO 54 / POCKETBASE / TYPESCRIPT",
+    creatorCategory: "GENERATIVE AI EXPERIENCE",
+    creatorCraft: "NATURAL CONVERSATION • FLUID GENERATIVE UI",
+    creatorTag: "AI EXPERIENCE",
+    caseStudy: {
+      index: "02",
+      name: "pickertime",
+      title: "Pickertime Gemini Scheduler on PocketBase",
+      url: "https://github.com/ArkanFzi/pickertime",
+      desc: "Meeting intelligence converting messy multi-timezone conversational chat logs into structured calendar slots through Gemini 3.5 Flash-Lite, called from a PocketBase JS hook rather than the client.",
+      architecture: "Expo SDK 54 client + PocketBase backend. pb_hooks/ai_proxy.pb.js pins the model name, requests structured JSON output, enforces a 10 request/min fixed window per account and streams task updates over SSE (3–6 ms measured).",
+      databaseSchema: ["Tasks", "Focus_Sessions", "Workspace_Events", "Profiles"],
+      latencyP99: "tidak diukur — tidak ada artefak waktu di repo ini",
+      concurrencyRps: BELUM_TERUKUR,
+      stack: ["Expo SDK 54", "React Native", "PocketBase", "Gemini 3.5 Flash-Lite", "TypeScript"],
+    },
+  },
+  {
+    index: "03",
+    name: "graphify-devkit",
+    title: "Graphify DevKit — Guardrail Layer",
+    url: "https://github.com/ArkanFzi/graphify-devkit",
+    desc: "Shell and Python tooling around the graphify AST engine: post-commit graph refresh, blast-radius gate for AI coding agents, ChromaDB sync and a live topology viewer.",
+    starsFallback: "OPEN SOURCE",
+    engineerCategory: "AGENT GUARDRAILS & GRAPH OPS",
+    engineerStack: "BASH / PYTHON / CHROMADB / GIT HOOKS",
+    creatorCategory: "CODEBASE KNOWLEDGE GRAPH",
+    creatorCraft: "INTERACTIVE TOPOLOGY • GOD NODE MAPPING",
+    creatorTag: "DATA VISUALIZATION",
+    caseStudy: {
+      index: "03",
+      name: "graphify-devkit",
+      title: "Graphify DevKit — Ops Layer over an Upstream AST Engine",
+      url: "https://github.com/ArkanFzi/graphify-devkit",
+      desc: "Guardrails that keep AI coding agents honest on large PHP monoliths: the dependency graph re-extracts on every commit, blast radius is reported before an edit, and results stay reviewable offline.",
+      architecture: "Parsing and graph analysis are done by the upstream graphifyy engine (Tree-Sitter based, by Graphify-Labs). This repo adds the post-commit hook, a background worker, a ChromaDB sync for embeddings and a stdlib HTTP server feeding the viewer.",
+      databaseSchema: ["bin/graphify-git-hook", "bin/graphify-bg-worker", "bin/graphify-chroma-sync"],
+      latencyP99: "not measured — querylog off by default",
+      concurrencyRps: BELUM_TERUKUR,
+      stack: ["Bash", "Python 3", "graphifyy (upstream)", "ChromaDB", "Git hooks"],
+    },
+  },
+  {
+    index: "04",
+    name: "hermes-control-tower",
+    title: "Hermes Control Tower",
+    url: "https://github.com/ArkanFzi",
+    desc: "Two-node control plane for my own agent system: a Go hub on a GCP VM serving an embedded React SPA, and a laptop daemon that only dials out over WebSocket, so the host keeps zero listening ports.",
+    starsFallback: "PRIVATE REPO",
+    engineerCategory: "SELF-HOSTED OPS CONTROL PLANE",
+    engineerStack: "GO 1.27 / WEBSOCKET / REACT SPA / PROMETHEUS",
+    creatorCategory: "OPERATIONS TOOLING DESIGN",
+    creatorCraft: "DUAL-NODE TELEMETRY • AGENT CONSOLE",
+    creatorTag: "SELF-HOSTED",
+    caseStudy: {
+      index: "04",
+      name: "hermes-control-tower",
+      title: "Hermes Control Tower (Go hub + outbound agent)",
+      url: "https://github.com/ArkanFzi",
+      desc: "Satu jendela untuk dua node: hub Go di VM yang menyajikan React SPA tertanam di belakang Cloudflare Tunnel, dan daemon di laptop yang hanya menelepon keluar. Angka di panel ini hitungan sumber yang dikomit, bukan klaim waktu respons — repo ini tidak punya satu pun func Benchmark.",
+      architecture: "Go 1.27 hub on an e2-medium VM behind a Cloudflare Tunnel; the laptop agent opens one outbound WebSocket (gorilla/websocket) so nothing listens on the host; commands and results travel as typed protocol envelopes; Prometheus scrapes and one Grafana board plus three systemd units live in deploy/; the React SPA is embedded into the binary, so the server ships as one artifact.",
+      databaseSchema: ["Envelope", "RegisterPayload", "CommandRequest", "CommandResult", "CommandStreamPayload", "ScriptManifestPayload", "NodeMetrics", "ContainerStatus"],
+      latencyP99: BELUM_TERUKUR,
+      concurrencyRps: BELUM_TERUKUR,
+      stack: ["Go 1.27", "gorilla/websocket", "React (embedded)", "Prometheus", "Grafana", "systemd"],
+    },
+  },
+  {
+    index: "05",
+    name: "interactive-portfolio",
+    title: "Chiaroscuro Monolith",
+    url: "https://github.com/ArkanFzi",
+    desc: "One continuous WebGL canvas rendering a custom GLSL luminance-displacement monolith over a Swiss editorial grid — measured at 60 FPS on GPU, 23.5 FPS on software rendering.",
+    starsFallback: "PUBLIC REPO",
+    engineerCategory: "GPU SHADER PIPELINE & RENDERING",
+    engineerStack: "R3F / THREE.JS GLSL / LENIS / TAILWIND",
+    creatorCategory: "SPATIAL 3D & SHADER CRAFT",
+    creatorCraft: "LUMINANCE RELIEF • FLUID CHROMATIC SHIFT",
+    creatorTag: "SPATIAL 3D",
+    caseStudy: {
+      index: "05",
+      name: "interactive-portfolio",
+      title: "Chiaroscuro Monolith WebGL Spatial Engine",
+      url: "https://github.com/ArkanFzi/website-porto2",
+      desc: "Editorial spatial experience combining Swiss typographic discipline with real-time GPU shader computation. The canvas is fixed and pointer-events-none, so it never participates in layout.",
+      architecture: "One react-three-fiber Canvas running a hand-written GLSL vertex/fragment pair whose uniforms (uTime, uMouse, uVelocity, uScroll, uPersona) are driven by Lenis scroll refs, plus edge APIs for telemetry, journey and contact.",
+      databaseSchema: ["/api/telemetry (measured, no invented numbers)", "/api/journey + /api/certificates (PostgreSQL)", "/api/visit + /api/visits (counter, privacy-preserving)"],
+      latencyP99: BELUM_TERUKUR,
+      concurrencyRps: BELUM_TERUKUR,
+      stack: ["Three.js 0.186", "React Three Fiber 9", "GLSL Shaders", "Tailwind CSS v4", "Next.js 16"],
+    },
+  },
+];
+
+export const ChapterArchives: React.FC<ArchivesProps> = ({
+  repos,
+  metrikKartu,
+  bahasaBaris,
+  onHoverProject,
+  peringkatBaris,
+  hoveredProject,
+}) => {
+  const { mode } = usePortfolioMode();
+  const [activeIndeks, setActiveIndeks] = useState<string | null>(null);
+  const tutupSpec = useCallback(() => setActiveIndeks(null), []);
+  const terbuka = activeIndeks !== null;
+  /** Isi bab diikat ke lebar yang sama dengan yang dibelikan portal, saat terbuka.
+   *  Dua varian (md dan xl) karena kelas `xl:max-w-[1000px]` yang sudah ada menang atas
+   *  satu varian `md:` saja; di bawah `md` split tidak muat dan strip menutupi kartunya
+   *  sendiri dengan latar papannya. */
+  const kelasBaca = terbuka ? KOLOM_BUKA : "";
+
+  return (
+    <section
+      id="chapter-03"
+      style={{ "--strip-lebar": STRIP_LEBAR } as React.CSSProperties}
+      className="relative w-full min-h-screen bg-[#0A0A0A] xl:bg-transparent text-[#F7F5F0] pt-[calc(var(--hud-atas,196px)+2rem)] pb-36 px-6 md:px-12 select-none overflow-hidden transition-colors duration-700"
+    >
+      {/*
+        Papan gelap = batas kiri daftar. Kartu WebGL tidak lagi mengukurnya; ia duduk
+        di dalam MeshPortal bab 3 yang kelasnya sengaja dibuat sejajar dengan tepi papan.
+        Saat spesifikasi dibuka kelas portal diganti (PORTAL_BUKA) dan registry mengukur
+        ulang marker itu, jadi mask dan kartu melebar lewat lerp yang sudah ada.
+      */}
+      <div
+        aria-hidden="true"
+        className="hidden xl:block absolute inset-y-0 left-0 -z-10 w-[calc(3rem+1000px)] bg-[#0A0A0A]"
+      />
+      <MeshPortal
+        bab={3}
+        className={terbuka ? PORTAL_BUKA : PORTAL_TUTUP}
+        miring={-0.18}
+        geyang={0.14}
+        rotGeyang={0.06}
+      />
+      {/* ── Top Header Tags ── */}
+      {/* Header dan daftar wajib berbagi kotak isi yang sama: tanpa pr-8 tepi kanan
+          tombol panah jatuh tepat di tepi papan dan setengah lingkarannya hilang di atas kertas. */}
+      <div
+        data-jejak-papan
+        className={`w-full max-w-[1600px] mx-auto xl:max-w-[1000px] xl:mx-0 xl:pr-8 ${kelasBaca} flex items-center justify-between pb-6 border-b border-white/10 mb-16`}
+      >
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-[#D41E12] animate-pulse" />
+          <span className="font-mono text-[11px] font-bold tracking-[0.25em] uppercase text-[#D41E12]">
+            CHAPTER 03 // {mode === "engineer" ? "SYSTEMS & ARCHITECTURE" : "SELECTED CREATIVE WORKS"}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-4">
+          {repos && repos.length > 0 && (
+            <span className="hidden sm:inline-flex items-center gap-1.5 font-mono text-[9px] tracking-[0.2em] uppercase text-[#D41E12]/80">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#D41E12] animate-ping" />
+              GITHUB API LIVE SYNCED
+            </span>
+          )}
+          <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-[#6E6A64]">
+            {mode === "engineer" ? "TELEMETRY & HARDWARE METRICS" : "INTERACTION & SPATIAL TAXONOMY"}
+          </span>
+        </div>
+      </div>
+
+      <div
+        className={`w-full max-w-[1600px] mx-auto xl:max-w-[1000px] xl:mx-0 xl:pr-8 ${kelasBaca}`}
+      >
+        
+        {/* Section Heading with Motion Transition */}
+        <div className="mb-16 max-w-2xl">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={mode}
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: DURASI.ganti, ease: EASE.keluar }}
+            >
+              {/* Judul bab ini bergerak sendiri (data-paralaks), tetangganya tidak. Terukur:
+                  simpul sedalam -0,5 meluncur sampai ±22px mengikuti pointer, jadi celah di
+                  atas dan di bawah harus lebih besar dari perjalanan itu — dengan mb-3/mb-4
+                  baris kedua "ARCHITECTURE" mendarat di atas paragrafnya sendiri. */}
+              <span className="font-mono text-[10px] tracking-[0.25em] uppercase text-[#D41E12] block mb-6">
+                {mode === "engineer" ? "POWER UNIT & CODEBASES" : "ATELIER & VISUAL EXPERIMENTS"}
+              </span>
+              <h2
+                className="font-serif text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-white mb-8"
+                data-paralaks="-0.5"
+                style={{ translate: "var(--tipografi-x, 0px) var(--tipografi-y, 0px)" }}
+              >
+                {mode === "engineer" ? "SYSTEMS & ARCHITECTURE" : "SELECTED CREATIVE WORKS"}
+              </h2>
+              <p className="font-sans text-sm text-[#6E6A64] leading-relaxed">
+                {mode === "engineer"
+                  ? "Production-grade microservices, compiler AST engines, and low-latency systems. Live star counts and commit telemetry synced directly from GitHub."
+                  : "Haute-couture digital artifacts, volumetric WebGL shaders, and bespoke desktop environments. Hover each record to project spatial resonance into the central 3D Monolith."}
+              </p>
+            </motion.div>
+          </AnimatePresence>
+        </div>
+
+        {/* ── FULL-WIDTH EDITORIAL INDEX LIST ── */}
+        {/* Baris yang dibuka mengganti dirinya sendiri dengan strip di tempat ia duduk:
+            titik yang baru saja ditekan penonton tidak pernah berpindah, dan daftar tidak
+            pernah ditutup lapisan fixed. Portal membeli ruangnya dari kolom baca, yang
+            selama strip terbuka diikat ke `--strip-lebar` — jadi tidak ada satu pun teks
+            bab ini yang pernah berada di bawah kartu. */}
+        <div className="w-full flex flex-col border-t border-white/10">
+          {FEATURED_ARCHIVES.map((item, idx) => {
+            if (activeIndeks === item.index) {
+              return (
+                <CaseStudyStrip
+                  key={item.index}
+                  caseStudy={{ ...item.caseStudy, ...(selUkur(item.index, metrikKartu) ?? {}) }}
+                  catatanUkur={catatanUkur(item.index, metrikKartu)}
+                  peringkatBahasa={peringkatBaris?.[idx] ?? null}
+                  onClose={tutupSpec}
+                />
+              );
+            }
+
+            const isHovered = hoveredProject === idx;
+
+            // Connect live GitHub repo data if available
+            const liveRepo = repos?.find(
+              (r) => r.name.toLowerCase() === item.name.toLowerCase()
+            );
+            const liveStars = liveRepo && liveRepo.stargazers_count > 0
+              ? `${liveRepo.stargazers_count} STARS`
+              : item.starsFallback;
+
+            return (
+              <div
+                key={item.index}
+                onMouseEnter={() => onHoverProject(idx)}
+                onMouseLeave={() => onHoverProject(null)}
+                onFocusCapture={() => onHoverProject(idx)}
+                onBlurCapture={() => onHoverProject(null)}
+                className={`group relative w-full py-8 sm:py-10 border-b border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-6 transition-all duration-300 ${
+                  isHovered ? "bg-white/[0.03] pl-4 sm:pl-6" : "pl-0"
+                }`}
+                data-magnetic
+                data-bahasa={bahasaBaris?.[idx] ?? undefined}
+              >
+                {/* Active Left Indicator Bar */}
+                <span
+                  aria-hidden="true"
+                  className={`absolute left-0 top-0 bottom-0 w-[3px] bg-[#D41E12] transition-opacity duration-300 ${
+                    isHovered ? "opacity-100" : "opacity-0"
+                  }`}
+                />
+
+                {/* Left: Index & Project Title */}
+                <div className="flex items-start md:items-center gap-6 sm:gap-10">
+                  <span className="font-mono text-sm sm:text-base font-bold text-[#D41E12]">
+                    /{item.index}
+                  </span>
+
+                  <a
+                    href={item.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block"
+                  >
+                    <span className="font-mono text-[9px] tracking-[0.22em] uppercase text-[#6E6A64] block mb-1">
+                      {mode === "engineer" ? item.engineerCategory : item.creatorCategory}
+                    </span>
+                    <h3
+                      className={`font-serif text-2xl sm:text-3xl lg:text-4xl font-bold transition-colors duration-300 ${
+                        isHovered ? "text-[#D41E12]" : "text-white"
+                      }`}
+                    >
+                      {item.title}
+                    </h3>
+                  </a>
+                </div>
+
+                {/* Right: Mode-driven specs + Live GitHub Data */}
+                <div className="flex flex-wrap md:flex-nowrap items-center justify-between md:justify-end gap-6 sm:gap-10">
+                  <div className="flex flex-col md:items-end">
+                    <span className="font-mono text-[10px] font-bold tracking-[0.16em] uppercase text-[#D41E12]">
+                      {mode === "engineer" ? item.engineerStack : item.creatorCraft}
+                    </span>
+                    <span className="font-mono text-[9px] tracking-[0.2em] uppercase text-[#6E6A64] mt-0.5">
+                      {mode === "engineer" 
+                        ? `${liveStars} • ${barisKartu(item.index, metrikKartu) ?? BELUM_TERUKUR}` 
+                        : `${liveStars} • ${item.creatorTag}`}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      aria-label={`Open architecture specification for ${item.title}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        audioEngine.playClick(1300, 0.02);
+                        // Baris yang membuka strip berhenti ada, jadi mouseleave tidak
+                        // pernah datang: hover dilepas lebih dulu supaya sangkar tidak
+                        // tinggal di scene graph.
+                        onHoverProject(null);
+                        setActiveIndeks(item.index);
+                      }}
+                      className="px-3 py-1.5 rounded-full border border-white/20 hover:border-[#D41E12] bg-white/5 hover:bg-[#D41E12]/20 font-mono text-[9px] font-bold text-white tracking-widest uppercase transition-all duration-300 cursor-pointer"
+                      title="Open In-Depth Architecture Specification"
+                    >
+                      SPEC [⇡]
+                    </button>
+
+                    <a
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={`Open ${item.title} on GitHub`}
+                      className="w-9 h-9 rounded-full border border-white/20 flex items-center justify-center group-hover:border-[#D41E12] group-hover:bg-[#D41E12] transition-all duration-300"
+                    >
+                      <ArrowUpRight aria-hidden="true" className="w-4 h-4 text-white transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                    </a>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+      </div>
+    </section>
+  );
+};
+
+export default ChapterArchives;

@@ -103,10 +103,31 @@ jobs:
         env:
           BACKEND_URL: https://backend.invalid
           NEXT_TELEMETRY_DISABLED: "1"
+          # HUD telemetri menampilkan commit ini (lewat env.APP_COMMIT di next.config.ts). Tanpa
+          # baris ini yang tersedia hanya string kosong dan panel menulis "—" — bukan hash yang
+          # diketik tangan di kode dan berhenti benar setelah commit berikutnya.
+          APP_COMMIT: ${{ github.sha }}
         run: npm run build
 
       - name: Kontrak API (tripwire)
         run: node tools/ci/api-contract-check.mjs
+
+      # continue-on-error: SENGAJA, atas persetujuan eksplisit. Yang diperiksa hanya
+      # src/data/metrikKartu.ts — artefak komit yang umurnya dibandingkan BATAS_USIA_HARI.
+      # Artefak menua berarti "angka kartu belum disegarkan dari mesin yang memegang
+      # korpusnya", bukan produksinya rusak; dan UI-nya sudah bereaksi dengan mengubah
+      # baris TERUKUR jadi BELUM TERUKUR (saringMetrik), jadi tidak ada angka basi yang
+      # sempat tampil. Merahkan run untuk itu berarti membunyikan alarm yang salah —
+      # preseden yang sama dipakai watch.yml untuk "cloud tidak terbaca".
+      - name: Asal-usul angka terukur di kartu editorial
+        continue-on-error: true
+        run: node tools/ci/ukur-kartu.mjs --validasi
+
+      - name: Anggaran aset halaman depan
+        run: node tools/ci/perf-budget.mjs
+        # Diukur dari HTML hasil build rute /, jadi butuh langkah Build di atas.
+        # Gerbangnya hanya membandingkan angka terhadap tools/ci/perf-budget.json dan
+        # gagal kalau payload awal tumbuh melewati ruang yang sudah ditulis di sana.
 
   api:
     name: api
@@ -164,10 +185,10 @@ jobs:
           # DATABASE_URL dipakai biner (pgx menerima TimeZone); psql memakai conninfo sendiri
           # karena libpq menolak opsi itu: "invalid connection option \"TimeZone\"".
           PSQL='host=127.0.0.1 user=postgres dbname=portfolio_db port=5432 sslmode=disable'
-          T() { psql "$PSQL" -tAc "select count(distinct table_name) from information_schema.tables where table_schema = current_schema() and table_name in ('certificates','experiences','contact_messages','journeys')"; }
+          T() { psql "$PSQL" -tAc "select count(distinct table_name) from information_schema.tables where table_schema = current_schema() and table_name in ('certificates','experiences','contact_messages','journeys','kunjungans')"; }
 
           [ "$(T)" = "0" ] || { echo "DB uji tidak kosong: $(T) tabel sudah ada"; exit 1; }
-          echo "tabel sebelum apa pun: $(T)/4"
+          echo "tabel sebelum apa pun: $(T)/5"
 
           set +e
           out=$(/tmp/portfolio-be 2>&1); rc=$?
@@ -181,8 +202,8 @@ jobs:
           # -migrate: langkah ini sengaja TIDAK punya JWT_SECRET/ADMIN_PASS di env di atas.
           /tmp/portfolio-be -migrate
           /tmp/portfolio-be -migrate
-          echo "tabel setelah -migrate dua kali: $(T)/4"
-          [ "$(T)" = "4" ] || { echo "-migrate tidak menyiapkan seluruh skema"; exit 1; }
+          echo "tabel setelah -migrate dua kali: $(T)/5"
+          [ "$(T)" = "5" ] || { echo "-migrate tidak menyiapkan seluruh skema"; exit 1; }
 
           echo "baris setelah -migrate: certificates=$(psql "$PSQL" -tAc 'select count(*) from certificates') experiences=$(psql "$PSQL" -tAc 'select count(*) from experiences') journeys=$(psql "$PSQL" -tAc 'select count(*) from journeys')"
           [ "$(psql "$PSQL" -tAc 'select count(*) from certificates')" = "0" ] || { echo "-migrate masih menanam seed"; exit 1; }
@@ -214,7 +235,7 @@ jobs:
           psql "$PSQL" -qc 'create database portfolio_img'
           PI='host=127.0.0.1 user=postgres dbname=portfolio_img port=5432 sslmode=disable'
           IMG_URL="host=127.0.0.1 user=postgres dbname=portfolio_img port=5432 sslmode=disable TimeZone=UTC"
-          TI() { psql "$PI" -tAc "select count(distinct table_name) from information_schema.tables where table_schema = current_schema() and table_name in ('certificates','experiences','contact_messages','journeys')"; }
+          TI() { psql "$PI" -tAc "select count(distinct table_name) from information_schema.tables where table_schema = current_schema() and table_name in ('certificates','experiences','contact_messages','journeys','kunjungans')"; }
           [ "$(TI)" = "0" ] || { echo "portfolio_img tidak kosong: $(TI)"; exit 1; }
 
           set +e
@@ -229,8 +250,8 @@ jobs:
           # Inti N2: flag lewat image, TANPA override --entrypoint. Dua kali jalan = idempoten.
           docker run --rm --network host -e DATABASE_URL="$IMG_URL" portfolio-be:ci -migrate
           docker run --rm --network host -e DATABASE_URL="$IMG_URL" portfolio-be:ci -migrate
-          echo "tabel setelah -migrate lewat image: $(TI)/4"
-          [ "$(TI)" = "4" ] || { echo "-migrate tidak tercapai dari image (ENTRYPOINT belum terpasang?)"; exit 1; }
+          echo "tabel setelah -migrate lewat image: $(TI)/5"
+          [ "$(TI)" = "5" ] || { echo "-migrate tidak tercapai dari image (ENTRYPOINT belum terpasang?)"; exit 1; }
           [ "$(psql "$PI" -tAc 'select count(*) from certificates')" = "0" ] || { echo "-migrate dari image menanam seed"; exit 1; }
 
           # Entrypoint yang berubah tidak boleh mengubah cara kontainer melayani.
@@ -360,6 +381,16 @@ jobs:
           jwy=$(curl -fsS http://127.0.0.1:8080/api/journey)
           echo "GET /api/journey => $jwy"
           echo "$jwy" | jq -e 'type=="array" and (length>0) and (.[0] | has("id") and has("year") and has("title") and has("body") and has("linkLabel") and has("linkHref") and has("sortOrder"))' > /dev/null
+
+          # Kontrak penghitung kunjungan yang dibaca HUD halaman depan: tiga angka, bukan string,
+          # dan satu POST mencatat tanpa body apa pun.
+          visits=$(curl -fsS http://127.0.0.1:8080/api/visits)
+          echo "GET /api/visits (DB kosong) => $visits"
+          echo "$visits" | jq -e '(keys|length)==3 and (.total|type=="number") and (.today|type=="number") and (.uniqueLast24h|type=="number")' > /dev/null
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8080/api/visit)
+          echo "POST /api/visit => $code"
+          [ "$code" = "204" ]
+          curl -fsS http://127.0.0.1:8080/api/visits | jq -e '.today >= 1 and .uniqueLast24h >= 1' > /dev/null
 
           code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
             -d '{"year":"2026","title":"t","body":"b","sortOrder":10}' http://127.0.0.1:8080/api/journey)
@@ -918,7 +949,8 @@ jobs:
       # --set-env-vars); langkah ini ikut mengirim build arg karena itulah yang dipakai server.
       - name: Build image frontend dari Dockerfile produksi
         run: |
-          docker build -t porto-fe:ci --build-arg BACKEND_URL=http://127.0.0.1:8080 nextjs-frontend
+          docker build -t porto-fe:ci --build-arg BACKEND_URL=http://127.0.0.1:8080 \
+            --build-arg APP_COMMIT="${{ github.sha }}" nextjs-frontend
 
       - name: PDF dari image — Chromium nyata, data nyata, bukan cuma magic byte
         env:
@@ -983,6 +1015,18 @@ jobs:
             exit 1
           fi
           echo "penanda $PENANDA terbaca di teks PDF ($(wc -c < /tmp/cv.txt) byte teks): Chromium di dalam image benar-benar merender data"
+
+          # HUD membaca gitCommit dari /api/telemetry. Nilainya dibakar saat build (next.config.ts
+          # `env` + ARG di Dockerfile), jadi satu-satunya bukti yang berarti adalah menanyakannya
+          # ke image yang baru dibangun — bukan ke env job. Sampai langkah ini tidak ada build-arg
+          # APP_COMMIT di jalur Docker, jadi produksi selalu pulang ke "—" meski CI tahu SHA-nya.
+          tel=$(curl -sS --max-time 30 "$FE/api/telemetry" || true)
+          sha_dibakar=$(printf '%s' "$tel" | jq -r '.gitCommit // empty')
+          echo "gitCommit dari image hasil build ini: '${sha_dibakar:-null}' (github.sha=$GITHUB_SHA)"
+          [ "$sha_dibakar" = "$GITHUB_SHA" ] || {
+            echo "APP_COMMIT tidak sampai ke image: $(printf '%s' "$tel" | head -c 300)"
+            exit 1
+          }
 
           docker rm -f fe-pdf > /dev/null
           echo "fe-pdf dihentikan"

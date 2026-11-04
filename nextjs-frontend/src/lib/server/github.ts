@@ -13,6 +13,17 @@ const HEADER_REPOS = {
     Accept: "application/vnd.github.v3+json",
 };
 
+// Tanpa token GitHub membatasi 60 request/jam per alamat egress. Cloud Run mengirim
+// seluruh instance dari pool yang sama, jadi refresh ISR yang sedikit lebih aktif sudah
+// cukup memicu 403 dan halaman kehilangan angka bintangnya. Kalau GITHUB_TOKEN di set,
+// plafonnya naik dan request berjalan seperti biasa; kalau tidak, perilaku tetap sama
+// seperti sebelumnya. Env dibaca tiap panggilan supaya tes bisa men-set-nya tanpa
+// mengimpor ulang modul ini.
+function denganToken<T extends Record<string, string>>(header: T): T | (T & { Authorization: string }) {
+    const token = process.env.GITHUB_TOKEN?.trim();
+    return token ? { ...header, Authorization: `Bearer ${token}` } : header;
+}
+
 export class GitHubGagal extends Error {
     constructor(readonly status: number, readonly pesan: string) {
         super(pesan);
@@ -40,7 +51,7 @@ export interface RepoGitHub {
 
 export async function ambilMetrikGitHub(): Promise<MetrikGitHub> {
     const userRes = await fetch(`https://api.github.com/users/${GITHUB_USERNAME}`, {
-        headers: HEADER_PROFIL,
+        headers: denganToken(HEADER_PROFIL),
         next: { revalidate: 3600 },
     });
 
@@ -49,7 +60,7 @@ export async function ambilMetrikGitHub(): Promise<MetrikGitHub> {
     const user = await userRes.json();
 
     const reposRes = await fetch(`https://api.github.com/users/${GITHUB_USERNAME}/repos?per_page=100`, {
-        headers: HEADER_PROFIL,
+        headers: denganToken(HEADER_PROFIL),
         next: { revalidate: 3600 },
     });
 
@@ -82,7 +93,7 @@ export async function daftarReposGitHub(): Promise<RepoGitHub[]> {
     const res = await fetch(
         `https://api.github.com/users/${GITHUB_USERNAME}/repos?sort=updated&per_page=20&type=public`,
         {
-            headers: HEADER_REPOS,
+            headers: denganToken(HEADER_REPOS),
             next: { revalidate: 600 },
         }
     );
@@ -105,9 +116,10 @@ export interface RepoBerlian {
     language: string | null;
 }
 
-// Objek GitHub penuh dipakai lagi oleh /api/github-repos (dossier membaca forks_count),
-// tapi tidak perlu ikut ter-serialisasi ke payload halaman depan yang cuma menampilkan
-// nama, bahasa, dan bintang.
+// Objek GitHub penuh tetap dikembalikan /api/github-repos karena rute itu endpoint publik
+// dan angkanya bisa ditelusuri sendiri; yang tidak lagi ada adalah pembaca di dalam repo
+// ini — halaman yang dulu membacanya sudah dipensiunkan. Payload halaman depan cuma perlu
+// nama, bahasa, dan bintang, jadi bentuk ringkasnya yang diserialisasi ke sana.
 export function ringkasRepos(repos: RepoGitHub[]): RepoBerlian[] {
     return repos.map((r) => ({
         id: r.id,

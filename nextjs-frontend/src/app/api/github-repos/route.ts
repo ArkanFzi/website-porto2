@@ -3,7 +3,9 @@ import { daftarReposGitHub, GitHubGagal } from "@/lib/server/github";
 
 /**
  * GET /api/github-repos
- * Daftar repo publik lewat API GitHub, objek utuh (dossier membaca forks_count).
+ * Daftar repo publik lewat API GitHub, objek utuh. Halaman ini mengambil data yang sama
+ * langsung dari server (`app/page.tsx`) dan hanya merangkumnya, jadi rute ini tidak punya
+ * pembaca di dalam repo — ia hidup sebagai endpoint publik yang angkanya bisa ditelusuri.
  */
 export async function GET() {
     try {

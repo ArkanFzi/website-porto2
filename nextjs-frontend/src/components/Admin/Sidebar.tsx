@@ -23,7 +23,7 @@ export function Sidebar() {
     return (
         <div className="w-64 min-h-screen bg-[#0a0000] border-r border-red-900/30 p-6 flex flex-col">
             <div className="mb-10">
-                <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-accent-primary">
+                <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-rosso-rim">
                     Admin Panel
                 </h2>
                 <p className="text-xs text-gray-500 mt-1">Elaris Noir System</p>
@@ -36,7 +36,7 @@ export function Sidebar() {
                         <Link key={item.href} href={item.href}>
                             <span
                                 className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${isActive
-                                        ? "bg-accent-primary/20 text-accent-primary border border-accent-primary/50"
+                                        ? "bg-rosso/20 text-rosso-rim border border-rosso/50"
                                         : "text-gray-400 hover:bg-white/5 hover:text-white"
                                     }`}
                             >

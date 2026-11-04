@@ -1,0 +1,19 @@
+Model Information:
+* title:	2026 Ferrari SF-26
+* source:	https://sketchfab.com/3d-models/2026-ferrari-sf-26-e5ca6cecdc42449283f4bed27360f2a7
+* author:	Dave Love SketchFab (https://sketchfab.com/Tyler_Dave)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "2026 Ferrari SF-26" (https://sketchfab.com/3d-models/2026-ferrari-sf-26-e5ca6cecdc42449283f4bed27360f2a7) by Dave Love SketchFab (https://sketchfab.com/Tyler_Dave) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+Modifikasi pada berkas sf26-livery.glb (syarat CC-BY-4.0 Pasal 3(a)(1)(B): perubahan wajib disebutkan):
+* Tekstur decals nomor balap (image #13, dipakai material "numbers" sebagai baseColorTexture)
+  dicat ulang: angka "44" dihapus dan digambar ulang menjadi "16" agar cocok dengan identitas
+  yang dipakai antarmuka halaman ini. Tidak ada bagian model lain yang diubah: geometri,
+  material, tulang, dan seluruh tekstur lain byte-per-byte sama dengan unduhan asli.
+* Berkas asli tersimpan sebagai salinan cadangan di luar repo; diff-nya hanya 26.715 byte di
+  dalam satu bufferView milik tekstur tersebut.

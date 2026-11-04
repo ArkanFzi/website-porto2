@@ -52,7 +52,7 @@ export default function LoginPage() {
     return (
         <div className="min-h-screen flex items-center justify-center bg-[#050000] p-4 relative overflow-hidden">
             {/* Background Decor */}
-            <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-accent-primary/10 rounded-full blur-[120px] mix-blend-screen pointer-events-none" />
+            <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-rosso/10 rounded-full blur-[120px] mix-blend-screen pointer-events-none" />
             <div className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] bg-red-900/10 rounded-full blur-[150px] mix-blend-screen pointer-events-none" />
 
             <motion.div
@@ -61,11 +61,11 @@ export default function LoginPage() {
                 className="w-full max-w-md"
             >
                 <div className="backdrop-blur-xl bg-black/40 border border-red-900/30 p-8 rounded-2xl shadow-2xl relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-900 via-accent-primary to-background" />
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-900 via-rosso to-transparent" />
 
                     <div className="text-center mb-10">
-                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-accent-primary/10 mb-4 border border-accent-primary/20">
-                            <Shield className="w-8 h-8 text-accent-primary" />
+                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-rosso/10 mb-4 border border-rosso/20">
+                            <Shield className="w-8 h-8 text-rosso" />
                         </div>
                         <h1 className="text-2xl font-bold text-white mb-2">System Override</h1>
                         <p className="text-gray-400 text-sm">Enter Elaris Noir credentials</p>
@@ -84,7 +84,7 @@ export default function LoginPage() {
                                 type="text"
                                 value={username}
                                 onChange={(e) => setUsername(e.target.value)}
-                                className="w-full bg-black/50 border border-red-900/30 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-accent-primary focus:ring-1 focus:ring-accent-primary transition-all"
+                                className="w-full bg-black/50 border border-red-900/30 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-rosso focus:ring-1 focus:ring-rosso transition-all"
                                 placeholder="Admin username"
                                 required
                             />
@@ -96,7 +96,7 @@ export default function LoginPage() {
                                 type="password"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
-                                className="w-full bg-black/50 border border-red-900/30 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-accent-primary focus:ring-1 focus:ring-accent-primary transition-all"
+                                className="w-full bg-black/50 border border-red-900/30 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-rosso focus:ring-1 focus:ring-rosso transition-all"
                                 placeholder="••••••••"
                                 required
                             />
@@ -105,7 +105,7 @@ export default function LoginPage() {
                         <button
                             type="submit"
                             disabled={loading}
-                            className="w-full bg-accent-primary hover:bg-red-600 text-white font-medium py-3 px-4 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(220,38,38,0.3)] hover:shadow-[0_0_30px_rgba(220,38,38,0.5)]"
+                            className="w-full bg-rosso hover:bg-red-600 text-white font-medium py-3 px-4 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(220,38,38,0.3)] hover:shadow-[0_0_30px_rgba(220,38,38,0.5)]"
                         >
                             {loading ? "Authenticating..." : "Access Dashboard"}
                         </button>
