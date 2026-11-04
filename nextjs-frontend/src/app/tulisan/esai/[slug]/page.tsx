@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ESAI, cariEsai, menitBaca } from "@/data/esai";
+import { GerakDokumen } from "@/components/Editorial/GerakRute";
 
 // Naskahnya ada di dalam bundel (src/data/esai.ts), bukan di basis data: tidak ada tabel yang
 // boleh di-DDL untuk tiga tulisan, dan halaman ini harus tetap ter-prerender tanpa backend.
@@ -44,7 +45,7 @@ export default async function EsaiHalaman({ params }: Props) {
   return (
     <main className="min-h-screen w-full bg-paper text-obsidian font-sans">
       <div className="mx-auto w-full max-w-[1200px] px-6 md:px-10 py-10 md:py-14">
-        <header className="flex flex-wrap items-end justify-between gap-4 pb-8 swiss-border-b">
+        <header data-gerak="geser" className="flex flex-wrap items-end justify-between gap-4 pb-8 swiss-border-b">
           <div className="flex flex-col gap-2">
             <span className="font-mono text-tag tracking-[0.24em] uppercase text-rosso">
               ESSAY // THE READING ROOM
@@ -76,13 +77,18 @@ export default async function EsaiHalaman({ params }: Props) {
 
         <article className="mt-8 flex flex-col gap-5 max-w-[70ch]" data-esai-tubuh>
           {esai.tubuh.map((para, i) => (
-            <p key={i} className="font-sans text-body leading-relaxed text-obsidian/85">
+            <p
+              key={i}
+              data-gerak="terbit"
+              data-urutan={i}
+              className="font-sans text-body leading-relaxed text-obsidian/85"
+            >
               {para}
             </p>
           ))}
         </article>
 
-        <section className="mt-12 px-5 py-6 swiss-border bg-stone/30" aria-labelledby="bukti-judul">
+        <section data-gerak="terbit" className="mt-12 px-5 py-6 swiss-border bg-stone/30" aria-labelledby="bukti-judul">
           <h2 id="bukti-judul" className="font-mono text-tag tracking-[0.24em] uppercase text-rosso mb-4">
             WHAT THIS TEXT POINTS AT
           </h2>
@@ -110,6 +116,8 @@ export default async function EsaiHalaman({ params }: Props) {
             ← BACK TO THE INDEX
           </Link>
         </footer>
+
+        <GerakDokumen />
       </div>
     </main>
   );

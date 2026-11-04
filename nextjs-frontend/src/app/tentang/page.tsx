@@ -9,6 +9,7 @@ import {
 } from "@/components/Editorial/PanggungFrame";
 import { LOKASI, NAMA, PENDIDIKAN, PERAN, REKAMAN, RINGKAS, STACK } from "@/lib/profil";
 import { RUTE_PROFIL } from "@/lib/rute";
+import { GerakDokumen } from "@/components/Editorial/GerakRute";
 
 // Isi halaman ini tidak diketik ulang di dua tempat: nama, peran, rekaman, pendidikan,
 // dan stack dibaca dari lib/profil.ts, sumber yang sama yang dipakai bab penutup halaman
@@ -38,18 +39,27 @@ const PIL = RUTE_PROFIL.filter((r) => r.href !== "/tentang").map((r) => ({
 export default function Tentang() {
   return (
     <Bingkai>
-      <SundulPanggung
-        eyebrow="PROFIL // SIAPA YANG MENULIS HALAMAN INI"
-        judul="TENTANG"
-        sub={`${NAMA} · ${PERAN} · ${LOKASI}`}
-        tautan={[{ href: "/", label: "← Editorial" }, ...PIL]}
-      />
+      <div data-gerak="geser">
+        <SundulPanggung
+          eyebrow="PROFIL // SIAPA YANG MENULIS HALAMAN INI"
+          judul="TENTANG"
+          sub={`${NAMA} · ${PERAN} · ${LOKASI}`}
+          tautan={[{ href: "/", label: "← Editorial" }, ...PIL]}
+        />
+      </div>
 
-      <Prolog>{RINGKAS}</Prolog>
+      <div data-gerak="terbit">
+        <Prolog>{RINGKAS}</Prolog>
+      </div>
 
       <Bagian id="rekaman-kerja" judul="YANG SEDANG DAN PERNAH SAYA KERJAKAN">
-        {REKAMAN.map((r) => (
-          <div key={r.jabatan} className="flex flex-col gap-1.5 pt-4 swiss-border-b">
+        {REKAMAN.map((r, i) => (
+          <div
+            key={r.jabatan}
+            data-gerak="terbit"
+            data-urutan={i}
+            className="flex flex-col gap-1.5 pt-4 swiss-border-b"
+          >
             <span className="font-mono text-tag tracking-[0.2em] uppercase text-obsidian">
               {r.jabatan}
             </span>
@@ -62,7 +72,7 @@ export default function Tentang() {
       </Bagian>
 
       <Bagian id="latar-dan-perkakas" judul="LATAR DAN PERKAKAS">
-        <div className="flex flex-col gap-1.5 pt-4 swiss-border-b">
+        <div data-gerak="terbit" data-urutan={0} className="flex flex-col gap-1.5 pt-4 swiss-border-b">
           <span className="font-mono text-tag tracking-[0.2em] uppercase text-obsidian">
             {PENDIDIKAN.sekolah}
           </span>
@@ -70,8 +80,13 @@ export default function Tentang() {
             {PENDIDIKAN.jurusan} · {PENDIDIKAN.sejak}
           </span>
         </div>
-        {STACK.map((g) => (
-          <div key={g.kelompok} className="flex flex-col gap-1.5 pt-4 swiss-border-b">
+        {STACK.map((g, i) => (
+          <div
+            key={g.kelompok}
+            data-gerak="terbit"
+            data-urutan={i + 1}
+            className="flex flex-col gap-1.5 pt-4 swiss-border-b"
+          >
             <span className="font-mono text-tag tracking-[0.2em] uppercase text-obsidian">
               {g.kelompok}
             </span>
@@ -80,18 +95,22 @@ export default function Tentang() {
         ))}
       </Bagian>
 
-      <CatatanPenutup id="yang-tidak-klaim" judul="YANG TIDAK SAYA CETAK DI HALAMAN INI">
-        Tidak ada angka yang dibulatkan menjadi kesan di sini. Yang berbentuk angka — ritme frame,
-        latency handler, hop ke basis data, bintang repositori — hidup di halaman lain beserta alat
-        yang mengukurnya: <span className="font-mono text-micro uppercase">/statistik</span> untuk
-        yang terukur langsung, <span className="font-mono text-micro uppercase">/proyek</span> dan{" "}
-        <span className="font-mono text-micro uppercase">/tulisan</span> untuk yang dikerjakan.
-      </CatatanPenutup>
+      <div data-gerak="terbit">
+        <CatatanPenutup id="yang-tidak-klaim" judul="YANG TIDAK SAYA CETAK DI HALAMAN INI">
+          Tidak ada angka yang dibulatkan menjadi kesan di sini. Yang berbentuk angka — ritme frame,
+          latency handler, hop ke basis data, bintang repositori — hidup di halaman lain beserta alat
+          yang mengukurnya: <span className="font-mono text-micro uppercase">/statistik</span> untuk
+          yang terukur langsung, <span className="font-mono text-micro uppercase">/proyek</span> dan{" "}
+          <span className="font-mono text-micro uppercase">/tulisan</span> untuk yang dikerjakan.
+        </CatatanPenutup>
+      </div>
 
       <KakiPanggung
         sumber="SOURCE: lib/profil.ts · kertas render /cv-layout yang mencetak PDF /api/cv"
         halaman="TENTANG"
       />
+
+      <GerakDokumen />
     </Bingkai>
   );
 }

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ambilMetrikGitHub, daftarReposGitHub, type MetrikGitHub, type RepoGitHub } from "@/lib/server/github";
 import { GITHUB_PROFILE, GITHUB_USERNAME } from "@/data/github";
 import { ESAI, menitBaca } from "@/data/esai";
+import { GerakDokumen } from "@/components/Editorial/GerakRute";
 import {
   COMMIT_LEWAT_PR,
   COMMIT_NON_MERGE,
@@ -225,7 +226,7 @@ export default async function Baca() {
     <main className="min-h-screen w-full bg-paper text-obsidian font-sans">
       <div className="mx-auto w-full max-w-[1200px] px-6 md:px-10 py-10 md:py-14">
         {/* ── HEADER ── */}
-        <header className="flex flex-wrap items-end justify-between gap-4 pb-8 swiss-border-b">
+        <header data-gerak="geser" className="flex flex-wrap items-end justify-between gap-4 pb-8 swiss-border-b">
           <div className="flex flex-col gap-2">
             <span className="font-mono text-tag tracking-[0.24em] uppercase text-rosso">
               ARKANFAZI // TULISAN
@@ -262,7 +263,7 @@ export default async function Baca() {
         </header>
 
         {/* ── METRIK ── */}
-        <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 my-10" aria-label="GitHub account metrics">
+        <section data-gerak="terbit" className="grid grid-cols-2 lg:grid-cols-4 gap-3 my-10" aria-label="GitHub account metrics">
           {metrik ? (
             <>
               <Metrik
@@ -294,7 +295,7 @@ export default async function Baca() {
         </section>
 
         {/* ── DAFTAR ── */}
-        <section data-baca-repos aria-labelledby="daftar-judul">
+        <section data-gerak="terbit" data-baca-repos aria-labelledby="daftar-judul">
           <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
             <h2 id="daftar-judul" className="font-mono text-tag tracking-[0.24em] uppercase text-obsidian">
               REPOSITORIES — NEWEST FIRST
@@ -349,7 +350,7 @@ export default async function Baca() {
         </section>
 
         {/* ── RIWAYAT COMMIT ── */}
-        <section className="mt-12" data-baca-riwayat aria-labelledby="riwayat-judul">
+        <section data-gerak="terbit" className="mt-12" data-baca-riwayat aria-labelledby="riwayat-judul">
           <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
             <h2 id="riwayat-judul" className="font-mono text-tag tracking-[0.24em] uppercase text-obsidian">
               COMMIT TRAIL — LOCAL SNAPSHOT
@@ -397,7 +398,7 @@ export default async function Baca() {
         </section>
 
         {/* ── WORKBENCH ── */}
-        <section className="mt-12" data-baca-workbench aria-labelledby="workbench-judul">
+        <section data-gerak="terbit" className="mt-12" data-baca-workbench aria-labelledby="workbench-judul">
           <h2 id="workbench-judul" className="font-mono text-tag tracking-[0.24em] uppercase text-obsidian mb-5">
             WORKBENCH — IN FLIGHT AND OPEN
           </h2>
@@ -501,7 +502,7 @@ export default async function Baca() {
         </section>
 
         {/* ── ESAI ── */}
-        <section className="mt-12" data-baca-esai aria-labelledby="esai-judul">
+        <section data-gerak="terbit" className="mt-12" data-baca-esai aria-labelledby="esai-judul">
           <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
             <h2 id="esai-judul" className="font-mono text-tag tracking-[0.24em] uppercase text-obsidian">
               ESSAYS — THE DECISIONS BEHIND THE NUMBERS
@@ -535,7 +536,7 @@ export default async function Baca() {
         </section>
 
         {/* ── PANGGUNG KEDUA ── */}
-        <section className="mt-12" data-baca-panggung aria-labelledby="panggung-judul">
+        <section data-gerak="terbit" className="mt-12" data-baca-panggung aria-labelledby="panggung-judul">
           <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
             <h2 id="panggung-judul" className="font-mono text-tag tracking-[0.24em] uppercase text-obsidian">
               SECOND STAGE — SMALL WEBGL ROUTES WITH ONE MEASURED INPUT
@@ -568,7 +569,7 @@ export default async function Baca() {
         </section>
 
         {/* ── CARA BACA ── */}
-        <section className="mt-12 px-5 py-6 swiss-border bg-stone/30" aria-labelledby="cara-baca">
+        <section data-gerak="terbit" className="mt-12 px-5 py-6 swiss-border bg-stone/30" aria-labelledby="cara-baca">
           <h2 id="cara-baca" className="font-mono text-tag tracking-[0.24em] uppercase text-rosso mb-4">
             HOW TO READ THIS INDEX
           </h2>
@@ -623,6 +624,8 @@ export default async function Baca() {
             ← BACK TO THE EDITORIAL
           </Link>
         </footer>
+
+        <GerakDokumen />
       </div>
     </main>
   );

@@ -10,6 +10,7 @@ import {
 import { EMAIL_KONTAK } from "@/lib/site";
 import { LOKASI, NAMA, PERAN, SALURAN } from "@/lib/profil";
 import { RUTE_PROFIL } from "@/lib/rute";
+import { GerakDokumen } from "@/components/Editorial/GerakRute";
 
 // Daftar saluran tidak diketik ulang di sini: ia sumber yang sama dengan bar sosial di
 // bab penutup halaman utama (lib/profil.ts). Nomor dan alamat ditulis apa adanya dari
@@ -38,23 +39,29 @@ const PIL = RUTE_PROFIL.filter((r) => r.href !== "/kontak").map((r) => ({
 export default function Kontak() {
   return (
     <Bingkai>
-      <SundulPanggung
-        eyebrow="PROFIL // JALAN MENUJU SAYA"
-        judul="KONTAK"
-        sub={`${LOKASI} · menjawab dalam bahasa Indonesia atau Inggris`}
-        tautan={[{ href: "/", label: "← Editorial" }, ...PIL]}
-      />
+      <div data-gerak="geser">
+        <SundulPanggung
+          eyebrow="PROFIL // JALAN MENUJU SAYA"
+          judul="KONTAK"
+          sub={`${LOKASI} · menjawab dalam bahasa Indonesia atau Inggris`}
+          tautan={[{ href: "/", label: "← Editorial" }, ...PIL]}
+        />
+      </div>
 
-      <Prolog>
-        Semua saluran di bawah adalah saluran yang benar-benar saya baca. Kalau yang ditanyakan
-        soal pekerjaan, sebutkan yang ingin dilihat — halaman ini menautkan kode, angka, dan CV
-        yang sama, jadi tidak perlu menunggu jawaban untuk mulai memeriksa sendiri.
-      </Prolog>
+      <div data-gerak="terbit">
+        <Prolog>
+          Semua saluran di bawah adalah saluran yang benar-benar saya baca. Kalau yang ditanyakan
+          soal pekerjaan, sebutkan yang ingin dilihat — halaman ini menautkan kode, angka, dan CV
+          yang sama, jadi tidak perlu menunggu jawaban untuk mulai memeriksa sendiri.
+        </Prolog>
+      </div>
 
       <Bagian id="saluran" judul="SALURAN">
-        {SALURAN.map((s) => (
+        {SALURAN.map((s, i) => (
           <a
             key={s.nama}
+            data-gerak="terbit"
+            data-urutan={i}
             href={s.url}
             target={s.url.startsWith("mailto:") ? undefined : "_blank"}
             rel="noopener noreferrer"
@@ -71,6 +78,8 @@ export default function Kontak() {
 
       <Bagian id="dokumen" judul="DOKUMEN">
         <a
+          data-gerak="terbit"
+          data-urutan={0}
           href="/api/cv"
           target="_blank"
           rel="noopener noreferrer"
@@ -82,7 +91,11 @@ export default function Kontak() {
             saat diminta — bukan berkas statis, jadi isinya selalu mengikuti kode yang sedang terpasang.
           </span>
         </a>
-        <div className="flex flex-col gap-1.5 pt-4 swiss-border-b">
+        <div
+          data-gerak="terbit"
+          data-urutan={1}
+          className="flex flex-col gap-1.5 pt-4 swiss-border-b"
+        >
           <span className="font-mono text-tag tracking-[0.2em] uppercase text-obsidian">KODE</span>
           <span className="font-sans text-body leading-snug text-obsidian/75">
             Repositori yang memuat halaman ini dan perkakas di sekitarnya ada di GitHub, dan setiap
@@ -91,18 +104,22 @@ export default function Kontak() {
         </div>
       </Bagian>
 
-      <CatatanPenutup id="catatan-nomor" judul="SATU HAL YANG BELUM KOHEREN">
-        Kertas CV mencetak nomor <span className="font-mono text-micro">+62 812 3231 4845</span>,
-        sedangkan tautan WhatsApp yang diterbitkan di bab penutup menuju{" "}
-        <span className="font-mono text-micro">+62 813 3231 4854</span>. Keduanya ada di situs ini
-        hari ini; halaman ini memakai yang kedua karena itulah yang selama ini diklik, dan
-        perbedaannya dilaporkan, bukan disembunyikan.
-      </CatatanPenutup>
+      <div data-gerak="terbit">
+        <CatatanPenutup id="catatan-nomor" judul="SATU HAL YANG BELUM KOHEREN">
+          Kertas CV mencetak nomor <span className="font-mono text-micro">+62 812 3231 4845</span>,
+          sedangkan tautan WhatsApp yang diterbitkan di bab penutup menuju{" "}
+          <span className="font-mono text-micro">+62 813 3231 4854</span>. Keduanya ada di situs ini
+          hari ini; halaman ini memakai yang kedua karena itulah yang selama ini diklik, dan
+          perbedaannya dilaporkan, bukan disembunyikan.
+        </CatatanPenutup>
+      </div>
 
       <KakiPanggung
         sumber="SOURCE: lib/profil.ts SALURAN · lib/site.ts EMAIL_KONTAK · /api/cv"
         halaman="KONTAK"
       />
+
+      <GerakDokumen />
     </Bingkai>
   );
 }
