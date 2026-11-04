@@ -2,7 +2,7 @@
 # dibangun hari ini tidak dijamin sama dengan image yang dibangun bulan depan, dan tidak ada
 # yang bisa membuktikan mana yang jalan di produksi. Dependabot untuk ekosistem `docker`
 # sudah ditambahkan supaya pin ini tidak membusuk dalam diam.
-FROM golang:1.27-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS builder
+FROM golang:1.27.3-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS builder
 
 WORKDIR /app
 
