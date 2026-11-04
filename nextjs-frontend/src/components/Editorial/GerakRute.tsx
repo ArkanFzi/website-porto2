@@ -41,9 +41,6 @@ const JARAK_PX = 8;
 
 const kurva = (e: EaseKubik) => `cubic-bezier(${e.join(",")})`;
 
-const pakaiKurangiGerak = () =>
-  useSyncExternalStore(dengarKurangiGerak, bacaKurangiGerak, bacaKurangiGerakSaatSSR);
-
 const urutanDari = (el: HTMLElement) => {
   const n = Number(el.dataset.urutan ?? 0);
   return Number.isFinite(n) && n > 0 ? n : 0;
@@ -58,7 +55,11 @@ const jedaUntuk = (urutan: number) => Math.min(urutan * DURASI.ketik, DURASI.lap
  *  di dalam satu halaman rute hanya ada satu set elemen bertanda, jadi tidak perlu
  *  akar tambahan dan tidak ada satu pun div baru yang mengubah grid. */
 export function GerakDokumen() {
-  const kurangiGerak = pakaiKurangiGerak();
+  const kurangiGerak = useSyncExternalStore(
+    dengarKurangiGerak,
+    bacaKurangiGerak,
+    bacaKurangiGerakSaatSSR
+  );
 
   useEffect(() => {
     if (kurangiGerak) return;
