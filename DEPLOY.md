@@ -152,6 +152,61 @@ sedang di-traffic. `_LATEST` tidak bisa dipakai untuk melepas pin (API menolakny
 `tools/deploy/cloudrun.sh`. Konsekuensinya diterima sadar: traffic selalu ter-pin ke revisi bernama,
 dan itu aman justru karena setiap deploy — termasuk sesudah rollback — mengalokasikan ulang.
 
+## Skema produksi: `-migrate` lewat Cloud Run Job
+
+`verifySchema()` (`go-backend/main.go`) menolak boot kalau jumlah tabel yang dikelola tidak sama
+persis — skema berubah karena perintah, bukan karena sebuah proses dingin kebetulan naik.
+Konsekuensi yang baru pertama kali terasa pada 2026-11-04: branch yang menambah tabel kelima
+(`kunjungans`) di-merge, deploy run #41813026066 membangun image-nya dengan benar, dan Cloud Run
+membuang revisinya dalam hitungan detik:
+
+```
+db: 4/5 tabel belum ada ([certificates experiences contact_messages journeys kunjungans]);
+    jalankan `./main -migrate` dulu
+Default STARTUP TCP probe failed 1 time consecutively for container "backend-1" on port 8080.
+```
+
+Angka di pesan itu adalah tabel yang **sudah ada**, bukan yang hilang (fmt-nya `got/len`), dan
+nama yang dicetak adalah seluruh daftar `managedTables`, bukan yang kurang — jadi pesan itu
+membingungkan justru di saat paling tidak menyenangkan. Rollback workflow bekerja seperti
+desainnya: traffic tetap 100% di `portfolio-be-00068-2x8`, image frontend bahkan tidak dibangun.
+
+**Kenapa job, dan kenapa di dalam Cloud Run.** `DATABASE_URL` hanya bisa dibaca oleh SA
+`portfolio-runtime@` (secret `portfolio-database-url`), dan jalur `psql` langsung tertutup dari
+mesin kerja — jadi satu-satunya tempat `-migrate` bisa dijalankan adalah di lingkungan yang sudah
+punya akses secret itu. `gcloud run jobs` dipilih karena ia memang untuk sekali-jalan dan
+mengembalikan status keluar yang nyata, sementara `services deploy --no-traffic` akan melaporkan
+revisi "gagal sehat" untuk container yang memang sengaja keluar.
+
+```bash
+# image = digest yang baru saja ditolak Cloud Run; tidak dibangun ulang
+gcloud run jobs create portfolio-migrate \
+  --image=us-central1-docker.pkg.dev/config-agentic-ubuntu/portfolio-app/backend@<digest-yang-baru-di-push> \
+  --args=-migrate --tasks=1 --max-retries=0 \
+  --region=us-central1 --project=config-agentic-ubuntu \
+  --service-account=portfolio-runtime@config-agentic-ubuntu.iam.gserviceaccount.com \
+  --set-secrets=DATABASE_URL=portfolio-database-url:latest \
+  --vpc-connector=portfolio-connector --vpc-egress=all
+
+gcloud run jobs execute portfolio-migrate --region=us-central1 --project=config-agentic-ubuntu --wait
+```
+
+Dua hal yang membuatnya mudah salah dan sengaja dicatat: **`--command` jangan diset** —
+ENTRYPOINT image sudah binernya, dan menimpa entrypoint dengan `-migrate` membuat container mencari
+program bernama `-migrate` (jebakan yang sama sudah didokumentasikan `ci.yml`, di jalur `docker run`);
+dan **hanya secret `portfolio-database-url`** yang dipasang, karena `-migrate` tidak menyentuh
+`JWT_SECRET`/`ADMIN_PASS` — itu sebabnya langkah migrate di CI juga berjalan tanpa secret aplikasi.
+
+Terukur 2026-11-04: eksekusi `portfolio-migrate-27tf6` selesai dengan `migrate: skema siap` dan
+`exit(0)`; `gh run rerun 41813026066 --failed` berikutnya hijau sampai "Verifikasi lulus", dan
+produksi berpindah ke `portfolio-be-00070-ddg` + `portfolio-fe-00067-wff` dengan
+`/api/health => {"db":"ok","status":"ok"}`.
+
+Job `portfolio-migrate` **dibiarkan ada** sebagai jalur skema produksi — menghapusnya berarti deploy
+berikutnya yang menambah tabel gagal dengan cara yang persis sama. Harganya: satu sumber daya yang
+bisa memicu DDL di DB produksi, di bawah SA runtime. Perintah penghapusnya kalau keputusan berubah:
+`gcloud run jobs delete portfolio-migrate --region=us-central1 --project=config-agentic-ubuntu`.
+
 ## Drill rollback (P5) — 2026-10-04
 
 Rollback sudah terbukti tereksekusi di produksi, dengan kerusakan yang dibuat sengaja lewat PR #7
