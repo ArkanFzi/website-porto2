@@ -7,17 +7,18 @@
  *  dibuktikan ("POSTGRESQL SYNCED · VERIFIED EMPLOYMENT", sementara Postgres tidak menjawab).
  *
  *  Sumber yang dipakai sekarang, berurutan:
- *  1. tabel `experiences` (Postgres) kalau benar-benar ada barisnya;
+ *  1. tabel `experiences` (Postgres) kalau benar-benar ada barisnya, detailnya dari kolom
+ *     `summary` yang disunting lewat /admin;
  *  2. tabel `journeys` kalau isinya ≥ 3 babak (jalur yang bisa disunting dari /admin);
  *  3. blok Professional Record kertas CV (`src/lib/profil.ts`, cermin LinkedIn), dengan repo
  *     yang malam ini benar-benar dikembalikan `daftarReposGitHub()` sebagai detail di dalam
  *     panel record yang mengklaim publishes karyanya di GitHub — bukan sebagai phase sendiri.
  *
- *  Yang TIDAK kulakukan, dan alasannya: tabel `experiences` tidak punya kolom `summary`
- *  (`go-backend/main.go:288-295`), jadi prose CV sengaja tidak ditempel ke baris DB lewat
- *  pencocokan kata kunci — "Sekawan Media" muncul di dua record yang berbeda dan menempelkan
- *  paragraf yang salah lebih buruk daripada tidak menempel apa pun. Jalur 1 mencetak
- *  `summary: ""` dan accordion-nya diam. Karya GitHub juga tidak menempel di jalur 1 dan 2:
+ *  Yang TIDAK kulakukan, dan alasannya: prose CV tidak ditempel ke baris DB lewat pencocokan
+ *  kata kunci — "Sekawan Media" muncul di dua record yang berbeda dan menempelkan paragraf
+ *  yang salah lebih buruk daripada tidak menempel apa pun. `summary` jalur 1 adalah apa yang
+ *  diketik di /admin, bukan apa yang disalin dari `profil.ts`; baris yang detailnya belum
+ *  diisi mencetak accordion kosong. Karya GitHub juga tidak menempel di jalur 1 dan 2:
  *  memasangkan repo ke baris yang tidak menyebutnya berarti mengarang sumber. */
 
 import { REKAMAN } from "@/lib/profil";
@@ -121,7 +122,7 @@ export function daftarFase(
       title: e.role,
       org: e.company.toUpperCase(),
       year: e.period,
-      summary: "",
+      summary: e.summary,
       specs: ["SUMBER: TABEL EXPERIENCES"],
     }));
   }

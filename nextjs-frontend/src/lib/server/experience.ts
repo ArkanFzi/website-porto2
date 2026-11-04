@@ -5,6 +5,7 @@ export interface Experience {
   role: string;
   company: string;
   period: string;
+  summary: string;
 }
 
 /** Backend mati = TIDAK ADA rekaman, bukan rekaman cadangan yang diketik tangan.
@@ -28,6 +29,9 @@ export async function daftarPengalaman(): Promise<Experience[]> {
       role: e.role,
       company: e.company,
       period: e.period,
+      // Backend yang belum ikut ter-deploy belum mengirim kolom ini; tanpa potongan itu
+      // bab 02 membaca `undefined` sebagai isi, bukan sebagai "detail belum ada".
+      summary: e.summary ?? "",
     }));
   } catch {
     return [];
