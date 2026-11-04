@@ -285,11 +285,16 @@ type Certificate struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
+// Summary adalah isi panel detail bab 02. Kolomnya sengaja `not null;default:''`, bukan
+// nullable: AutoMigrate menambahkan kolom ke tabel yang sudah berisi baris, dan NULL di
+// baris lama membuat GET publik gagal scan ke string Go — baris kosong harus terbaca
+// sebagai "", bukan sebagai galat.
 type Experience struct {
 	ID        string    `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	Role      string    `gorm:"not null" json:"role"`
 	Company   string    `gorm:"not null" json:"company"`
 	Period    string    `gorm:"not null" json:"period"`
+	Summary   string    `gorm:"not null;default:''" json:"summary"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 }
@@ -618,6 +623,7 @@ func main() {
 			Role    string `json:"role"`
 			Company string `json:"company"`
 			Period  string `json:"period"`
+			Summary string `json:"summary"`
 		}
 		if err := c.ShouldBindJSON(&in); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Format data salah"})
@@ -627,6 +633,7 @@ func main() {
 			Role:    strings.TrimSpace(in.Role),
 			Company: strings.TrimSpace(in.Company),
 			Period:  strings.TrimSpace(in.Period),
+			Summary: strings.TrimSpace(in.Summary),
 		}
 		if pesan, ok := cekIsian(
 			isianTeks{Label: "Posisi", Value: exp.Role, Max: 200},
@@ -634,6 +641,12 @@ func main() {
 			isianTeks{Label: "Periode", Value: exp.Period, Max: 100},
 		); !ok {
 			c.JSON(http.StatusBadRequest, gin.H{"error": pesan})
+			return
+		}
+		// Detail boleh kosong — baris lama memang tidak pernah punya isinya. Yang tidak
+		// boleh cuma satu: panjang tak terbatas kembali utuh di setiap GET publik.
+		if utf8.RuneCountInString(exp.Summary) > 1200 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Detail terlalu panjang (maks 1200 karakter)"})
 			return
 		}
 		if err := DB.Create(&exp).Error; err != nil {

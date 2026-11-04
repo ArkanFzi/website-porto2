@@ -1656,9 +1656,17 @@ await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-pr
     try {
       const r = await fetch('/api/experience', { headers: { Accept: 'application/json' } });
       const b = await r.json().catch(() => null);
-      return { status: r.status, baris: Array.isArray(b) ? b.length : -1 };
+      const rows = Array.isArray(b) ? b : [];
+      return {
+        status: r.status,
+        baris: Array.isArray(b) ? b.length : -1,
+        // Kolom yang belum ada di backend = `undefined` di setiap baris; kolom yang sudah
+        // ada tapi belum diisi = string kosong. Dua hal yang berbeda dan harus bisa dibedakan.
+        kolomSummary: rows.every((x) => typeof x?.summary === 'string'),
+        summary: rows.map((x) => (typeof x?.summary === 'string' ? x.summary : '')),
+      };
     } catch {
-      return { status: 0, baris: -1 };
+      return { status: 0, baris: -1, kolomSummary: false, summary: [] };
     }
   });
   const baris = await page.evaluate(async () => {
@@ -1689,8 +1697,8 @@ await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-pr
   );
   // Jalur CV hanya boleh ditagih kalau tabel experiences memang tidak mengirim baris —
   // 200 dengan payload [] adalah jawaban sah (backend hidup, isinya kosong), jadi status
-  // alone bukan pembeda. Kalau ada barisnya, yang tampil jalur DB dan gerbang kosong-summary
-  // di bawah bukan lawan yang adil (tabel experiences tidak punya kolom summary).
+  // alone bukan pembeda. Kalau ada barisnya, yang tampil jalur DB dan gerbang jalur CV di
+  // bawah bukan lawan yang adil — yang ditagih di jalur itu adalah kolom summary-nya sendiri.
   const jalurCv = pengalaman.baris <= 0;
   console.log(
     'phase bab 02',
@@ -1743,6 +1751,20 @@ await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-pr
     );
   } else {
     console.log('catatan  ', `tabel experiences mengirim ${pengalaman.baris} baris: jalur DB yang tampil, gerbang jalur CV dilewati`);
+    // Yang ditagih bukan "panelnya ada" — panel kosong juga punya elemen. Yang ditagih adalah
+    // hubungan kolom↔teks: baris yang summary-nya terisi harus mencetak kalimat itu di panel
+    // phase-nya sendiri, dan minimal satu baris harus benar-benar terisi supaya gerbang
+    // berikutnya tidak menang karena tidak ada yang diuji.
+    cek('payload /api/experience mengirim kolom summary', pengalaman.kolomSummary, true);
+    const terisi = pengalaman.summary
+      .map((s, i) => ({ id: baris[i]?.id, teks: (s || '').replace(/\s+/g, ' ').trim() }))
+      .filter((x) => x.teks.length > 0);
+    cekMin('minimal satu baris experiences punya detail', terisi.length, 1);
+    cek(
+      'detail DB tercetak utuh di panel phase-nya sendiri',
+      terisi.every((x) => (baris.find((b) => b.id === x.id)?.isi ?? '').includes(x.teks)),
+      true
+    );
   }
 }
 

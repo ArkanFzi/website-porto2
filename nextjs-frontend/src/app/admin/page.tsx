@@ -19,6 +19,7 @@ interface Experience {
     role: string;
     company: string;
     period: string;
+    summary: string;
 }
 
 interface Journey {
@@ -66,7 +67,7 @@ export default function AdminDashboard() {
 
     // Form States
     const [certForm, setCertForm] = useState({ title: "", issuer: "", date: "" });
-    const [expForm, setExpForm] = useState({ role: "", company: "", period: "" });
+    const [expForm, setExpForm] = useState({ role: "", company: "", period: "", summary: "" });
     const [journeyForm, setJourneyForm] = useState(formJourneyKosong);
 
     const fetchData = async () => {
@@ -191,7 +192,7 @@ export default function AdminDashboard() {
                 setFlash((await readApiError(res)) || "Pengalaman tidak tersimpan.");
                 return;
             }
-            setExpForm({ role: "", company: "", period: "" });
+            setExpForm({ role: "", company: "", period: "", summary: "" });
             setFlash("");
             fetchData();
         } catch (e) {
@@ -420,6 +421,10 @@ export default function AdminDashboard() {
                                         <label className="text-xs font-medium text-white/50 mb-1 block">Period</label>
                                         <input required maxLength={100} value={expForm.period} onChange={e => setExpForm({ ...expForm, period: e.target.value })} type="text" className="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-rosso-rim transition-colors" placeholder="e.g. 2021 - Present" />
                                     </div>
+                                    <div>
+                                        <label className="text-xs font-medium text-white/50 mb-1 block">Detail (optional)</label>
+                                        <textarea maxLength={1200} rows={4} value={expForm.summary} onChange={e => setExpForm({ ...expForm, summary: e.target.value })} className="w-full bg-black border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-rosso-rim transition-colors resize-none" placeholder="What the panel inside this phase says — empty means no detail yet" />
+                                    </div>
                                     <button type="submit" className="mt-2 bg-rosso-rim text-white font-bold py-3 rounded-lg hover:bg-white hover:text-black transition-colors">Save Experience</button>
                                 </form>
                             )}
@@ -494,6 +499,11 @@ export default function AdminDashboard() {
                                                 <td className="px-6 py-4">
                                                     <div className="font-bold text-white/90">{e.role}</div>
                                                     <div className="text-white/40 mt-1">{e.company}</div>
+                                                    {e.summary ? (
+                                                        <div className="text-white/30 mt-1 line-clamp-2">{e.summary}</div>
+                                                    ) : (
+                                                        <div className="text-white/30 mt-1 italic">no detail yet</div>
+                                                    )}
                                                 </td>
                                                 <td className="px-6 py-4 hidden md:table-cell text-white/60">
                                                     {e.period}
