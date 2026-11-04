@@ -103,6 +103,12 @@ export const RollCage: React.FC<AktorProps> = ({ scrollProgressRef }) => {
     garis.scale.set(lebar, lebar * RASIO_POTRET, KEDALAMAN);
     // Hanya kemiringan bab; sangkar tidak berputar dengan sendirinya.
     garis.rotation.y = k.rot;
+    // Opasitas dibaca dari silang yang sama dengan isinya, bukan konstan: kartu masuk
+    // dengan `1 - uMobil` dan pengganti keluar dengan `uMobil`, sedangkan `TETAS` baru
+    // melepas objek setelah ln(1/0,001)/6,3 ≈ 1,1 detik — konstan di antara keduanya
+    // adalah bingkai penuh yang tertimpa foto (terukur 18 dari 30 sampel di bab penutup).
+    (garis.material as THREE.LineBasicMaterial).opacity =
+      OPASITAS * Math.max(0, Math.min(1, SILANG_MOBIL.value));
   });
 
   if (!terpasang) return null;

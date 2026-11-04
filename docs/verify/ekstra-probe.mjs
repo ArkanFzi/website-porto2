@@ -17,6 +17,7 @@ mkdirSync(OUT, { recursive: true });
 
 const TITIK_BENANG = 24; // harus sama dengan TITIK di BenangRosso.tsx
 const SISI_SANGKAR = 12; // EdgesGeometry balok = 12 segmen
+const OPASITAS_SANGKAR = 0.9; // harus sama dengan OPASITAS di RollCage.tsx
 const SEG_KOMPAS = 2; // jarum + ekor
 const PARTIKEL_DEBU = 140;
 const EKSTRA = ['bahasa-logo', 'bilah', 'benang', 'debu', 'jejak', 'kompas', 'roda', 'sangkar', 'sf26-ban', 'sf26-pelek', 'sf26-sasis'];
@@ -1075,9 +1076,16 @@ const bacaMobil = () =>
     const p = window.__panggung;
     const b = window.__bahasa;
     const objek = window.__render?.objek ?? [];
+    // Opasitas sangkar hanya ada di objeknya sendiri: sensus menyebut namanya, dan
+    // "bingkai mengikuti isinya" adalah klaim tentang angkanya, bukan kehadirannya.
+    let sangkarOpasitas = null;
+    window.__scene?.traverse((o) => {
+      if (o.name === 'sangkar') sangkarOpasitas = o.material?.opacity ?? null;
+    });
     return {
       silang: p?.mobil ?? null,
       sf26: m?.silang ?? null,
+      sangkarOpasitas,
       sudut: m?.sudut ?? null,
       putaran: m?.putaran ?? null,
       bab: p?.babDari ?? null,
@@ -1248,6 +1256,11 @@ cek('keadaan diam bab arsip: aktor = mobil, hovered = null', `${diamArsip.aktor}
 cek('keadaan diam bab arsip: silang pengganti penuh', (penuhDiam.silang ?? 0) >= 0.98, true);
 cek('keadaan diam /01 tidak memanggil logo', `${diamArsip.logo}/${JSON.stringify(diamArsip.bahasaId)}`, '0/null');
 cek('sangkar hidup bersama isinya di keadaan diam', ada(diamArsip.objek, 'sangkar'), true);
+cek(
+  'sangkar penuh saat isinya penuh',
+  Math.abs((diamArsip.sangkarOpasitas ?? -1) - OPASITAS_SANGKAR) <= 0.01,
+  true
+);
 cek('calls = jumlah objek pada frame yang sama (diam arsip)', diamArsip.calls === diamArsip.jumlahObjek, true);
 cekMin('sangkar = 12 segmen di keadaan diam', diamArsip.garis, SISI_SANGKAR);
 // Kontribusi mobil diukur terhadap kartu murni, bukan terhadap "tanpa hover" — mobil sudah
@@ -1499,6 +1512,32 @@ cek('pulang dari logo kembali ke anggaran keadaan diam', `${pulangSettle.calls}/
 // sikap() melaporkan t=1 (bukan t=0) sehingga penanggung kandidat itu akan menyapu seluruh
 // peta gulir untuk kemudian menolak semuanya.
 const yUjung = await page.evaluate(() => Math.round(document.documentElement.scrollHeight - window.innerHeight));
+// Luruhannya diukur SAAT berangkat, bukan setelahnya: parkirY() menahan 1,5 s di dalam
+// evaluate, dan silang sudah selesai (ln(1/0,001)/6,3 ≈ 1,1 s per-detik) sebelum sampel
+// pertama sempat dibaca. Jadi gulir dilepas tanpa jeda lalu dibaca berpasangan.
+await page.evaluate((v) => window.scrollTo(0, Math.round(v)), yUjung);
+const luruh = [];
+for (let i = 0; i < 45; i++) {
+  luruh.push(await bacaMobil());
+  await new Promise((r) => setTimeout(r, 40));
+}
+const terpasang = luruh.filter((s) => s.sangkarOpasitas !== null);
+const tengah = terpasang.filter((s) => (s.sf26 ?? 0) > 0.05 && (s.sf26 ?? 0) < 0.9);
+const patuh = terpasang.filter(
+  (s) => Math.abs((s.sangkarOpasitas ?? -1) - OPASITAS_SANGKAR * (s.sf26 ?? 0)) <= 0.01
+);
+const menimpa = terpasang.filter((s) => (s.sf26 ?? 1) < 0.5 && (s.sangkarOpasitas ?? 0) > 0.5);
+console.log(
+  'luruh sangkar',
+  `terpasang=${terpasang.length}`,
+  `tengah=${tengah.length}`,
+  `patuh=${patuh.length}`,
+  `menimpa=${menimpa.length}`,
+  'contoh=' + JSON.stringify(terpasang.slice(0, 3).map((s) => [s.sf26, s.sangkarOpasitas]))
+);
+cekMin('luruhan punya sampel saat silang di tengah', tengah.length, 1);
+cek('opasitas sangkar = 0,9 × silang di setiap sampel luruhan', `${patuh.length}/${terpasang.length}`, `${terpasang.length}/${terpasang.length}`);
+cek('tidak ada momen foto hampir penuh dengan sangkar penuh', menimpa.length, 0);
 await parkirY(yUjung);
 const habisPergi = await tungguSilang('habis', { x: 8, y: 8 });
 const pergi = await sensusSetelah({ x: 8, y: 8 });
