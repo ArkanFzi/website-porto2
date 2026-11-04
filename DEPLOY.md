@@ -203,9 +203,31 @@ produksi berpindah ke `portfolio-be-00070-ddg` + `portfolio-fe-00067-wff` dengan
 `/api/health => {"db":"ok","status":"ok"}`.
 
 Job `portfolio-migrate` **dibiarkan ada** sebagai jalur skema produksi — menghapusnya berarti deploy
-berikutnya yang menambah tabel gagal dengan cara yang persis sama. Harganya: satu sumber daya yang
+berikutnya yang menambah tabel gagal dengan cara yang sama. Harganya: satu sumber daya yang
 bisa memicu DDL di DB produksi, di bawah SA runtime. Perintah penghapusnya kalau keputusan berubah:
 `gcloud run jobs delete portfolio-migrate --region=us-central1 --project=config-agentic-ubuntu`.
+
+### Urutan yang wajib untuk tabel keenam (`revokasi_sesi`)
+
+Job itu memakai **image yang di-pin saat dibuat**, dan `-migrate` hanyalah `AutoMigrate` milik biner
+di image tersebut. Image lama tidak mengenal `RevokasiSesi`, jadi menjalankan job apa adanya tetap
+menyisakan lima tabel sementara `verifySchema()` minta enam — revisi baru ditolak Cloud Run dengan
+`5/6 tabel belum ada`, persis seperti `4/5` di atas. Urutannya:
+
+```bash
+# 1. deploy push image berlabel SHA; job harus dipindah ke image itu lebih dulu
+gcloud run jobs update portfolio-migrate \
+  --image=us-central1-docker.pkg.dev/config-agentic-ubuntu/portfolio-app/backend:<github.sha yang di-deploy> \
+  --region=us-central1 --project=config-agentic-ubuntu
+# 2. baru jalankan
+gcloud run jobs execute portfolio-migrate --region=us-central1 --project=config-agentic-ubuntu --wait
+# 3. baru `gh run rerun <deploy> --failed` (langkah Deploy backend yang tadi ditolak)
+```
+
+Variabel lingkungan yang ikut berubah: **`ADMIN_USER` tidak punya default lagi** (`requireEnv`,
+`main.go`), dan `deploy.yml` sekarang menyetel `arkfazone-admin`, bukan `admin`. Nama login produksi
+berubah pada deploy berikutnya — kata kunci di Secret Manager tidak tersentuh, dan revisi lama yang
+masih melayani tetap memakai nilainya sendiri sampai berpindah.
 
 ## Drill rollback (P5) — 2026-10-04
 

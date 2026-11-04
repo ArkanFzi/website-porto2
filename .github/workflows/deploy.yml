@@ -175,7 +175,7 @@ jobs:
             --vpc-egress all-traffic \
             --allow-unauthenticated \
             --port 8080 \
-            --set-env-vars ADMIN_USER=admin \
+            --set-env-vars ADMIN_USER=arkfazone-admin \
             --set-secrets DATABASE_URL=portfolio-database-url:latest,JWT_SECRET=portfolio-jwt-secret:latest,ADMIN_PASS=portfolio-admin-pass:latest,ADMIN_EMAIL=portfolio-admin-email:latest,CORS_ORIGINS=portfolio-cors-origins:latest,EMAIL_USER=portfolio-email-user:latest,EMAIL_PASS=portfolio-email-pass:latest
           rev=$(tools/deploy/cloudrun.sh allocate "$BE_SERVICE")
           echo "rev=$rev" >> "$GITHUB_OUTPUT"

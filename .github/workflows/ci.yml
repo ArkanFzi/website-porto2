@@ -185,10 +185,10 @@ jobs:
           # DATABASE_URL dipakai biner (pgx menerima TimeZone); psql memakai conninfo sendiri
           # karena libpq menolak opsi itu: "invalid connection option \"TimeZone\"".
           PSQL='host=127.0.0.1 user=postgres dbname=portfolio_db port=5432 sslmode=disable'
-          T() { psql "$PSQL" -tAc "select count(distinct table_name) from information_schema.tables where table_schema = current_schema() and table_name in ('certificates','experiences','contact_messages','journeys','kunjungans')"; }
+          T() { psql "$PSQL" -tAc "select count(distinct table_name) from information_schema.tables where table_schema = current_schema() and table_name in ('certificates','experiences','contact_messages','journeys','kunjungans','revokasi_sesi')"; }
 
           [ "$(T)" = "0" ] || { echo "DB uji tidak kosong: $(T) tabel sudah ada"; exit 1; }
-          echo "tabel sebelum apa pun: $(T)/5"
+          echo "tabel sebelum apa pun: $(T)/6"
 
           set +e
           out=$(/tmp/portfolio-be 2>&1); rc=$?
@@ -202,8 +202,8 @@ jobs:
           # -migrate: langkah ini sengaja TIDAK punya JWT_SECRET/ADMIN_PASS di env di atas.
           /tmp/portfolio-be -migrate
           /tmp/portfolio-be -migrate
-          echo "tabel setelah -migrate dua kali: $(T)/5"
-          [ "$(T)" = "5" ] || { echo "-migrate tidak menyiapkan seluruh skema"; exit 1; }
+          echo "tabel setelah -migrate dua kali: $(T)/6"
+          [ "$(T)" = "6" ] || { echo "-migrate tidak menyiapkan seluruh skema"; exit 1; }
 
           echo "baris setelah -migrate: certificates=$(psql "$PSQL" -tAc 'select count(*) from certificates') experiences=$(psql "$PSQL" -tAc 'select count(*) from experiences') journeys=$(psql "$PSQL" -tAc 'select count(*) from journeys')"
           [ "$(psql "$PSQL" -tAc 'select count(*) from certificates')" = "0" ] || { echo "-migrate masih menanam seed"; exit 1; }
@@ -235,7 +235,7 @@ jobs:
           psql "$PSQL" -qc 'create database portfolio_img'
           PI='host=127.0.0.1 user=postgres dbname=portfolio_img port=5432 sslmode=disable'
           IMG_URL="host=127.0.0.1 user=postgres dbname=portfolio_img port=5432 sslmode=disable TimeZone=UTC"
-          TI() { psql "$PI" -tAc "select count(distinct table_name) from information_schema.tables where table_schema = current_schema() and table_name in ('certificates','experiences','contact_messages','journeys','kunjungans')"; }
+          TI() { psql "$PI" -tAc "select count(distinct table_name) from information_schema.tables where table_schema = current_schema() and table_name in ('certificates','experiences','contact_messages','journeys','kunjungans','revokasi_sesi')"; }
           [ "$(TI)" = "0" ] || { echo "portfolio_img tidak kosong: $(TI)"; exit 1; }
 
           set +e
@@ -250,8 +250,8 @@ jobs:
           # Inti N2: flag lewat image, TANPA override --entrypoint. Dua kali jalan = idempoten.
           docker run --rm --network host -e DATABASE_URL="$IMG_URL" portfolio-be:ci -migrate
           docker run --rm --network host -e DATABASE_URL="$IMG_URL" portfolio-be:ci -migrate
-          echo "tabel setelah -migrate lewat image: $(TI)/5"
-          [ "$(TI)" = "5" ] || { echo "-migrate tidak tercapai dari image (ENTRYPOINT belum terpasang?)"; exit 1; }
+          echo "tabel setelah -migrate lewat image: $(TI)/6"
+          [ "$(TI)" = "6" ] || { echo "-migrate tidak tercapai dari image (ENTRYPOINT belum terpasang?)"; exit 1; }
           [ "$(psql "$PI" -tAc 'select count(*) from certificates')" = "0" ] || { echo "-migrate dari image menanam seed"; exit 1; }
 
           # Entrypoint yang berubah tidak boleh mengubah cara kontainer melayani.
