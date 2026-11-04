@@ -22,7 +22,9 @@
 // --tulis menyimpan anggaran per bab apa adanya: panggilan, segitiga, titik, garis,
 // alokasi geometri/tekstur, laju frame, dan sensus objek pada frame tersibuk. Tidak ada
 // angka byte GPU di dalamnya karena three tidak mengekspos ukuran per geometri/tekstur;
-// yang ditulis hanyalah yang benar-benar terbaca.
+// yang ditulis hanyalah yang benar-benar terbaca. Satu rekaman byte ikut tertulis sejak
+// panggung punya objek bahasa: `chunk_ekstra`, ukuran di jalur yang tidak dilihat
+// perf-budget (kanvas di-`dynamic()`), dan seperti angka lain di file ini ia tanpa plafon.
 import { createRequire } from 'node:module';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -81,6 +83,10 @@ if (!ada) {
   await browser.close();
   process.exit(1);
 }
+
+await page.evaluate(() => {
+  window.__probeAwal = new Set(performance.getEntriesByType('resource').map((e) => e.name));
+});
 
 const puncakAktif = await page.evaluate(async () => {
   const maks = document.documentElement.scrollHeight - window.innerHeight;
@@ -182,6 +188,39 @@ for (const bab of BAB) {
   );
 }
 
+// Byte kode yang benar-benar ditarik halaman untuk objek ekstra. `tools/ci/perf-budget.mjs`
+// tidak bisa melihat ini sama sekali: kanvas editorial di-`dynamic()` sehingga chunk-nya tidak
+// ada di jalur yang dibacanya, dan angka "hijau" di sana bukan bukti beban baru kecil. Diambil
+// setelah satu baris arsip di-hover supaya jalur yang dipanggil penonton (bukan hanya yang
+// dilewatkan gulir) ikut tercatat. TANPA plafon: ini rekaman, bukan gerbang.
+const titikHover = await page.evaluate(() => {
+  const el = document.querySelector('#chapter-03 [data-magnetic]');
+  if (!el) return null;
+  el.scrollIntoView({ block: 'center' });
+  const r = el.getBoundingClientRect();
+  return { x: r.x + r.width / 2, y: r.y + Math.min(r.height / 2, 40) };
+});
+if (titikHover) {
+  await new Promise((r) => setTimeout(r, 700));
+  await page.mouse.move(titikHover.x, titikHover.y);
+  await new Promise((r) => setTimeout(r, 1800));
+  await page.mouse.move(8, 8);
+  await new Promise((r) => setTimeout(r, 400));
+}
+const chunkEkstra = await page.evaluate(() => {
+  const awal = window.__probeAwal ?? new Set();
+  const baru = performance
+    .getEntriesByType('resource')
+    .filter((e) => !awal.has(e.name))
+    .filter((e) => /\.(js|mjs)(\?|$)/i.test(new URL(e.name).pathname))
+    .map((e) => ({
+      nama: new URL(e.name).pathname.split('/').pop(),
+      mb: Math.round((e.encodedBodySize / 1048576) * 1000) / 1000,
+    }))
+    .sort((a, b) => b.mb - a.mb);
+  return { jumlah: baru.length, mb: Math.round(baru.reduce((t, c) => t + c.mb, 0) * 1000) / 1000, berkas: baru };
+});
+
 // Byte aset yang benar-benar diunduh halaman (bukan taksiran): resource timing untuk
 // model dan gambar, dibaca setelah keempat bab dikunjungi supaya glb arsip ikut tercatat.
 const aset = await page.evaluate(() =>
@@ -210,11 +249,14 @@ if (jalurTulis) {
         : 'perangkat_gambar bukan GPU keras: angka dipakai untuk membandingkan antar-run di mesin yang sama, bukan sebagai target 60fps pengguna.',
       'puncak geometri/tekstur adalah jumlah alokasi yang masih hidup (gl.info.memory), bukan byte — three tidak mengekspos ukuran per alokasi.',
       'aset_unduhan.mb = encodedBodySize yang diterima browser (termampatkan), jadi lebih kecil dari ukuran file di disk.',
+      'chunk_ekstra = berkas JS yang baru diunduh setelah satu baris arsip di-hover. 0 berkas adalah temuan, bukan alat ukur yang mati: kanvas di-`dynamic()` dan kode objek bahasa ikut chunk yang sudah ditarik saat halaman terbuka, jadi hover tidak membeli unduhan baru.',
+      'Yang TIDAK direkam field itu: besar chunk kanvas itu sendiri. perf-budget hanya membaca aset yang dirujuk HTML awal, jadi kode objek ekstra tidak pernah muncul di angkanya dan angka hijau di sana bukan bukti beban ekstra kecil.',
       'objek = sensus objek yang ikut digambar pada frame tersibuk bab itu.',
       'sepi_setelah_ms = lama tunggu dari akhir jendela aktif sampai counter frame berhenti naik; angka ini adalah sisa perjalanan kartu, bukan waktu idle yang diizinkan.',
       'puncak null dan frame_terukur 0 berarti kanvas tidak menulis satu pun frame selama 1,5 s jendela ukur — bukan nol alokasi.',
     ],
     puncak_aktif_global: puncakAktif,
+    chunk_ekstra: chunkEkstra,
     aset_unduhan: aset,
     bab: perBab,
   };
@@ -224,6 +266,8 @@ if (jalurTulis) {
 
 console.log(`puncak draw call global sebelum per-bab: ${puncakAktif}`);
 console.log(`perangkat gambar: ${perangkat}`);
+console.log(`chunk_ekstra: ${chunkEkstra.jumlah} berkas, ${chunkEkstra.mb} MB (tanpa plafon, hanya rekaman)`);
+for (const c of chunkEkstra.berkas.slice(0, 6)) console.log(`  ${c.nama}: ${c.mb} MB`);
 if (jalurTulis) {
   console.log(`anggaran ditulis: ${jalurTulis}`);
   for (const b of perBab) {

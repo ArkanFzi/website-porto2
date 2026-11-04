@@ -1,5 +1,5 @@
 {
-  "dibuat": "2026-11-03T14:18:15.332Z",
+  "dibuat": "2026-11-04T04:57:50.194Z",
   "sumber": "docs/verify/drawcall-probe.mjs --tulis",
   "jendela_ukur": {
     "lebar": 1440,
@@ -12,11 +12,18 @@
     "perangkat_gambar GPU keras: angkanya berlaku pada mesin + driver yang namanya tercetak di jendela_ukur, bukan pada pengunjung lain.",
     "puncak geometri/tekstur adalah jumlah alokasi yang masih hidup (gl.info.memory), bukan byte — three tidak mengekspos ukuran per alokasi.",
     "aset_unduhan.mb = encodedBodySize yang diterima browser (termampatkan), jadi lebih kecil dari ukuran file di disk.",
+    "chunk_ekstra = berkas JS yang baru diunduh setelah satu baris arsip di-hover. 0 berkas adalah temuan, bukan alat ukur yang mati: kanvas di-`dynamic()` dan kode objek bahasa ikut chunk yang sudah ditarik saat halaman terbuka, jadi hover tidak membeli unduhan baru.",
+    "Yang TIDAK direkam field itu: besar chunk kanvas itu sendiri. perf-budget hanya membaca aset yang dirujuk HTML awal, jadi kode objek ekstra tidak pernah muncul di angkanya dan angka hijau di sana bukan bukti beban ekstra kecil.",
     "objek = sensus objek yang ikut digambar pada frame tersibuk bab itu.",
     "sepi_setelah_ms = lama tunggu dari akhir jendela aktif sampai counter frame berhenti naik; angka ini adalah sisa perjalanan kartu, bukan waktu idle yang diizinkan.",
     "puncak null dan frame_terukur 0 berarti kanvas tidak menulis satu pun frame selama 1,5 s jendela ukur — bukan nol alokasi."
   ],
   "puncak_aktif_global": 6,
+  "chunk_ekstra": {
+    "jumlah": 0,
+    "mb": 0,
+    "berkas": []
+  },
   "aset_unduhan": [
     {
       "nama": "FotoDiriFix.webp",
@@ -78,17 +85,21 @@
       "bab": 3,
       "frame_terukur": 15,
       "puncak": {
-        "calls": 3,
-        "segitiga": 18460,
+        "calls": 7,
+        "segitiga": 68918,
         "titik": 0,
-        "garis": 0,
-        "geometri": 6,
+        "garis": 12,
+        "geometri": 10,
         "tekstur": 2
       },
       "objek": [
         "Mesh",
+        "sangkar",
         "bilah",
-        "jejak"
+        "jejak",
+        "sf26-sasis",
+        "sf26-ban",
+        "sf26-pelek"
       ],
       "fps": 59.9,
       "sepi_setelah_ms": 7255,
@@ -99,20 +110,24 @@
       "bab": 4,
       "frame_terukur": 15,
       "puncak": {
-        "calls": 3,
-        "segitiga": 18460,
+        "calls": 7,
+        "segitiga": 68918,
         "titik": 0,
-        "garis": 0,
-        "geometri": 6,
+        "garis": 12,
+        "geometri": 10,
         "tekstur": 2
       },
       "objek": [
         "Mesh",
+        "sangkar",
         "bilah",
-        "jejak"
+        "jejak",
+        "sf26-sasis",
+        "sf26-ban",
+        "sf26-pelek"
       ],
-      "fps": 60.6,
-      "sepi_setelah_ms": 7255,
+      "fps": 59.9,
+      "sepi_setelah_ms": 7254,
       "frame_saat_diam": 0,
       "objek_saat_diam": []
     }

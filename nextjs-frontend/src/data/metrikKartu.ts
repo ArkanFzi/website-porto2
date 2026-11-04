@@ -121,7 +121,7 @@ export interface MetrikKartu {
 
 export const METRIK_KARTU: MetrikKartu = {
   "versi": 2,
-  "dihasilkanPada": "2026-11-04T02:20:47.285Z",
+  "dihasilkanPada": "2026-11-04T05:01:05.875Z",
   "batasUsiaHari": 90,
   "kartu": {
     "01": {
@@ -183,13 +183,13 @@ export const METRIK_KARTU: MetrikKartu = {
     },
     "05": {
       "fpsTerendah": 59.9,
-      "fpsTertinggi": 60.6,
+      "fpsTertinggi": 59.9,
       "jumlahBab": 4,
       "frame": 60,
       "lebar": 1440,
       "tinggi": 900,
       "perangkat": "ANGLE (NVIDIA, Vulkan 1.4.329 (NVIDIA NVIDIA GeForce RTX 2050 (0x000025AD)), NVIDIA)",
-      "dibuat": "2026-11-03T14:18:15.332Z",
+      "dibuat": "2026-11-04T04:57:50.194Z",
       "perantiLunak": {
         "fpsTerendah": 7.1,
         "fpsTertinggi": 17.8,
@@ -235,12 +235,12 @@ export const METRIK_KARTU: MetrikKartu = {
     },
     "02": {
       "bahasa": "TypeScript",
-      "byte": 270534,
+      "byte": 278061,
       "berkas": 40,
       "peringkat": [
         {
           "bahasa": "TypeScript",
-          "byte": 270534,
+          "byte": 278061,
           "berkas": 40
         },
         {
@@ -254,12 +254,12 @@ export const METRIK_KARTU: MetrikKartu = {
           "berkas": 19
         }
       ],
-      "byteTotal": 643551,
+      "byteTotal": 651078,
       "jumlahBerkas": 146,
       "binerDilewati": 5,
       "jalurDibuang": 0,
       "korpus": "git",
-      "signature": "git|146|643551",
+      "signature": "git|146|651078",
       "sumber": "git di /home/arkan/Documents/Coding/Pickertime"
     },
     "03": {
@@ -312,17 +312,17 @@ export const METRIK_KARTU: MetrikKartu = {
     },
     "05": {
       "bahasa": "TypeScript",
-      "byte": 699095,
-      "berkas": 103,
+      "byte": 745811,
+      "berkas": 108,
       "peringkat": [
         {
           "bahasa": "TypeScript",
-          "byte": 699095,
-          "berkas": 103
+          "byte": 745811,
+          "berkas": 108
         },
         {
           "bahasa": "JavaScript",
-          "byte": 326775,
+          "byte": 355720,
           "berkas": 15
         },
         {
@@ -336,12 +336,12 @@ export const METRIK_KARTU: MetrikKartu = {
           "berkas": 1
         }
       ],
-      "byteTotal": 1134078,
-      "jumlahBerkas": 175,
+      "byteTotal": 1209739,
+      "jumlahBerkas": 181,
       "binerDilewati": 4,
       "jalurDibuang": 0,
       "korpus": "git",
-      "signature": "git|175|1134078",
+      "signature": "git|181|1209739",
       "sumber": "git di /home/arkan/Documents/Coding/website-porto2"
     }
   }
