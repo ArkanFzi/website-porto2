@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="AF monogram">
+  <rect width="64" height="64" rx="12" fill="#0A0A0A"/>
+  <path fill="#F7F5F0" fill-rule="evenodd" d="M16 12 L20 12 L28 52 L20 52 L18 44 L14 44 L12 52 L4 52 Z M17 24 L20 36 L14 36 Z"/>
+  <path fill="#F7F5F0" d="M36 12 H60 V20 H44 V28 H56 V36 H44 V52 H36 Z"/>
+  <rect x="48" y="44" width="10" height="8" fill="#D41E12"/>
+</svg>
