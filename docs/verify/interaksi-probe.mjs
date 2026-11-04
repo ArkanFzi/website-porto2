@@ -165,13 +165,22 @@ const klikMode = async (label) => {
   // bawah beban pernah menyelesaikannya lewat jendela 30 × 90 ms: rekamannya kehabisan waktu
   // sebelum wajah sempat berpindah, dan gerbang "wajah berganti ketika kartu masih berputar"
   // melapor merah karena alat ukurnya habis, bukan karena panggungnya salah.
+  // "Landai" saja tidak cukup sebagai syarat berhenti: empat sampel pertama bisa semuanya
+  // balik=0 karena loop demand belum bangun (terukur: rekaman 4 sampel, max balik 0,000,
+  // lalu alat ukur berhenti sendiri dan tiga gerbang wajah merah bersamaan). Jadi putaran
+  // harus PERNAH terlihat bergerak dulu; sebelum itu, sampel nol bukan "landai" tapi mesin
+  // yang belum sadar — dan kalau sampai plafon tidak pernah sadar, gerbangnya yang merah,
+  // dengan `mulai=false` di log, bukan alat ukurnya yang pulang lebih dulu.
   let landai = 0;
-  for (let i = 0; i < 120 && landai < 4; i++) {
+  let mulai = false;
+  for (let i = 0; i < 240 && (!mulai || landai < 4); i++) {
     await diamkan(90);
     const b = await bacaMode();
     rekam.push(b);
+    if (b && b.balik > 0.02) mulai = true;
     const dahulu = rekam[rekam.length - 2];
     const tenang =
+      mulai &&
       !!dahulu &&
       b.balik <= 0.001 &&
       Math.abs(b.balik - dahulu.balik) < 1e-4 &&
@@ -179,7 +188,7 @@ const klikMode = async (label) => {
       Math.abs(DERAJAT(b.rotY - dahulu.rotY)) < 0.05;
     landai = tenang ? landai + 1 : 0;
   }
-  return { sebelum, rekam };
+  return { sebelum, rekam, mulai };
 };
 
 /** Sapuan terbesar rotY selama flip, derajat. Putarannya 360° dan berakhir di sikap
@@ -274,9 +283,33 @@ const seret = async (dx, titik = null) => {
   const saat = await baca();
   await page.mouse.up();
   await page.mouse.move(x, y);
-  await diamkan(2600);
-  const setelah = await baca();
-  return { sebelum, saat, setelah };
+  // Melepas pointer = awal pegas, bukan awal jam. `setelah` dulu dibaca tepat 2.600 ms
+  // sesudah mouseup; di bawah beban (load average 15, satu frame SwiftShader bisa 200 ms)
+  // pegasnya belum sampai dan gerbang "kembali ke sikap bab" merah oleh jam ukurnya sendiri.
+  // Salurannya juga diganti: `putar[2]` adalah PERINTAH (perintah.x) yang sudah melompat ke
+  // nol sedetik setelah mouseup, sedangkan pegas yang bergerak adalah `putar[0]`
+  // (pusing.x, dilicinkan 0,15 per frame di usePanggung.ts:575). Mengadili channel perintah
+  // membuat kartu yang teleportasi pun lulus — terukur: 6,00° → 0,000° dalam satu langkah
+  // 120 ms, tanpa nilai antara, karena yang dibaca memang bukan yang berpegas.
+  // Berhenti kalau: sudut pegas < 0,1° (sampai), atau pergerakannya mandek enam sampel
+  // berturut-turut di bawah 0,5° (frame semampunya mesin), dengan plafon 12 s.
+  const lepas = [];
+  let dahulu = await baca();
+  lepas.push(dahulu);
+  let diam = 0;
+  for (let i = 0; i < 100; i++) {
+    await diamkan(120);
+    const kini = await baca();
+    lepas.push(kini);
+    const sudut = kini ? Math.abs(derajati(kini, 0)) : 1;
+    const jalan =
+      !!kini && Math.abs(derajati(kini, 0) - derajati(dahulu, 0)) >= 0.02;
+    diam = jalan ? 0 : diam + 1;
+    dahulu = kini;
+    if (sudut < 0.1) break;
+    if (diam >= 6 && sudut < 0.5) break;
+  }
+  return { sebelum, saat, setelah: dahulu, lepas };
 };
 
 /** Satu tombol, sampai tercatat. Fokus + keydown ke React handler adalah peristiwa
@@ -363,8 +396,23 @@ await parkir(0.3);
 // ── 1 · seret: arah, besaran, batas, pegas kembali ──
 const s6 = await seret(Math.round(6 * PX_PER_DERAJAT));
 kisar('seret 100px memutar 6°', derajati(s6.saat, 2) - derajati(s6.sebelum, 2), 6, 1);
-cek('seret dilepas kembali ke sikap bab', Math.abs(derajati(s6.setelah, 2)) < 0.3, true);
-cek('pegas benar-benar bergerak, bukan melompat', Math.abs(derajati(s6.setelah, 0)) < 0.5, true);
+cek('seret dilepas kembali ke sikap bab', Math.abs(derajati(s6.setelah, 0)) < 0.3, true);
+{
+  // Gerbang ini dulu hanya mengulang gate di atas dengan pembulatan lebih kasar
+  // (|setelah| < 0,5° pada channel perintah) — namanya menjanjikan "pegas bergerak, bukan
+  // melompat" tapi yang dijudnya titik akhir, jadi kartu yang teleportasi tetap lulus.
+  // Yang ditagih sekarang: selama pegas berjalan ADA sampel antara (di bawah 90 % dan di
+  // atas 10 % dari sudut pegas saat lepas), dibaca dari channel pegas `putar[0]`.
+  const awal = Math.abs(derajati(s6.saat, 0));
+  const antara = s6.lepas
+    .map((b) => Math.abs(derajati(b, 0)))
+    .filter((v) => Number.isFinite(v) && v < awal * 0.9 && v > awal * 0.1);
+  console.log(
+    'pegas    ',
+    `lepas ${awal.toFixed(2)}° → ${derajati(s6.setelah, 0).toFixed(3)}° dalam ${s6.lepas.length} sampel, nilai antara: ${antara.length}`
+  );
+  cek('pegas benar-benar bergerak, bukan melompat', antara.length >= 1, true);
+}
 
 const sPenuh = await seret(400);
 const dPenuh = derajati(sPenuh.saat, 2);
@@ -466,18 +514,52 @@ await foto('01-putar-diam');
   // Sampel baru hanya ditulis saat titik cahaya berpindah >0,01 UV, dan perpindahan itu
   // sendiri dihaluskan per frame — jadi berapa sampel yang "masih hidup" pada satu bacaan
   // berjarak tetap adalah soal irama mesin (terukur 0..9 antar langkah yang identik).
-  // Yang dijanjikan kode adalah pitanya BISA terisi dan MATI sendiri, jadi yang diukur
-  // puncaknya selama sapuan dan keadaannya setelah sapuan, bukan satu sampel waktu.
+  // Angka 6 yang lama menuntut ±6 frame per detik, dan di mesin yang sedang berbagi dengan
+  // build lain (load average 15→24, dua run beruntun) itu merah tanpa ada yang rusak di
+  // panggung. Yang ditagih sekarang adalah plafon fisiknya: satu slot hanya
+  // bisa tertulis lewat SATU frame (usePanggung.ts:703-708), dan umur slot sudah pasti
+  // karena peluruhannya per-detik, bukan per-frame (usePanggung.ts:691) — z = exp(-umur/0,34)
+  // mati di ambang 0,05, jadi satu sampel tetap terdaftar 0,34·ln(20) ≈ 1,02 detik.
+  // BisaHidup = min(12 slot, frame yang lewat dalam jendela itu). Di mesin ≥6fps plafonnya
+  // ≥6 jadi tuntutannya tidak pernah dilonggarkan; yang dilonggarkan hanya mesin yang secara
+  // aritmetika tidak mungkin menulis lebih banyak — dan laju frame itu sendiri yang dibaca.
+  // Lubang yang dikhawatirkan dari pelonggaran ini ("satu gerakan cuma menyumbang satu
+  // sampel", usePanggung.ts:696) tetap merah di gerbang berikutnya: satu sampel tidak punya
+  // rentang, dan span 0,12 UV menuntut beberapa titik yang berbeda tempat.
+  const UMUR_JEJAK = 0.34 * Math.log(20);
   let puncakHidup = 0;
   let puncakRentang = 0;
+  const irama = [];
   for (let i = 1; i <= 24; i++) {
     await page.mouse.move(k + 20 + (i / 24) * (l - 40), y + (i % 2 ? 14 : -14));
     await diamkan(45);
-    const j = (await baca()).jejak;
-    if (j[0] > puncakHidup) puncakHidup = j[0];
-    if (j[1] > puncakRentang) puncakRentang = j[1];
+    const b = await baca();
+    if (!b) continue;
+    if (b.jejak[0] > puncakHidup) puncakHidup = b.jejak[0];
+    if (b.jejak[1] > puncakRentang) puncakRentang = b.jejak[1];
+    irama.push({ ms: performance.now(), frame: b.frame });
   }
-  cek('jejak menyimpan lebih dari separuh sampel selama dilukis', puncakHidup >= 6, true);
+  const awal = irama[0] ?? { ms: 0, frame: -1 };
+  const akhir = irama[irama.length - 1] ?? { ms: 0, frame: -1 };
+  const detik = (akhir.ms - awal.ms) / 1000;
+  // Penghitung frame yang MUNDUR (HMR memasang ulang akar kanvas di tengah sapuan) berarti
+  // plafonnya tidak diketahui — dan alat ukur yang tidak tahu harus menuntut seperti mesin
+  // sehat, bukan meluluskan apa pun.
+  const maju = akhir.frame - awal.frame;
+  const fps = detik > 0 && maju >= 0 ? maju / detik : null;
+  const bisaHidup =
+    fps === null ? 12 : Math.min(12, Math.max(1, Math.floor(fps * UMUR_JEJAK)));
+  console.log(
+    'jejak    ',
+    `puncak hidup ${puncakHidup} dari plafon ${bisaHidup} (${
+      fps === null ? 'laju tidak terbaca, frame mundur' : `${fps.toFixed(1)} frame/detik`
+    } × ${UMUR_JEJAK.toFixed(2)}s, ${irama.length} bacaan)`
+  );
+  cek(
+    'jejak menyimpan sebanyak sampel yang masih mungkin hidup',
+    puncakHidup >= Math.min(6, bisaHidup),
+    true
+  );
   hasil.push({
     nama: 'jejak membentang di kartu, bukan menumpuk di satu titik',
     ok: puncakRentang >= 0.12,
@@ -538,6 +620,7 @@ await diamkan(800);
   const sap = sapuan(flip.sebelum, flip.rekam);
   console.log(
     'flip ENGINEER   sebelum persona:', flip.sebelum.persona.toFixed(4),
+    '| sampel:', flip.rekam.length, 'mulai:', flip.mulai,
     '| balik:', flip.rekam.map((r) => r.balik.toFixed(3)).join(' '),
     '| persona:', flip.rekam.map((r) => r.persona.toFixed(3)).join(' ')
   );
