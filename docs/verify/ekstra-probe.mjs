@@ -155,6 +155,12 @@ const cekMin = (nama, dapat, harus) => {
 };
 const ada = (daftar, nama) => daftar.includes(nama);
 
+// Binding peta gulir harus lahir sebelum pemanggil pertamanya (yRumah dipakai di bagian 1,
+// jauh di bawah definisinya). Fungsi hoist, `let` tidak — tanpa blok ini jalannya mati dengan
+// "Cannot access '_peta' before initialization".
+let _peta = null;
+let _maks = 0;
+
 // ── 1. Keadaan diam: hanya data yang sudah punya angka yang boleh menambah kartu ──
 const yDiam1 = await yRumah(1, [0.02, 0.005, 0.04, 0.06]);
 cek('bab 01 punya tempat parkir yang diam', yDiam1 !== null, true);
@@ -171,11 +177,11 @@ for (const n of ['benang', 'debu', 'kompas', 'roda', 'sangkar'])
   cek(`${n} tidak ada saat diam`, ada(diam.nama, n), false);
 
 // ── 2. Benang rosso: di tengah perpindahan bab 1 ke bab 2 ──
-await page.evaluate(async () => {
-  const maks = document.documentElement.scrollHeight - window.innerHeight;
-  window.scrollTo(0, Math.round(0.14 * maks));
-  await new Promise((r) => setTimeout(r, 120));
-});
+// Posisi diambil dari peta keadaan, bukan pecahan halaman: 0,14 * maks dulu mendarat di
+// y=947 yang rumah bab 2 (t=0) dan benang cuma menyisakan 2 segmen.
+const yJahit = await yAntar(1);
+cek('perpindahan bab 1 ke 2 punya tempat parkir', yJahit !== null, true);
+await parkirY(yJahit ?? 0);
 const jahit = await serap(500);
 await foto('02-benang-jahit');
 console.log('benang   ', JSON.stringify(jahit.puncak), JSON.stringify(jahit.nama), 't=' + jahit.terakhir?.t);
@@ -275,22 +281,58 @@ async function diamDiTempat() {
   return terakhir;
 }
 
-/** Cari y tempat kartu DIAM di rumah satu bab, lewat keadaan yang terbaca (`babDari` + `t`),
- *  bukan lewat pecahan halaman. Pecahan pernah cukup; sejak hub menambah satu section
- *  (maxScroll jadi 6.057) dan satu portal (bab 5), 0,05 jatuh di tengah perpindahan —
- *  terukur t=0,0144 dan jahitan rosso terpasang — dan 0,3 jatuh di panggung hub, yang
- *  rumahnya kartu pada z=-0,045, bukan z=0. Gerbang "keadaan diam" menuntut keadaan diam:
- *  kalau park-nya di tengah perpindahan, yang diukur adalah perpindahan.
- *  Yang dibaca `babDari`, bukan `babKe`: kartu yang diam di bab 1 dilaporkan sebagai
- *  babDari=1, babKe=2, t=0 — sama seperti yang ditagih cariBabArsip di bagian SF-26.
- *  Mengembalikan null bila tidak ada kandidat yang mendarat; pemanggil menagih null itu
- *  sebagai kegagalan, bukan diam-diam kembali ke pecahan buta. */
-async function yRumah(babDari, kandidat) {
-  const maks = await page.evaluate(
+/** Peta gulir→keadaan bab, sekali saja, lalu di-cache. Ini yang membuat jangkar bagian
+ *  berikutnya tidak lagi berupa pecahan halaman: isi bab 02 berubah tinggi (phase CV +
+ *  detail karya, lalu detail karya pindah ke dalam panel) dan setiap pecahan yang sudah
+ *  "terkalibrasi" ikut bergeser — 0,14 jatuh lagi di rumah bab 2 (t=0, benang cuma 2 segmen)
+ *  dan 0,7 jatuh lagi di hub. Yang tidak bergeser adalah keadaan yang terbaca.
+ *  Sampel dibaca SETELAH Lenis berhenti, jadi t=0 berarti benar-benar diam, bukan belum tiba. */
+async function petaGulir(langkah = 150) {
+  if (_peta) return _peta;
+  _maks = await page.evaluate(
     () => document.documentElement.scrollHeight - window.innerHeight
   );
-  for (const fr of kandidat) {
-    const y = Math.round(maks * fr);
+  const sampel = [];
+  for (let y = 0; y <= _maks; y += langkah) {
+    await page.evaluate((v) => window.scrollTo(0, Math.round(v)), y);
+    await diamDiTempat();
+    const b = await page.evaluate(() => ({
+      babDari: window.__panggung?.babDari ?? null,
+      t: window.__panggung?.t ?? null,
+    }));
+    sampel.push({ y, ...b });
+  }
+  _peta = sampel;
+  console.log(
+    'peta gulir',
+    `${sampel.length} sampel pada maks ${_maks}:`,
+    sampel.map((s) => `${s.y}:${s.babDari}/${s.t}`).join(' ')
+  );
+  return sampel;
+};
+
+/** y tempat bab `babDari` DIAM (t=0). Kandidat diambil dari peta yang baru diukur — tengah
+ *  tiap rentangan diam, bukan pinggirnya — dan tiap kandidat diverifikasi ulang dengan parkir
+ *  sungguhan sebelum dipakai. Pecahan `kandidat` tetap dicoba belakangan sebagai jalur gelap
+ *  kalau peta tidak menemukan rumah (misalnya keadaan tidak pernah t=0 di bab itu).
+ *  Mengembalikan null bila tidak ada kandidat yang mendarat; pemanggil menagih null itu
+ *  sebagai kegagalan, bukan diam-diam kembali ke pecahan buta. */
+async function yRumah(babDari, kandidat = []) {
+  const peta = await petaGulir();
+  const rentang = [];
+  for (const s of peta) {
+    const akhir = rentang[rentang.length - 1];
+    if (akhir && akhir.babDari === s.babDari && akhir.t === 0 && s.t === 0 && s.y - akhir.y <= 160) {
+      akhir.y = s.y;
+    } else {
+      rentang.push({ babDari: s.babDari, t: s.t, dari: s.y, y: s.y });
+    }
+  }
+  const tengah = rentang
+    .filter((r) => r.babDari === babDari && r.t === 0)
+    .map((r) => Math.round((r.dari + r.y) / 2));
+  const urutan = [...tengah, ...kandidat.map((f) => Math.round(f * _maks))];
+  for (const y of urutan) {
     await page.evaluate((v) => window.scrollTo(0, v), y);
     await diamDiTempat();
     await new Promise((r) => setTimeout(r, 700));
@@ -299,7 +341,27 @@ async function yRumah(babDari, kandidat) {
       t: window.__panggung?.t ?? null,
     }));
     if (b.babDari === babDari && b.t === 0) return y;
-    console.log(`  yRumah(${babDari}) tolak fr=${fr} →`, JSON.stringify(b));
+    console.log(`  yRumah(${babDari}) tolak y=${y} →`, JSON.stringify(b));
+  }
+  return null;
+}
+
+/** y tengah perpindahan `dari` → bab berikutnya, diukur dari peta yang sama. Dipilih sampel
+ *  dengan t paling besar yang masih di dalam perpindahan (bukan 0, bukan 1): benang rosso
+ *  sepanjang 24 segmen hanya terpasang kalau jahitannya hampir selesai, dan di t=0 ia cuma 2. */
+async function yAntar(dari) {
+  const peta = await petaGulir();
+  const antara = peta.filter((s) => s.babDari === dari && s.t > 0 && s.t < 1);
+  antara.sort((a, b) => b.t - a.t);
+  for (const s of antara) {
+    await page.evaluate((v) => window.scrollTo(0, Math.round(v)), s.y);
+    await diamDiTempat();
+    const b = await page.evaluate(() => ({
+      babDari: window.__panggung?.babDari ?? null,
+      t: window.__panggung?.t ?? null,
+    }));
+    if (b.babDari === dari && b.t > 0 && b.t < 1) return s.y;
+    console.log(`  yAntar(${dari}) tolak y=${s.y} →`, JSON.stringify(b));
   }
   return null;
 }
@@ -540,23 +602,52 @@ await new Promise((r) => setTimeout(r, 800));
 await page.mouse.wheel({ deltaY: 40 });
 await new Promise((r) => setTimeout(r, 500));
 
-const jejak = await page.evaluate(() => {
-  const j = window.__jejak;
-  const pecahan = (id) => {
-    const el = document.querySelector(`[data-jejak-bar="${id}"]`);
-    if (!el) return null;
-    const wadah = el.parentElement.getBoundingClientRect().width;
-    return wadah > 0 ? el.getBoundingClientRect().width / wadah : -1;
-  };
-  return {
-    panggung: j
-      ? { hop: j.hop, ms: j.ms, px: j.px, mulai: j.mulai, pxPerMs: j.pxPerMs, anggaranPx: j.anggaranPx, totalMs: j.totalMs, papan: j.papan, tebalPx: j.tebalPx, tinggiMarkaPx: j.tinggiMarkaPx, jarakPapanPx: j.jarakPapanPx, asalY: j.asalY, asalGulir: j.asalGulir }
-      : null,
-    dom: { node: pecahan('node'), backend: pecahan('backend'), database: pecahan('database') },
-    kotakDatabase: !!document.querySelector('[data-jejak-hop="database"] [data-jejak-bar]'),
-    objek: window.__render?.objek ?? [],
-  };
-});
+const bacaJejak = () =>
+  page.evaluate(() => {
+    const j = window.__jejak;
+    const el = (id) => document.querySelector(`[data-jejak-hop="${id}"]`);
+    const msDom = (id) => {
+      const e = el(id);
+      if (!e) return undefined;
+      const m = (e.textContent || '').replace(/\s+/g, ' ').match(/—\s*(-?\d+(?:\.\d+)?)ms/);
+      return m ? Number(m[1]) : null;
+    };
+    const pecahan = (id) => {
+      const bar = document.querySelector(`[data-jejak-bar="${id}"]`);
+      if (!bar) return null;
+      const wadah = bar.parentElement.getBoundingClientRect().width;
+      return wadah > 0 ? bar.getBoundingClientRect().width / wadah : -1;
+    };
+    return {
+      panggung: j
+        ? { hop: j.hop, ms: j.ms, px: j.px, mulai: j.mulai, pxPerMs: j.pxPerMs, anggaranPx: j.anggaranPx, totalMs: j.totalMs, papan: j.papan, tebalPx: j.tebalPx, tinggiMarkaPx: j.tinggiMarkaPx, jarakPapanPx: j.jarakPapanPx, asalY: j.asalY, asalGulir: j.asalGulir }
+        : null,
+      dom: { node: pecahan('node'), backend: pecahan('backend'), database: pecahan('database') },
+      msDom: { node: msDom('node'), backend: msDom('backend'), database: msDom('database') },
+      kotakDatabase: !!document.querySelector('[data-jejak-hop="database"] [data-jejak-bar]'),
+      objek: window.__render?.objek ?? [],
+    };
+  });
+
+/** DOM dan panggung menulis dari bacaan yang berbeda waktu: panel telemetri ikut re-render
+ *  React tiap poll, instans WebGL ditulis pada frame. Terukur: DOM sudah melukis 4/8 ms
+ *  (pecahan 1/3 dan 2/3) sementara `__jejak` masih memegang 2/4 ms — gate "pecahan yang sama"
+ *  lalu membandingkan dua momen, bukan dua penampil. Yang ditunggu: angka ms yang sama di
+ *  kedua sisi, baru pecahannya dibaca. Kalau tidak pernah ketemu, bacaan terakhir yang
+ *  dipakai dan gerbangnya gagal dengan angka di log. */
+let jejak = await bacaJejak();
+for (let i = 0; i < 12; i++) {
+  const j = jejak.panggung;
+  const sama =
+    j &&
+    ['node', 'backend', 'database'].every(
+      (id, k) => jejak.msDom[id] === (j.ms[k] === null ? null : j.ms[k])
+    );
+  if (sama) break;
+  await page.mouse.wheel({ deltaY: 20 });
+  await new Promise((r) => setTimeout(r, 400));
+  jejak = await bacaJejak();
+}
 
 const j = jejak.panggung;
 const pecahanHarus = (ms) => (ms && ms > 0 ? Math.min(ms / Math.max(j?.totalMs ?? 0, LANTAI_MS), 1) : 0);
@@ -577,7 +668,16 @@ console.log(
   '| panggung:',
   JSON.stringify(j),
   '| dom:',
-  JSON.stringify(jejak.dom)
+  JSON.stringify(jejak.dom),
+  '| ms dom:',
+  JSON.stringify(jejak.msDom)
+);
+cek(
+  'kedua penampil dibandingkan pada bacaan yang sama',
+  j
+    ? ['node', 'backend', 'database'].every((id, k) => jejak.msDom[id] === j.ms[k])
+    : false,
+  true
 );
 cek('jejak melukis hop yang sama dengan arsitektur terukur', j ? j.hop.join(',') : null, 'node,backend,database');
 cek('durasi yang dilukis adalah angka yang dibaca browser dari API', j ? bacaan.some((b) => hopDariApi(b).every((m, i) => m === j.ms[i])) : false, true);
@@ -1223,6 +1323,108 @@ cek(
 );
 cek('reduce-motion mematikan kabur', diReduce.f?.kabur, 0);
 await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }]);
+
+// ── 12. Phase bab 02: rekaman yang punya sumber, bukan stub yang menutupi ──
+// Yang ditagih di sini bukan "ada daftar phase" — daftar dua baris tanpa isi juga lolos itu.
+// Yang ditagih adalah hubungan sumber↔teks: kalau tabel experiences tidak mengirim baris, maka yang
+// tercetak HANYA boleh rekaman kertas CV, dan tidak boleh ada satu pun label yang mengklaim
+// Postgres ("VERIFIED EMPLOYMENT", "● DB LIVE") atau stub lama yang sudah dihapus dari kode
+// masih membekas di halaman. Repo GitHub ditagih di tempatnya sekarang — detail di dalam panel
+// record yang kalimatnya mengklaim menerbitkan karya, bukan baris phase tambahan.
+{
+  const pengalaman = await page.evaluate(async () => {
+    try {
+      const r = await fetch('/api/experience', { headers: { Accept: 'application/json' } });
+      const b = await r.json().catch(() => null);
+      return { status: r.status, baris: Array.isArray(b) ? b.length : -1 };
+    } catch {
+      return { status: 0, baris: -1 };
+    }
+  });
+  const baris = await page.evaluate(async () => {
+    const tombol = [...document.querySelectorAll('#chapter-02 button[aria-controls^="phase-panel-"]')];
+    const keluar = [];
+    for (const t of tombol) {
+      const id = t.getAttribute('aria-controls').replace('phase-panel-', '');
+      // Baris pertama terbuka sejak awal (activePhase = "01"), jadi klik butuhnya justru
+      // MENUTUP panel dan pembacaan berikutnya isi=0 — yang salah adalah alat ukurnya,
+      // bukan halamannya. Yang sudah terbuka dibaca apa adanya.
+      if (t.getAttribute('aria-expanded') !== 'true') {
+        t.click();
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      }
+      const panel = document.getElementById(t.getAttribute('aria-controls'));
+      const link = panel ? [...panel.querySelectorAll('a[href]')].map((a) => a.href) : [];
+      keluar.push({
+        id,
+        baris: (t.textContent || '').replace(/\s+/g, ' ').trim(),
+        isi: panel ? (panel.textContent || '').replace(/\s+/g, ' ').trim() : '',
+        link,
+      });
+    }
+    return keluar;
+  });
+  const teksBab = await page.evaluate(
+    () => (document.querySelector('#chapter-02')?.textContent || '').replace(/\s+/g, ' ')
+  );
+  // Jalur CV hanya boleh ditagih kalau tabel experiences memang tidak mengirim baris —
+  // 200 dengan payload [] adalah jawaban sah (backend hidup, isinya kosong), jadi status
+  // alone bukan pembeda. Kalau ada barisnya, yang tampil jalur DB dan gerbang kosong-summary
+  // di bawah bukan lawan yang adil (tabel experiences tidak punya kolom summary).
+  const jalurCv = pengalaman.baris <= 0;
+  console.log(
+    'phase bab 02',
+    JSON.stringify(baris.map((b) => [b.id, b.isi.length, b.link.length])),
+    'experience=' + JSON.stringify(pengalaman)
+  );
+
+  cekMin('bab 02 punya lebih dari dua phase', baris.length, 3);
+  cek(
+    'tidak ada phase yang barisnya kosong',
+    baris.every((b) => b.baris.length > 20),
+    true
+  );
+  if (jalurCv) {
+    cek(
+      'setiap phase CV membuka panel berisi paragraf, bukan hanya judul',
+      baris.every((b) => b.isi.length > 60),
+      true
+    );
+    cek(
+      'label "VERIFIED EMPLOYMENT" tidak tercetak saat tabel experiences tidak mengirim baris',
+      teksBab.includes('VERIFIED EMPLOYMENT'),
+      false
+    );
+    cek('indikator "DB LIVE" mati saat tabel experiences tidak mengirim baris', teksBab.includes('DB LIVE'), false);
+    cek(
+      'stub lama "Freelance & Independent Client Solutions" tidak meninggalkan baris hantu',
+      teksBab.includes('Freelance & Independent Client Solutions'),
+      false
+    );
+    const repo = ['graphify-devkit', 'ferrari-ubuntu', 'website-porto2', 'Pickertime'];
+    const phaseRepo = baris.filter((b) => repo.some((n) => b.baris.includes(n)));
+    cek(
+      'repo GitHub tidak lagi menyamar menjadi phase',
+      phaseRepo.length,
+      0
+    );
+    const panelKarya = baris.filter((b) => b.link.some((h) => h.startsWith('https://github.com/')));
+    cek('satu panel phase memuat detail karya GitHub', panelKarya.length, 1);
+    cek(
+      'panel yang memuat karya adalah record yang kalimatnya mengklaim GitHub',
+      panelKarya.every((b) => /published publicly on github/i.test(b.isi)),
+      true
+    );
+    cekMin('tiap detail karya membawa angka bintang yang terukur', (panelKarya[0]?.isi.match(/★/g) ?? []).length, 1);
+    cekMin(
+      'detail karya menunjuk repo yang nyata',
+      panelKarya[0]?.link.filter((h) => repo.some((n) => h.includes('/' + n))).length ?? 0,
+      1
+    );
+  } else {
+    console.log('catatan  ', `tabel experiences mengirim ${pengalaman.baris} baris: jalur DB yang tampil, gerbang jalur CV dilewati`);
+  }
+}
 
 await browser.close();
 if (galat.length) console.log('pageerror:', galat.slice(0, 5));
