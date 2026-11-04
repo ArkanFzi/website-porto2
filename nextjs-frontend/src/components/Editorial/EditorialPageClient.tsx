@@ -101,6 +101,7 @@ const EditorialInner: React.FC<PageClientProps> = ({
           perjalanan={perjalanan}
           certificates={certificates}
           experiences={experiences}
+          repos={repos}
         />
         <ChapterHub />
         <ChapterArchives

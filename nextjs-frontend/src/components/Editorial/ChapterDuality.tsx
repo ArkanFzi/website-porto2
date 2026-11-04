@@ -6,155 +6,36 @@ import { ChevronDown, ExternalLink, ShieldCheck, CheckCircle2 } from "lucide-rea
 import type { Perjalanan } from "@/lib/server/journey";
 import { Certificate, FALLBACK_CERTIFICATES } from "@/lib/server/certificates";
 import type { Experience } from "@/lib/server/experience";
+import type { RepoBerlian } from "@/lib/server/github";
+import { daftarFase } from "@/lib/profilFase";
 import { usePortfolioMode } from "@/context/PortfolioModeContext";
 import { DURASI, EASE } from "@/lib/motion";
 import MeshPortal from "./MeshPortal";
-
-interface CareerPhase {
-  id: string;
-  phase: string;
-  title: string;
-  org: string;
-  year: string;
-  summary: string;
-  specs: string[];
-  link?: string;
-}
-
-const ENGINEER_PHASES: CareerPhase[] = [
-  {
-    id: "01",
-    phase: "PHASE 01 // CORE ARCHITECTURE",
-    title: "Software Engineering Foundations",
-    org: "SMKN 6 MALANG",
-    year: "2024",
-    summary: "Ignited engineering discipline through procedural and OOP paradigms. Deep dive into algorithms, system data structures, memory management, and robust low-level application architecture.",
-    specs: ["PHP / C#", "OOP PARADIGMS", "DATA STRUCTURES", "ALGORITHMS"],
-    link: "https://smkn6malang.sch.id",
-  },
-  {
-    id: "02",
-    phase: "PHASE 02 // DISTRIBUTED MICROSERVICES",
-    title: "Industrial Class & Fullstack Systems",
-    org: "SEKAWAN MEDIA ACADEMY",
-    year: "2024 — 2025",
-    summary: "Selected for intensive industrial mentorship. Mastered modern fullstack microservices architecture, Next.js App Router, API gateway contracts, and resilient service boundaries.",
-    specs: ["NEXT.JS APP ROUTER", "DISTRIBUTED APIS", "TYPESCRIPT", "GO ENGINE"],
-    link: "https://sekawanmedia.co.id",
-  },
-  {
-    id: "03",
-    phase: "PHASE 03 // ENTERPRISE HIGH-AVAILABILITY",
-    title: "Full Stack Engineer Apprentice",
-    org: "SEKAWAN MEDIA",
-    year: "MAY 2026 — PRESENT",
-    summary: "Active contributor maintaining and engineering two mission-critical enterprise microservices platforms (HRIS and recruitment ecosystems) with high-availability, low-latency PostgreSQL queries, and Docker virtualization.",
-    specs: ["ENTERPRISE MICROSERVICES", "POSTGRESQL / GO", "DOCKER", "HIGH-CONCURRENCY"],
-    link: "https://sekawanmedia.co.id",
-  },
-  {
-    id: "04",
-    phase: "PHASE 04 // COMPILER AST & SYSTEM TUNING",
-    title: "Compiler AST Engines & Kernel Tuning",
-    org: "GITHUB OPEN SOURCE",
-    year: "2026",
-    summary: "Architected and published graphify-devkit (AST-based codebase knowledge graph engine extracting cross-file AST dependencies with zero network overhead) and optimized Linux kernel workloads.",
-    specs: ["TREE-SITTER AST", "GRAPH THEORY", "LINUX KERNEL", "NETWORKX"],
-    link: "https://github.com/ArkanFzi",
-  },
-];
-
-const CREATOR_PHASES: CareerPhase[] = [
-  {
-    id: "01",
-    phase: "PHASE 01 // HAUTE-COUTURE DESIGN SYSTEMS",
-    title: "Swiss Grid & Typography Foundations",
-    org: "SMKN 6 MALANG & DESIGN LAB",
-    year: "2024",
-    summary: "Developed an obsessive eye for typography scales, Swiss International Style, visual tension, and systematic token hierarchies. Mastered restraint as the supreme expression of luxury UI craft.",
-    specs: ["SWISS GRID SYSTEM", "HAUTE-COUTURE TOKENS", "EDITORIAL LAYOUT"],
-    link: "https://smkn6malang.sch.id",
-  },
-  {
-    id: "02",
-    phase: "PHASE 02 // GENERATIVE AI & MULTIMODAL PIPELINES",
-    title: "Pickertime Gemini Experience Engine",
-    org: "SEKAWAN MEDIA ACADEMY",
-    year: "2024 — 2025",
-    summary: "Integrated Google Gemini LLM API into a fluid conversational interface. Engineered natural language meeting synthesis and real-time generative UI feedback loops.",
-    specs: ["GEMINI 1.5 PRO", "MULTIMODAL AI", "GENERATIVE UI", "NATURAL LANGUAGE"],
-    link: "https://sekawanmedia.co.id",
-  },
-  {
-    id: "03",
-    phase: "PHASE 03 // REAL-TIME 3D WEBGL & SHADERS",
-    title: "Volumetric Shaders & Spatial Atelier",
-    org: "GITHUB OPEN SOURCE",
-    year: "MAY 2026 — PRESENT",
-    summary: "Sculpting immersive WebGL experiences using React Three Fiber, custom GLSL vertex/fragment displacement, luminance-driven depth maps, and velocity-coupled chromatic aberration.",
-    specs: ["R3F / THREE.JS", "CUSTOM GLSL SHADERS", "LUMINANCE DISPLACEMENT", "CHROMATIC ABERRATION"],
-    link: "https://github.com/ArkanFzi/website-porto2",
-  },
-  {
-    id: "04",
-    phase: "PHASE 04 // SPATIAL DESKTOP & WAYLAND UI",
-    title: "Ferrari Ubuntu & Workstation Craft",
-    org: "GITHUB OPEN SOURCE",
-    year: "2026",
-    summary: "Conceived and engineered ferrari-ubuntu: six GNOME Shell 46 extensions plus shell CSS, dconf and GDM overrides that restyle the Ubuntu desktop in Rosso Corsa — rev-light cluster, telemetry island and a start-light login gantry.",
-    specs: ["GJS / GNOME SHELL 46", "MONZA RED AESTHETICS", "SPATIAL INTERACTION", "DARK LUXURY"],
-    link: "https://github.com/ArkanFzi",
-  },
-];
 
 interface DualityProps {
   perjalanan?: Perjalanan[];
   certificates?: Certificate[];
   experiences?: Experience[];
+  /** Payload `daftarReposGitHub()` yang sudah diambil halaman depan — phase GitHub hanya
+   *  ada kalau repo-nya memang ada di daftar ini. */
+  repos?: RepoBerlian[];
 }
 
 export const ChapterDuality: React.FC<DualityProps> = ({
   perjalanan,
   certificates,
   experiences,
+  repos,
 }) => {
   const { mode } = usePortfolioMode();
   const [activePhase, setActivePhase] = useState<string>("01");
   const certList = certificates && certificates.length > 0 ? certificates : FALLBACK_CERTIFICATES;
 
-  // Prioritas sumber timeline: tabel experiences (Postgres) → tabel journeys → fallback hardcoded.
-  const phasesDariPengalaman: CareerPhase[] = (experiences ?? []).map((e, idx) => ({
-    id: String(idx + 1).padStart(2, "0"),
-    phase: `PHASE ${String(idx + 1).padStart(2, "0")} // EMPLOYMENT RECORD`,
-    title: e.role,
-    org: e.company.toUpperCase(),
-    year: e.period,
-    summary: "",
-    specs: ["POSTGRESQL SYNCED", "VERIFIED EMPLOYMENT"],
-  }));
-
-  const phasesDariJourney: CareerPhase[] = (perjalanan ?? []).map((p, idx) => ({
-    id: String(idx + 1).padStart(2, "0"),
-    phase: `PHASE ${String(idx + 1).padStart(2, "0")} // SECTOR ${idx + 1}`,
-    title: p.title,
-    org: p.linkLabel || "SEKAWAN MEDIA",
-    year: p.year,
-    summary: p.body,
-    specs: ["POSTGRESQL SYNCED", "VERIFIED TELEMETRY"],
-    link: p.linkHref,
-  }));
-
-  const phasesDariDb =
-    phasesDariPengalaman.length > 0 || phasesDariJourney.length >= 3;
-
-  const currentPhases =
-    phasesDariPengalaman.length > 0
-      ? phasesDariPengalaman
-      : phasesDariJourney.length >= 3
-        ? phasesDariJourney
-        : mode === "engineer"
-          ? ENGINEER_PHASES
-          : CREATOR_PHASES;
+  const currentPhases = daftarFase(experiences, perjalanan, repos ?? []);
+  // "DB LIVE" hanya boleh menyala kalau barisnya memang datang dari Postgres. Selama ini
+  // label itu ikut tercetak saat backend mati dan yang tampil adalah rekaman kertas CV,
+  // jadi ia mengklaim koneksi yang tidak pernah ada.
+  const phasesDariDb = (experiences ?? []).length > 0 || (perjalanan ?? []).length >= 3;
 
   return (
     <section
@@ -338,6 +219,37 @@ export const ChapterDuality: React.FC<DualityProps> = ({
                               </a>
                             )}
                           </div>
+
+                          {item.karya && item.karya.length > 0 && (
+                            <ul className="mt-6 pt-4 border-t border-[rgba(10,10,10,0.12)]">
+                              <li className="font-mono text-[9px] uppercase tracking-[0.22em] text-[#6E6A64] mb-3">
+                                {`Karya yang bisa ditunjuk · ${item.karya.length} repo publik`}
+                              </li>
+                              {item.karya.map((karya) => (
+                                <li key={karya.nama} className="py-2">
+                                  <a
+                                    href={karya.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex flex-wrap items-baseline gap-x-3 gap-y-1 group/karya"
+                                  >
+                                    <span className="font-mono text-xs sm:text-sm font-bold text-[#0A0A0A] group-hover/karya:text-[#D41E12] transition-colors duration-300">
+                                      {karya.nama}
+                                    </span>
+                                    <span className="font-mono text-[10px] uppercase tracking-wider text-[#6E6A64]">
+                                      {`${karya.bahasa ? karya.bahasa.toUpperCase() : "BAHASA TIDAK DILABEI GITHUB"} · ${karya.bintang} ★`}
+                                    </span>
+                                    <ExternalLink className="w-3 h-3 text-[#D41E12]" />
+                                  </a>
+                                  {karya.deskripsi && (
+                                    <p className="font-sans text-[11px] sm:text-xs text-[#6E6A64] leading-relaxed mt-1 max-w-2xl">
+                                      {karya.deskripsi}
+                                    </p>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
                         </motion.div>
                       )}
                     </div>

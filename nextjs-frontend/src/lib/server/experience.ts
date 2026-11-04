@@ -7,21 +7,10 @@ export interface Experience {
   period: string;
 }
 
-export const FALLBACK_EXPERIENCES: Experience[] = [
-  {
-    id: "exp-01",
-    role: "Systems Architect & Fullstack Engineer",
-    company: "Freelance & Independent Client Solutions",
-    period: "2023 — Present",
-  },
-  {
-    id: "exp-02",
-    role: "Industrial Class Software Engineer",
-    company: "Sekawan Media Teaching Factory (TEFA)",
-    period: "2024 — 2025",
-  },
-];
-
+/** Backend mati = TIDAK ADA rekaman, bukan rekaman cadangan yang diketik tangan.
+ *  Dulu kegagalan mengambil mengembalikan dua baris stub, dan karena `ChapterDuality`
+ *  memberi prioritas mutlak ke jalur itu, stub inilah yang menutupi seluruh isi bab 02
+ *  sekaligus mencetak label "VERIFIED EMPLOYMENT" di mesin yang Postgres-nya tidak menjawab. */
 export async function daftarPengalaman(): Promise<Experience[]> {
   try {
     const res = await fetch(`${BACKEND_URL}/api/experience`, {
@@ -29,14 +18,10 @@ export async function daftarPengalaman(): Promise<Experience[]> {
       next: { revalidate: 60 },
     });
 
-    if (!res.ok) {
-      return FALLBACK_EXPERIENCES;
-    }
+    if (!res.ok) return [];
 
     const data = await res.json();
-    if (!Array.isArray(data) || data.length === 0) {
-      return FALLBACK_EXPERIENCES;
-    }
+    if (!Array.isArray(data)) return [];
 
     return (data as Experience[]).map((e) => ({
       id: e.id,
@@ -45,6 +30,6 @@ export async function daftarPengalaman(): Promise<Experience[]> {
       period: e.period,
     }));
   } catch {
-    return FALLBACK_EXPERIENCES;
+    return [];
   }
 }
