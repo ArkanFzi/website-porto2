@@ -22,7 +22,11 @@
 //   /03 stempel berpasangan di log post-commit graphify, dibagi file yang diekstrak
 //   /04 struktur sumber Hermes Control Tower: fungsi tes, registrasi rute, modul heksagonal
 //   /05 jendela frame yang diukur drawcall-probe di GPU keras
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+//
+// Peta `bahasa` (satu per kartu, tingkat atas) diukur dari berkas yang TERKOMIT di repo tiap
+// kartu — lihat bahasaDominan() di bawah untuk aturan klasifikasinya dan alasannya.
+import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
 const AKAR = resolve(dirname(new URL(import.meta.url).pathname), '..', '..');
@@ -36,7 +40,10 @@ const MODE_VALIDASI = argv.includes('--validasi');
  *  korpusnya), bukan umur korpusnya — korpus debugbar memang beku sejak 21 Agu 2026, jadi
  *  mengukur umur data akan menggelapkan kartu hari ini juga tanpa mengajarkan apa pun. */
 const BATAS_USIA_HARI = 90;
-const VERSI = 1;
+/** Naik ke 2 saat peta `bahasa` ikut ditulis: artefak versi 1 tidak punya bidang itu, jadi
+ *  --validasi harus menolak diam-diam membaca modul lama daripada mengembalikan undefined
+ *  untuk tiap baris dan membuat panggung kehilangan objek tanpa satu pun pesan kesalahan. */
+const VERSI = 2;
 
 const gagal = (pesan) => {
   console.error(pesan);
@@ -287,6 +294,137 @@ function ukurFrame() {
   return { ...gpu, perantiLunak: lunak, sumber: 'docs/verify/drawcall-probe.mjs --gpu --tulis docs/verify/anggaran-gpu.json' };
 }
 
+// ── bahasa dominan per kartu ────────────────────────────────────────────────────
+// Dipakai panggung 3D untuk memutuskan logo bahasa mana yang mengisi kotak WORKS, dan
+// dicetak di strip SPEC supaya klaimnya bisa dibantah. Ia sengaja BUKAN field di dalam
+// hasil kartu: /03 gelap untuk filePerDetik karena /tmp/graphify.log hilang, sementara
+// komposisi sumbernya tetap terukur — menaruh bahasa di dalam ukurEkstraksi() akan membuat
+// satu baris tidak pernah punya objek karena alasan yang tidak ada hubungannya dengan bahasa.
+const DIR_GRAPHIFY = process.env.DIR_GRAPHIFY ?? '/home/arkan/Documents/Coding/graphify-devkit';
+const REPO_KARTU = {
+  '01': DIR_FERRARI,
+  '02': DIR_PICKERTIME,
+  '03': DIR_GRAPHIFY,
+  '04': DIR_HERMES,
+  '05': AKAR,
+};
+
+/** Hanya bahasa pemrograman. CSS dan HTML dibuang dari kontes, bukan dari korpus: yang
+ *  diminta pengunjung adalah "bahasa apa yang menulis proyek ini", dan 180 KB template HTML
+ *  di Pickertime atau 187 KB shell CSS di ferrari-ubuntu bukan jawaban itu. */
+const PETA_EKSTENSI = {
+  js: 'JavaScript', mjs: 'JavaScript', cjs: 'JavaScript', jsx: 'JavaScript',
+  ts: 'TypeScript', tsx: 'TypeScript',
+  py: 'Python',
+  go: 'Go',
+  sh: 'Bash',
+};
+const PETA_SHEBANG = {
+  python3: 'Python', python: 'Python', node: 'JavaScript', bash: 'Bash', sh: 'Bash', zsh: 'Bash',
+};
+const SHEBANG = /^#!\s*(?:\/usr\/bin\/env\s+)?(?:\/[^\s]*)?(python3?|bash|sh|zsh|node)(?:\s|$)/;
+
+/** Sabuk untuk korpus tanpa git. `bin` TIDAK ada di daftar ini dan tidak boleh masuk:
+ *  keenam berkas sumber graphify-devkit hidup di bin/ dan tanpa ekstensi. */
+const BUANG_JALUR = /(^|\/)(dist|build|node_modules|\.next|graphify-out|vendor|tmp|pb_data|__pycache__|\.venv)(\/|$)|\.min\./;
+
+function berkasDirektori(akar) {
+  const keluar = [];
+  const jalan = (rel) => {
+    for (const entri of readdirSync(join(akar, rel), { withFileTypes: true })) {
+      const nama = rel ? `${rel}/${entri.name}` : entri.name;
+      if (entri.isDirectory()) jalan(nama);
+      else if (entri.isFile()) keluar.push(nama);
+    }
+  };
+  jalan('');
+  return keluar;
+}
+
+/** Korpus = berkas yang ter-commit. Itu bukan kenyamanan, itu yang membuat angkanya benar:
+ *  16,7 MB dari 16,9 MB byte `.js` Pickertime adalah tools/test/tmp/dev-bundle*.js (artefak
+ *  run tes), dan `server` 22 MB + `agent` 11 MB di root hermes adalah biner hasil build yang
+ *  tidak pernah di-commit. Keduanya hilang sendiri begitu korpusnya git ls-files. */
+function korpus(akar) {
+  try {
+    const teks = execFileSync('git', ['-C', akar, 'ls-files', '-z'], {
+      encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const nama = teks.split('\0').filter(Boolean).sort();
+    if (nama.length) return { nama, korpus: 'git' };
+  } catch {
+    /* bukan repo, atau git tidak ada — jatuh ke jalan direktori di bawah */
+  }
+  return { nama: berkasDirektori(akar).sort(), korpus: 'direktori' };
+}
+
+function bahasaDominan(akar, id) {
+  if (!existsSync(akar)) return null;
+  const { nama, korpus: jenis } = korpus(akar);
+  const byte = new Map();
+  const berkas = new Map();
+  let byteTotal = 0;
+  let binerDilewati = 0;
+  let jalurDibuang = 0;
+  for (const rel of nama) {
+    if (BUANG_JALUR.test(rel)) { jalurDibuang++; continue; }
+    // Modul hasil-olahan ini sendiri BUKAN bahan bakar: /05 diukur dari repo ini, jadi tanpa
+    // baris itu setiap penulisan artefak mengubah byteTotal TypeScript dan --cek berikutnya
+    // selalu BEDA. Angka "bahasa apa yang menulis proyek ini" tidak boleh bergantung pada
+    // berapa banyak angka yang baru saja dicetak proyek itu tentang dirinya sendiri.
+    if (resolve(akar, rel) === KELUAR) continue;
+    let isi;
+    try {
+      if (!statSync(join(akar, rel)).isFile()) continue;
+      isi = readFileSync(join(akar, rel));
+    } catch {
+      continue; // gitlink submodule, symlink mati
+    }
+    // Uji konten, bukan daftar ekstensi: web/dist/index.html hermes (574.422 B satu berkas)
+    // TERKOMIT dan nyaris menyalip Go kalau korpusnya tidak dibersihkan oleh aturan jalur.
+    if (isi.subarray(0, 8192).includes(0)) { binerDilewati++; continue; }
+    const akhir = rel.slice(rel.lastIndexOf('.') + 1);
+    const bahasa = PETA_EKSTENSI[(akhir === rel ? '' : akhir).toLowerCase()]
+      ?? PETA_SHEBANG[SHEBANG.exec(isi.subarray(0, 512).toString('utf8'))?.[1] ?? ''];
+    if (!bahasa) continue;
+    byte.set(bahasa, (byte.get(bahasa) ?? 0) + isi.length);
+    berkas.set(bahasa, (berkas.get(bahasa) ?? 0) + 1);
+    byteTotal += isi.length;
+  }
+  // Yang menang adalah BYTE, bukan jumlah berkas. /03 adalah kasus yang membuatnya penting:
+  // 3 berkas Python 20.996 B melawan 4 berkas Bash 8.128 B — jumlah berkas bilang Bash,
+  // dan itu bukan bahasa yang menulis proyek itu.
+  const peringkat = [...byte.entries()]
+    .map(([bahasa, b]) => ({ bahasa, byte: b, berkas: berkas.get(bahasa) }))
+    .sort((a, b) => b.byte - a.byte || a.bahasa.localeCompare(b.bahasa));
+  if (peringkat.length === 0) return null;
+  if (peringkat[0].byte < peringkat[0].berkas) {
+    gagal(`/${id} bahasa: ${peringkat[0].byte} byte tidak mungkin untuk ${peringkat[0].berkas} berkas sumber`);
+  }
+  const teratas = peringkat[0];
+  return {
+    bahasa: teratas.bahasa,
+    byte: teratas.byte,
+    berkas: teratas.berkas,
+    peringkat,
+    byteTotal,
+    jumlahBerkas: nama.length,
+    binerDilewati,
+    jalurDibuang,
+    korpus: jenis,
+    // Tiga angka yang bergerak begitu kodenya bergerak: repo lain yang dipasang lewat DIR_*
+    // tidak bisa kebetulan menyamakan ketiganya, jadi --cek gagal, bukan diam-diam mirip.
+    signature: `${jenis}|${nama.length}|${byteTotal}`,
+    sumber: `${jenis} di ${akar}`,
+  };
+}
+
+function ukurBahasaSemua() {
+  const keluar = {};
+  for (const [id, akar] of Object.entries(REPO_KARTU)) keluar[id] = bahasaDominan(akar, id);
+  return keluar;
+}
+
 // ── rakit ───────────────────────────────────────────────────────────────────────
 const isian = MODE_VALIDASI ? null : buatIsian();
 
@@ -302,6 +440,7 @@ function buatIsian() {
       '04': ukurHermes(),
       '05': ukurFrame(),
     },
+    bahasa: ukurBahasaSemua(),
   };
   const terisi = Object.entries(hasil.kartu).filter(([, v]) => v !== null).map(([k]) => k);
   const kosong = Object.entries(hasil.kartu).filter(([, v]) => v === null).map(([k]) => k);
@@ -395,6 +534,24 @@ const modul = [
   '  sumber: string;',
   '}',
   '',
+  'export interface UkurBahasa {',
+  '  /** Bahasa dengan byte sumber TERBANYAK di korpus ter-commit — bukan jumlah berkas. */',
+  '  bahasa: string;',
+  '  byte: number;',
+  '  berkas: number;',
+  '  /** Semua bahasa terklasifikasi, terurut turun menurut byte. Runner-up ikut dicetak di',
+  '   *  strip supaya keunggulan tipis (Pickertime 1,20x atas JavaScript) terlihat, bukan',
+  '   *  tersembunyi di balik satu kata. */',
+  '  peringkat: { bahasa: string; byte: number; berkas: number }[];',
+  '  byteTotal: number;',
+  '  jumlahBerkas: number;',
+  '  binerDilewati: number;',
+  '  jalurDibuang: number;',
+  "  korpus: 'git' | 'direktori';",
+  '  signature: string;',
+  '  sumber: string;',
+  '}',
+  '',
   'export interface MetrikKartu {',
   '  versi: number;',
   '  dihasilkanPada: string;',
@@ -405,6 +562,15 @@ const modul = [
   "    '03': UkurEkstraksi | null;",
   "    '04': UkurHermes | null;",
   "    '05': UkurFrame | null;",
+  '  };',
+  '  /** Peta paralel `kartu`: bahasa dominan yang mengisi kotak WORKS. Null berarti baris itu',
+  '   *  tidak punya objek 3D — kartu tidak boleh memudar untuk objek yang tidak datang. */',
+  '  bahasa: {',
+  "    '01': UkurBahasa | null;",
+  "    '02': UkurBahasa | null;",
+  "    '03': UkurBahasa | null;",
+  "    '04': UkurBahasa | null;",
+  "    '05': UkurBahasa | null;",
   '  };',
   '}',
   '',
@@ -436,13 +602,38 @@ if (MODE_VALIDASI) {
       gagal(`--validasi: /04 ruteApi=${hm.ruteApi} > rute=${hm.rute}`);
     }
   }
+  // Peta bahasa diperiksa tanpa membaca repo sumber mana pun, jadi langkah CI --validasi di
+  // runner yang bersih tetap menangkap artefak yang disunting tangan.
+  for (const [id, hb] of Object.entries(baca.bahasa ?? {})) {
+    if (!hb) continue;
+    const p = hb.peringkat ?? [];
+    if (!p.length) gagal(`--validasi: /${id} bahasa=${hb.bahasa} tapi peringkat kosong`);
+    if (p[0].bahasa !== hb.bahasa) {
+      gagal(`--validasi: /${id} bahasa="${hb.bahasa}" bukan pemuncak peringkat ("${p[0].bahasa}") — artefak disunting tangan?`);
+    }
+    for (let i = 1; i < p.length; i++) {
+      if (p[i].byte > p[i - 1].byte) gagal(`--validasi: /${id} peringkat tidak terurut turun di indeks ${i}`);
+    }
+    const jumlah = p.reduce((a, x) => a + x.byte, 0);
+    if (jumlah !== hb.byteTotal) {
+      gagal(`--validasi: /${id} jumlah peringkat ${jumlah} != byteTotal ${hb.byteTotal}`);
+    }
+    if (hb.byte < hb.berkas) {
+      gagal(`--validasi: /${id} ${hb.byte} byte tidak mungkin untuk ${hb.berkas} berkas sumber`);
+    }
+    if (hb.byte > hb.byteTotal) gagal(`--validasi: /${id} byte ${hb.byte} > byteTotal ${hb.byteTotal}`);
+  }
   const umurHari = (Date.now() - Date.parse(baca.dihasilkanPada)) / 86_400_000;
   if (!Number.isFinite(umurHari)) gagal('--validasi: dihasilkanPada tidak terbaca sebagai tanggal');
   if (umurHari > BATAS_USIA_HARI) {
     gagal(`KUNING: artefak berumur ${Math.floor(umurHari)} hari (batas ${BATAS_USIA_HARI}) — kartu sudah tampil BELUM TERUKUR, jalankan node tools/ci/ukur-kartu.mjs`);
   }
   const terisi = Object.entries(baca.kartu ?? {}).filter(([, v]) => v !== null).map(([k]) => k);
-  console.log(`OK: artefak versi ${baca.versi}, terukur ${terisi.join(' ') || '—'}, berumur ${Math.floor(umurHari)} hari dari ${BATAS_USIA_HARI}`);
+  const bahasaTerukur = Object.entries(baca.bahasa ?? {}).filter(([, v]) => v !== null).length;
+  console.log(
+    `OK: artefak versi ${baca.versi}, terukur ${terisi.join(' ') || '—'}, ` +
+      `bahasa terukur ${bahasaTerukur}/5, berumur ${Math.floor(umurHari)} hari dari ${BATAS_USIA_HARI}`
+  );
   process.exit(0);
 }
 
@@ -458,11 +649,21 @@ if (MODE_CEK) {
 
 writeFileSync(KELUAR, teks);
 const h = hasil.kartu;
+const hb = hasil.bahasa;
 console.log(
   `ditulis ${KELUAR}\n  terukur: ${terisi.join(' ')} · belum terukur: ${kosong.join(' ') || '—'}\n` +
     `  /01 ${h['01'] ? `${h['01'].jumlah} ekstensi` : '-'} · ` +
     `/02 ${h['02'] ? `${h['02'].permintaanPerMenit} req/menit (${h['02'].ditegakkanDi})` : '-'} · ` +
     `/03 ${h['03'] ? `${h['03'].filePerDetik.toFixed(1)} file/detik agregat (${h['03'].totalFile} file / ${h['03'].totalDetik.toFixed(0)} s) dari ${h['03'].jumlahRun} run, per-run ${h['03'].min.toFixed(1)}–${h['03'].maks.toFixed(1)} · ${h['03'].runDibuang} run dibuang` : '-'} · ` +
     `/04 ${h['04'] ? `${h['04'].testFungsi} func Test di ${h['04'].testBerkas} berkas, ${h['04'].rute} rute (${h['04'].ruteApi} /api) di ${h['04'].berkasRute} berkas + ${h['04'].tangkapSPA} root SPA, ${h['04'].modul} modul, ${h['04'].tipeProtokol} tipe protokol, ${h['04'].benchmarkFungsi} benchmark` : '-'} · ` +
-    `/05 ${h['05'] ? `${h['05'].fpsTerendah} fps terendah @${h['05'].lebar}×${h['05'].tinggi} di ${h['05'].perangkat}` : '-'}`
+    `/05 ${h['05'] ? `${h['05'].fpsTerendah} fps terendah @${h['05'].lebar}×${h['05'].tinggi} di ${h['05'].perangkat}` : '-'}` +
+    `\n  bahasa: ` +
+    Object.entries(hb)
+      .map(([id, v]) =>
+        v
+          ? `/${id} ${v.bahasa} ${v.byte.toLocaleString('id-ID')} B/${v.berkas}` +
+            (v.peringkat[1] ? ` (menyusul ${v.peringkat[1].bahasa}, ${(v.byte / v.peringkat[1].byte).toFixed(2)}x)` : ' (sendiri)')
+          : `/${id} -`
+      )
+      .join(' · ')
 );

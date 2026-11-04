@@ -79,6 +79,24 @@ export interface UkurFrame extends UkurJendela {
   sumber: string;
 }
 
+export interface UkurBahasa {
+  /** Bahasa dengan byte sumber TERBANYAK di korpus ter-commit — bukan jumlah berkas. */
+  bahasa: string;
+  byte: number;
+  berkas: number;
+  /** Semua bahasa terklasifikasi, terurut turun menurut byte. Runner-up ikut dicetak di
+   *  strip supaya keunggulan tipis (Pickertime 1,20x atas JavaScript) terlihat, bukan
+   *  tersembunyi di balik satu kata. */
+  peringkat: { bahasa: string; byte: number; berkas: number }[];
+  byteTotal: number;
+  jumlahBerkas: number;
+  binerDilewati: number;
+  jalurDibuang: number;
+  korpus: 'git' | 'direktori';
+  signature: string;
+  sumber: string;
+}
+
 export interface MetrikKartu {
   versi: number;
   dihasilkanPada: string;
@@ -90,11 +108,20 @@ export interface MetrikKartu {
     '04': UkurHermes | null;
     '05': UkurFrame | null;
   };
+  /** Peta paralel `kartu`: bahasa dominan yang mengisi kotak WORKS. Null berarti baris itu
+   *  tidak punya objek 3D — kartu tidak boleh memudar untuk objek yang tidak datang. */
+  bahasa: {
+    '01': UkurBahasa | null;
+    '02': UkurBahasa | null;
+    '03': UkurBahasa | null;
+    '04': UkurBahasa | null;
+    '05': UkurBahasa | null;
+  };
 }
 
 export const METRIK_KARTU: MetrikKartu = {
-  "versi": 1,
-  "dihasilkanPada": "2026-11-03T22:39:45.735Z",
+  "versi": 2,
+  "dihasilkanPada": "2026-11-04T02:20:47.285Z",
   "batasUsiaHari": 90,
   "kartu": {
     "01": {
@@ -114,7 +141,18 @@ export const METRIK_KARTU: MetrikKartu = {
       "ditegakkanDi": "pb_hooks/ai_proxy.pb.js:40",
       "sumber": "konstanta yang dibaca dari hook, bukan angka yang diketik ulang"
     },
-    "03": null,
+    "03": {
+      "filePerDetik": 11.687943262411348,
+      "totalFile": 1648,
+      "totalDetik": 141,
+      "min": 0.5,
+      "maks": 34.64102564102564,
+      "jumlahRun": 3,
+      "runDibuang": 0,
+      "jendelaAwal": "2026-11-04T00:30:01.000Z",
+      "jendelaAkhir": "2026-11-04T00:40:01.000Z",
+      "sumber": "/tmp/graphify.log (stempel Triggered → finished dibagi file uncached)"
+    },
     "04": {
       "testFungsi": 186,
       "testBerkas": 39,
@@ -163,6 +201,148 @@ export const METRIK_KARTU: MetrikKartu = {
         "dibuat": "2026-11-03T07:02:43.366Z"
       },
       "sumber": "docs/verify/drawcall-probe.mjs --gpu --tulis docs/verify/anggaran-gpu.json"
+    }
+  },
+  "bahasa": {
+    "01": {
+      "bahasa": "JavaScript",
+      "byte": 291048,
+      "berkas": 7,
+      "peringkat": [
+        {
+          "bahasa": "JavaScript",
+          "byte": 291048,
+          "berkas": 7
+        },
+        {
+          "bahasa": "Bash",
+          "byte": 80350,
+          "berkas": 8
+        },
+        {
+          "bahasa": "Python",
+          "byte": 9840,
+          "berkas": 2
+        }
+      ],
+      "byteTotal": 381238,
+      "jumlahBerkas": 149,
+      "binerDilewati": 100,
+      "jalurDibuang": 0,
+      "korpus": "git",
+      "signature": "git|149|381238",
+      "sumber": "git di /home/arkan/ferrari-ubuntu"
+    },
+    "02": {
+      "bahasa": "TypeScript",
+      "byte": 270534,
+      "berkas": 40,
+      "peringkat": [
+        {
+          "bahasa": "TypeScript",
+          "byte": 270534,
+          "berkas": 40
+        },
+        {
+          "bahasa": "JavaScript",
+          "byte": 225096,
+          "berkas": 19
+        },
+        {
+          "bahasa": "Bash",
+          "byte": 147921,
+          "berkas": 19
+        }
+      ],
+      "byteTotal": 643551,
+      "jumlahBerkas": 146,
+      "binerDilewati": 5,
+      "jalurDibuang": 0,
+      "korpus": "git",
+      "signature": "git|146|643551",
+      "sumber": "git di /home/arkan/Documents/Coding/Pickertime"
+    },
+    "03": {
+      "bahasa": "Python",
+      "byte": 20996,
+      "berkas": 3,
+      "peringkat": [
+        {
+          "bahasa": "Python",
+          "byte": 20996,
+          "berkas": 3
+        },
+        {
+          "bahasa": "Bash",
+          "byte": 8128,
+          "berkas": 4
+        }
+      ],
+      "byteTotal": 29124,
+      "jumlahBerkas": 15,
+      "binerDilewati": 0,
+      "jalurDibuang": 0,
+      "korpus": "git",
+      "signature": "git|15|29124",
+      "sumber": "git di /home/arkan/Documents/Coding/graphify-devkit"
+    },
+    "04": {
+      "bahasa": "Go",
+      "byte": 649738,
+      "berkas": 93,
+      "peringkat": [
+        {
+          "bahasa": "Go",
+          "byte": 649738,
+          "berkas": 93
+        },
+        {
+          "bahasa": "Python",
+          "byte": 2056,
+          "berkas": 1
+        }
+      ],
+      "byteTotal": 651794,
+      "jumlahBerkas": 125,
+      "binerDilewati": 0,
+      "jalurDibuang": 5,
+      "korpus": "git",
+      "signature": "git|125|651794",
+      "sumber": "git di /home/arkan/Documents/Coding/hermes-control-tower"
+    },
+    "05": {
+      "bahasa": "TypeScript",
+      "byte": 699095,
+      "berkas": 103,
+      "peringkat": [
+        {
+          "bahasa": "TypeScript",
+          "byte": 699095,
+          "berkas": 103
+        },
+        {
+          "bahasa": "JavaScript",
+          "byte": 326775,
+          "berkas": 15
+        },
+        {
+          "bahasa": "Go",
+          "byte": 106560,
+          "berkas": 12
+        },
+        {
+          "bahasa": "Bash",
+          "byte": 1648,
+          "berkas": 1
+        }
+      ],
+      "byteTotal": 1134078,
+      "jumlahBerkas": 175,
+      "binerDilewati": 4,
+      "jalurDibuang": 0,
+      "korpus": "git",
+      "signature": "git|175|1134078",
+      "sumber": "git di /home/arkan/Documents/Coding/website-porto2"
     }
   }
 };

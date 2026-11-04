@@ -24,6 +24,7 @@ const kartu = (dihasilkanPada: string, batasUsiaHari = BATAS_USIA_HARI): MetrikK
     "04": null,
     "05": null,
   },
+  bahasa: { "01": null, "02": null, "03": null, "04": null, "05": null },
 });
 
 describe("umur artefak menentukan kartu tercetak atau tidak", () => {
