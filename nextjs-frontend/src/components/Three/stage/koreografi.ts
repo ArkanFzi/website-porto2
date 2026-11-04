@@ -25,12 +25,51 @@ export const BARIS_FERRARI = 0;
 /** Bab yang punya mobil: arsip proyek (chapter-03). */
 export const BAB_ARSIP = 3;
 
-/** Satu aturan, dua pemakai — usePanggung (kartu mundur) dan AktorSF26 (mobil terpasang).
- *  Duluakan di sini supaya keduanya tidak bisa berbeda putusan: kartu yang memudar untuk
- *  mobil yang tidak pernah datang adalah layar kosong, dan mobil di luar bab arsip adalah
- *  objek yang menutupi teks bab lain. */
-export const mobilDipanggil = (bab: number, hovered: number | null, kurangiGerak: boolean) =>
-  !kurangiGerak && hovered === BARIS_FERRARI && bab === BAB_ARSIP;
+/** Siapa yang boleh menempati kotak tempat kartu potret biasanya duduk. */
+export type AktorPanggung = "mobil" | "bahasa";
+
+/** Bahasa dominan tiap baris arsip, indeks = indeks baris ChapterArchives, nilai = label
+ *  seperti yang dikeluarkan generator (`PETA_EKSTENSI`) atau null kalau belum terukur.
+ *  Ini angka hasil ukur, bukan karangan: tanpa baris yang terukur tidak ada bentuk. */
+export type BahasaBaris = readonly (string | null)[];
+
+/** Baris yang mengisi kotak saat TIDAK ada baris yang di-hover. `null` berarti tidak ada
+ *  pengganti sama sekali dan potret tetap di tempatnya — keadaan diam hari ini. Mengganti
+ *  angka ini dengan BARIS_FERRARI adalah satu baris perubahan yang memindahkan seluruh
+ *  keadaan diam bab arsip dari potret ke objek 3D, dan itu wajib disertai tulis-ulang
+ *  gerbang seksi 10 docs/verify/ekstra-probe.mjs, karena gerbang itu menguji keadaan diam. */
+export const BARIS_DIAM: number | null = null;
+
+/** Putusan tunggal: baris mana memanggil aktor mana. `mobilDipanggil` yang lama adalah
+ *  fungsi ini dengan satu cabang dihapus. Urutannya penting: baris 00 selalu mobil,
+ *  berapa pun bahasa yang terukur di sana, supaya satu objek tidak pernah rebutan. */
+export const aktorUntukBaris = (baris: number | null, bahasa: BahasaBaris): AktorPanggung | null => {
+  if (baris === null) return null;
+  if (baris === BARIS_FERRARI) return "mobil";
+  return bahasa[baris] ? "bahasa" : null;
+};
+
+/** Satu aturan, tiga pemakai — usePanggung (kartu mundur), AktorSF26 (mobil terpasang),
+ *  AktorBahasa (logo terpasang). Diletakkan di sini supaya ketiganya tidak bisa berbeda
+ *  putusan: kartu yang memudar untuk objek yang tidak pernah datang adalah layar kosong,
+ *  dan objek di luar bab arsip adalah benda yang menutupi teks bab lain. */
+export const aktorDipanggil = (
+  bab: number,
+  hovered: number | null,
+  kurangiGerak: boolean,
+  bahasa: BahasaBaris
+): AktorPanggung | null =>
+  !kurangiGerak && bab === BAB_ARSIP ? aktorUntukBaris(hovered ?? BARIS_DIAM, bahasa) : null;
+
+/** Apakah kartu harus menyerahkan tempatnya? Nama `mobilDipanggil` sengaja dipertahankan
+ *  di pemanggil lamanya: yang dibaca verifier adalah SILANG_MOBIL dan kunci debug
+ *  __panggung.mobil, dan keduanya sekarang berarti "silang pengganti", bukan "mobil". */
+export const penggantiDipanggil = (
+  bab: number,
+  hovered: number | null,
+  kurangiGerak: boolean,
+  bahasa: BahasaBaris
+): boolean => aktorDipanggil(bab, hovered, kurangiGerak, bahasa) !== null;
 
 export interface Kunci {
   bab: number;

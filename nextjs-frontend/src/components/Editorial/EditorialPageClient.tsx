@@ -19,6 +19,7 @@ import type { Perjalanan } from "@/lib/server/journey";
 import type { Certificate } from "@/lib/server/certificates";
 import type { Experience } from "@/lib/server/experience";
 import type { UkurPerKartu } from "@/lib/ukurFormat";
+import type { BahasaBaris } from "@/components/Three/stage/koreografi";
 
 const GlobalEditorialCanvas = dynamic(
   () => import("@/components/Three/GlobalEditorialCanvas"),
@@ -60,6 +61,10 @@ interface PageClientProps {
   experiences: Experience[];
   /** Sudah disaring umurnya di server; null berarti kartu proyek tercetak "BELUM TERUKUR". */
   metrikKartu: UkurPerKartu | null;
+  /** Bahasa dominan tiap baris arsip, hasil ukur generator dan sudah disaring umurnya di
+   *  server bersama `metrikKartu`. Ini yang menentukan objek 3D mana yang menempati
+   *  kotak; null pada sebuah indeks berarti baris itu tidak punya objek. */
+  bahasaBaris: BahasaBaris;
 }
 
 const EditorialInner: React.FC<PageClientProps> = ({
@@ -68,6 +73,7 @@ const EditorialInner: React.FC<PageClientProps> = ({
   certificates,
   experiences,
   metrikKartu,
+  bahasaBaris,
 }) => {
   const { scrollProgressRef, scrollVelocityRef, scrollToChapter } = useScrollData();
   const [hoveredProject, setHoveredProject] = useState<number | null>(null);
@@ -82,6 +88,7 @@ const EditorialInner: React.FC<PageClientProps> = ({
         scrollProgressRef={scrollProgressRef}
         hoveredProject={hoveredProject}
         scrollVelocityRef={scrollVelocityRef}
+        bahasaBaris={bahasaBaris}
       />
 
       {/* ── Fixed Frame (Monogram, Switcher, Indeks, Contact) ── */}

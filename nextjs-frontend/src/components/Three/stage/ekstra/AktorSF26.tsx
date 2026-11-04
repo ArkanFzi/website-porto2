@@ -19,7 +19,7 @@ import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import type { AktorProps } from "../AktorPotret";
 import { SAPU_IRIS, SILANG_MOBIL, glslPotongPortal } from "../chiaroscuroMaterial";
-import { mobilDipanggil, sikap } from "../koreografi";
+import { aktorDipanggil, sikap, type AktorPanggung } from "../koreografi";
 import { usePortalRegistry } from "../usePortalRegistry";
 
 const ALAMAT = "/models/sf26.glb";
@@ -174,7 +174,12 @@ const AktorSF26: React.FC<AktorProps> = (props) => {
 const MASK_MOBIL = { value: new THREE.Vector4(-1, 1, -1, 1) };
 const NDC_MOBIL = { value: new THREE.Vector2(2 / 1440, 2 / 900) };
 
-const Mobil: React.FC<AktorProps> = ({ scrollProgressRef, scrollVelocityRef, hoveredProject }) => {
+const Mobil: React.FC<AktorProps> = ({
+  scrollProgressRef,
+  scrollVelocityRef,
+  hoveredProject,
+  bahasaBaris,
+}) => {
   const { nodes } = useGLTF(ALAMAT);
   const { size, viewport, camera, invalidate } = useThree();
   const portal = usePortalRegistry();
@@ -218,6 +223,12 @@ const Mobil: React.FC<AktorProps> = ({ scrollProgressRef, scrollVelocityRef, hov
   const sudut = useRef(0);
   const putaran = useRef(0);
   const hidupRef = useRef(false);
+  /** Aktor yang terakhir dipanggil, hasil keputusan `aktorDipanggil` yang sama. Dibutuhkan
+   *  hanya saat pelepasan: `aku` kembali null sementara silang masih dikejar, dan tanpa
+   *  angka ini DUA aktor akan sama-sama merasa sedang menempati kotak dan ikut memudar —
+   *  mobil terpasang tiga draw call di bawah logo yang sedang pudar (terukur: satu frame
+   *  lepas menampilkan sf26-sasis/ban/pelek bersama bahasa-logo). */
+  const pemilik = useRef<AktorPanggung | null>(null);
   const [terpasang, setTerpasang] = useState(false);
 
   /** Geometri TIDAK disalin di sini: ia bagian dari cache useGLTF yang dipakai bersama setiap
@@ -307,10 +318,16 @@ const Mobil: React.FC<AktorProps> = ({ scrollProgressRef, scrollVelocityRef, hov
     const k = sikap(p, portal.current);
     if (!k) return;
 
-    const panggil = mobilDipanggil(k.babDari, hoveredProject, kurangiGerak);
+    const aku = aktorDipanggil(k.babDari, hoveredProject, kurangiGerak, bahasaBaris);
+    if (aku !== null) pemilik.current = aku;
+    const panggil = aku === "mobil";
     // Lepas HANYA setelah silang habis: usePanggung menulis angka yang sama ke alpha kartu,
     // jadi selama nilainya masih di atas nol ada objek yang harus menutupi tempat itu.
-    const hidup = !kurangiGerak && (panggil || SILANG_MOBIL.value > TETAS);
+    // Dan hanya kalau yang menempati tempat itu memang mobil: `pemilik` menahan keputusan
+    // terakhir supaya logo yang sedang memudar tidak memanggil mobil ke panggung.
+    const hidup =
+      !kurangiGerak &&
+      (panggil || (aku === null && pemilik.current === "mobil" && SILANG_MOBIL.value > TETAS));
     if (hidup !== hidupRef.current) {
       hidupRef.current = hidup;
       setTerpasang(hidup);

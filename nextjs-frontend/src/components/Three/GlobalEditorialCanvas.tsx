@@ -5,6 +5,7 @@ import { Canvas, invalidate } from "@react-three/fiber";
 import { PerformanceMonitor } from "@react-three/drei";
 import { AktorPotret, type AktorProps } from "./stage/AktorPotret";
 import { AktorSF26 } from "./stage/ekstra/AktorSF26";
+import { AktorBahasa } from "./stage/ekstra/AktorBahasa";
 import { BenangRosso } from "./stage/ekstra/BenangRosso";
 import { BilahTelemetri } from "./stage/ekstra/BilahTelemetri";
 import { Debu } from "./stage/ekstra/Debu";
@@ -17,6 +18,7 @@ import { mulai, mulaiLapor, setDprKanvas } from "@/lib/perfStats";
 import { mulaiBacaTelemetri } from "@/lib/bacaTelemetri";
 import { useDiamKanvas } from "@/lib/diamKanvas";
 import { SISA_PANGGUNG } from "./stage/usePanggung";
+import type { BahasaBaris } from "./stage/koreografi";
 import {
   bacaKurangiGerak,
   bacaKurangiGerakSaatSSR,
@@ -28,6 +30,7 @@ interface CanvasProps {
   scrollProgressRef: React.RefObject<number>;
   hoveredProject: number | null;
   scrollVelocityRef: React.RefObject<number>;
+  bahasaBaris: BahasaBaris;
 }
 
 const DPR_MIN = 1;
@@ -39,6 +42,7 @@ export const GlobalEditorialCanvas: React.FC<CanvasProps> = ({
   scrollProgressRef,
   hoveredProject,
   scrollVelocityRef,
+  bahasaBaris,
 }) => {
   const [dpr, setDpr] = useState<number>(DPR_AWAL);
   const reduceMotion = useSyncExternalStore(
@@ -48,7 +52,7 @@ export const GlobalEditorialCanvas: React.FC<CanvasProps> = ({
   );
   // Semua aktor panggung memakai kontrak props yang sama; objeknya sendiri yang
   // memutuskan kapan ia terpasang.
-  const aktor: AktorProps = { scrollProgressRef, scrollVelocityRef, hoveredProject };
+  const aktor: AktorProps = { scrollProgressRef, scrollVelocityRef, hoveredProject, bahasaBaris };
 
   // Hukum diam tinggal di lib/diamKanvas: panggung kedua memakainya tanpa menyalin angkanya.
   // Pengunjung yang minta gerakan dikurangi tidak pernah menggerakkan shader, jadi loop-nya
@@ -88,9 +92,12 @@ export const GlobalEditorialCanvas: React.FC<CanvasProps> = ({
         Visual pada halaman ini adalah potret hitam-putih penulis dalam bingkai
         persegi panjang. Bingkai berpindah sisi mengikuti gulir: berada di tengah
         pada bagian pembuka, di kiri pada bagian dua identitas, di kanan pada bagian
-        arsip proyek, lalu memudar pada bagian penutup. Pada bagian arsip, satu baris
-        proyek yang sedang ditunjuk mouse menggantikan potret dengan model mobil balap
-        tiga dimensi berwarna grafit. Tidak ada informasi yang
+        arsip proyek, lalu memudar pada bagian penutup. Pada bagian arsip, bingkai itu
+        diisi objek tiga dimensi berwarna grafit, bukan potret: model mobil balap untuk
+        baris pertama, dan logo bahasa pemrograman yang paling banyak dipakai di repo
+        baris tersebut untuk baris berikutnya — bahasa itu diukur dari berkas sumber yang
+        benar-benar dikomit, dan angka ukurnya tercetak di kartu yang sama. Pengunjung
+        yang meminta gerakan dikurangi tetap melihat potret. Tidak ada informasi yang
         hanya tersedia di visual ini; seluruh isi bacaan ada di teks halaman.
       </p>
       <div
@@ -131,9 +138,12 @@ export const GlobalEditorialCanvas: React.FC<CanvasProps> = ({
             {/* Roda paddock: satu-satunya objek yang sudutnya dijumlahkan dari velositas,
                 dan hanya ada di bab penutup. */}
             <RodaPaddock {...aktor} />
-            {/* Mobil baris /01: satu-satunya objek yang mengambil tempat kartu. Asetnya
+            {/* Mobil baris /01: objek pertama yang mengambil tempat kartu. Asetnya
                 diunduh saat bab arsip mendekat, dan objeknya lepas saat silang habis. */}
             <AktorSF26 {...aktor} />
+            {/* Logo bahasa baris /02-/05: aktor kedua dengan aturan pasang-lepas yang sama,
+                tanpa aset — bentuknya dibangun dari data path yang sudah ada di bundle. */}
+            <AktorBahasa {...aktor} />
           </Suspense>
           {/* Alat ukur, bukan bagian isi panggung: write-only, tidak memengaruhi render. */}
           {process.env.NODE_ENV !== "production" && <PengukurRender />}

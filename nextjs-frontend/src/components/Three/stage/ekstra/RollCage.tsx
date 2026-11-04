@@ -11,14 +11,9 @@ import React, { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import type { AktorProps } from "../AktorPotret";
-import { RASIO_POTRET } from "../chiaroscuroMaterial";
+import { RASIO_POTRET, muatKartu } from "../chiaroscuroMaterial";
 import { sikap } from "../koreografi";
-import { usePortalRegistry, type PortalKotak } from "../usePortalRegistry";
-
-/** Salinan persis `muat` di usePanggung. Sangkar harus selebar KARTU, bukan seukuran
- *  portal, dan tidak diekspor dari mesin kartu supaya objek ini tidak menggantungkan
- *  diri padanya. */
-const muat = (kotak: PortalKotak) => Math.min(kotak.lebar, kotak.tinggi / RASIO_POTRET);
+import { usePortalRegistry } from "../usePortalRegistry";
 
 const WARNA_KAWAT = "#8A8A8A";
 const OPASITAS = 0.9;
@@ -81,7 +76,7 @@ export const RollCage: React.FC<AktorProps> = ({ scrollProgressRef, hoveredProje
     // angka itu dipakai di sini agar tapak sangkar identik dengan tapak kartu.
     const pxPas = (1 / dpp) * (camZ / (camZ - k.pas));
     const pxZ = (1 / dpp) * (camZ / (camZ - k.z));
-    const lebar = muat(k.kotak) / pxPas;
+    const lebar = muatKartu(k.kotak) / pxPas;
 
     garis.position.set(
       (k.kotak.kiri + k.kotak.lebar / 2 - size.width / 2) / pxZ,

@@ -2,17 +2,30 @@
  *  Dipisah dari komponen supaya objek panggung lain (Aktor*) bisa memakai material
  *  dan konvensi uniform yang sama tanpa mengimpor komponen. */
 import * as THREE from "three";
+import type { PortalKotak } from "./usePortalRegistry";
 
 export const RASIO_POTRET = 1.64;
+
+/** Lebar (pixel CSS) objek yang masih muat di KARTU, bukan di portal. Kartu potret
+ *  berbanding 1 : RASIO_POTRET, jadi objek yang diukur dari lebar portal saja akan keluar
+ *  dari bingkai kartu ke atas atau ke bawah. Dua pemakai: RollCage dan AktorBahasa.
+ *  Dulunya angka ini disalin di RollCage dengan alasan "jangan menggantungkan diri pada
+ *  mesin kartu" — alasan yang tetap berlaku untuk `pxPas`/`pxZ` di usePanggung, tapi tidak
+ *  untuk rasio: dua objek di kotak yang sama tidak boleh punya dua tapak. */
+export const muatKartu = (kotak: PortalKotak) =>
+  Math.min(kotak.lebar, kotak.tinggi / RASIO_POTRET);
 
 /** Panjang jejak pointer yang dipegang shader. Dua belas sampel = ±0,5 detik gerakan
  *  terakhir pada 24fps; lebih dari itu hanya memperbesar loop fragment tanpa terbaca. */
 export const JUMLAH_JEJAK = 12;
 
-/** Silang potret↔mobil: satu angka, dua pemakai. usePanggung menulisnya ke uniform
- *  kartu (uMobil) sementara AktorSF26 membacanya untuk alpha sendiri — dua penghalusan
- *  terpisah akan saling tertinggal satu frame dan perpindahan terbaca sebagai dua
- *  kejadian. Nilainya 0 di luar hover baris /01, jadi kartu diam tidak berubah. */
+/** Silang kartu→penggantinya: satu angka, tiga pemakai. usePanggung menulisnya ke uniform
+ *  kartu (uMobil) sementara AktorSF26 dan AktorBahasa membacanya untuk alpha sendiri — dua
+ *  penghalusan terpisah akan saling tertinggal satu frame dan perpindahan terbaca sebagai
+ *  dua kejadian. Nilainya 0 selama tidak ada baris arsip yang memanggil pengganti, jadi
+ *  kartu diam tidak berubah. Nama MOBIL dipertahankan karena dibaca verifier
+ *  (docs/verify/ekstra-probe.mjs) dan kunci debug __panggung.mobil; yang berubah hanyalah
+ *  siapa yang berhak menempati angka satu. */
 export const SILANG_MOBIL = { value: 0 };
 
 /** Iris antar bab, dipakai bersama kartu dan mobil dengan alasan yang sama seperti

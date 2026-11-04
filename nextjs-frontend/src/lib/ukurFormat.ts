@@ -23,14 +23,42 @@ export type UkurPerKartu = MetrikKartu["kartu"];
 export type UkurTersedia = UkurPerKartu | null | undefined;
 
 /** null = kartu gelap. Ini satu-satunya jalan keluar selain menampilkan angka: tidak ada
- *  jalur "tampilkan angka terakhir" karena itulah yang sedang kita hapus. */
+ *  jalur "tampilkan angka terakhir" karena itulah yang sedang kita hapus.
+ *
+ *  Hukum umur ada di SATU tempat (`saringArtefak`) dan fungsi ini hanya memproyeksikan
+ *  sebagian hasilnya: kalau umur diuji dua kali, angka di kartu dan objek 3D di belakang
+ *  kotak bisa berpisah pada hari stempelnya lewat — dan itu justru keadaan yang paling
+ *  tidak boleh terjadi di halaman yang seluruh klaimnya berbunyi "terukur". */
 export function saringMetrik(m: MetrikKartu, sekarang: number = Date.now()): UkurPerKartu | null {
+  return saringArtefak(m, sekarang)?.kartu ?? null;
+}
+
+/** Artefak utuh yang sudah lolos gerbang umur, atau null kalau gelap. `kartu` dan `bahasa`
+ *  selalu datang berpasangan: keduanya satu berkas, satu stempel, satu hukum. */
+export function saringArtefak(
+  m: MetrikKartu,
+  sekarang: number = Date.now()
+): { kartu: UkurPerKartu; bahasa: MetrikKartu["bahasa"] } | null {
   const umurHari = (sekarang - Date.parse(m.dihasilkanPada)) / 86_400_000;
   // `Number.isFinite` bukan hiasan: stempel yang hilang atau tidak terbaca membuat umurHari
   // NaN, dan `NaN > batas` itu false — tanpa pemeriksaan ini kartu gelap justru mencetak
   // angka lama seolah-olah baru diukur. Kartu gelap lebih jujur dari angka tanpa sumber.
   if (!Number.isFinite(umurHari)) return null;
-  return umurHari > m.batasUsiaHari ? null : m.kartu;
+  return umurHari > m.batasUsiaHari ? null : { kartu: m.kartu, bahasa: m.bahasa };
+}
+
+/** Peta bahasa per baris arsip, indeks = indeks baris ChapterArchives (0 = "01").
+ *  Urutan ini bukan kebetulan: ChapterArchives menulis `index: "01".."05"` persis pada
+ *  urutan render, dan `BARIS_FERRARI = 0` adalah baris yang sama. Kalau urutan baris
+ *  pernah berubah, objek 3D yang salah yang muncul — itu sebabnya angka ini diturunkan
+ *  dari daftar, bukan dari penomoran manual. */
+const BARIS_KARTU: IndexKartu[] = ["01", "02", "03", "04", "05"];
+
+export function bahasaPerBaris(
+  artefak: { bahasa: MetrikKartu["bahasa"] } | null
+): (string | null)[] {
+  if (!artefak) return BARIS_KARTU.map(() => null);
+  return BARIS_KARTU.map((i) => artefak.bahasa[i]?.bahasa ?? null);
 }
 
 const ribu = (n: number) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ".");

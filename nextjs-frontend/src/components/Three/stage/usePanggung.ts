@@ -24,7 +24,7 @@ import {
   SAPU_IRIS,
   SILANG_MOBIL,
 } from "./chiaroscuroMaterial";
-import { sikap, mobilDipanggil, type Sikap } from "./koreografi";
+import { sikap, penggantiDipanggil, type BahasaBaris, type Sikap } from "./koreografi";
 import {
   tulisParalaksTipografi,
   useParalaksTipografi,
@@ -225,12 +225,16 @@ export interface PanggungProps {
   scrollProgressRef: React.RefObject<number>; // 0 to 1 from Lenis
   scrollVelocityRef: React.RefObject<number>;
   hoveredProject: number | null;
+  /** Bahasa dominan tiap baris arsip, sudah disaring umurnya di server. Null di indeks
+   *  mana pun berarti baris itu tidak punya objek — bukan objek perkiraan. */
+  bahasaBaris: BahasaBaris;
   mode: PortfolioMode;
   wireframe: boolean;
 }
 
 export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
-  const { scrollProgressRef, scrollVelocityRef, hoveredProject, mode, wireframe } = props;
+  const { scrollProgressRef, scrollVelocityRef, hoveredProject, bahasaBaris, mode, wireframe } =
+    props;
   const meshRef = useRef<THREE.Mesh>(null);
   const materialRef = useRef<THREE.ShaderMaterial>(null);
   const { size, camera, invalidate } = useThree();
@@ -468,11 +472,13 @@ export const usePanggung = (texture: THREE.Texture, props: PanggungProps) => {
     const k = sikap(p, portal.current);
     if (!k) return;
 
-    // Kartu menyerahkan tempatnya ke mobil HANYA kalau mobilnya memang dipanggil —
-    // aturannya satu sumber (mobilDipanggil) supaya tidak ada bab yang kehilangan potret
-    // tanpa pengganti. Angkanya dibagikan ke AktorSF26 lewat SILANG_MOBIL, jadi tidak ada
+    // Kartu menyerahkan tempatnya HANYA kalau penggantinya memang dipanggil — aturannya satu
+    // sumber (aktorDipanggil) supaya tidak ada bab yang kehilangan potret tanpa pengganti.
+    // Angkanya dibagikan ke AktorSF26 dan AktorBahasa lewat SILANG_MOBIL, jadi tidak ada
     // penghalusan kedua yang bisa tertinggal satu frame di antaranya.
-    const targetMobil = mobilDipanggil(k.babDari, hoveredProject, kurangiGerak) ? 1.0 : 0.0;
+    const targetMobil = penggantiDipanggil(k.babDari, hoveredProject, kurangiGerak, bahasaBaris)
+      ? 1.0
+      : 0.0;
     // Pegasnya per-detik, bukan alpha per-frame, dan ditutup dengan snap. Alpha 0,1 per
     // frame membuat lama perpindahan = jumlah frame, dan jumlah frame bukan milik kita:
     // diukur 1–3 frame per 250 ms pada swiftshader, silang berhenti di 0,9114 saat dipanggil
