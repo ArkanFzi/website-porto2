@@ -285,10 +285,10 @@ type Certificate struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-// Summary adalah isi panel detail bab 02. Kolomnya sengaja `not null;default:''`, bukan
-// nullable: AutoMigrate menambahkan kolom ke tabel yang sudah berisi baris, dan NULL di
-// baris lama membuat GET publik gagal scan ke string Go — baris kosong harus terbaca
-// sebagai "", bukan sebagai galat.
+// Summary adalah isi panel detail bab 02. Kolomnya sengaja not null dengan default string
+// kosong, bukan nullable: AutoMigrate menambahkan kolom ke tabel yang sudah berisi baris,
+// dan NULL di baris lama membuat GET publik gagal scan ke string Go — baris kosong harus
+// terbaca sebagai string kosong, bukan sebagai galat.
 type Experience struct {
 	ID        string    `gorm:"type:uuid;default:gen_random_uuid();primaryKey" json:"id"`
 	Role      string    `gorm:"not null" json:"role"`
