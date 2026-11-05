@@ -1,5 +1,5 @@
 // Verifikasi dua lorong rincian di belakang halaman editorial: /tulisan (index repo) dan
-// /statistik (telemetri proses). Yang ditagih di sini bukan "halamannya ada", tapi empat hukum
+// /statistik (telemetri proses). Yang ditagih di sini bukan "halamannya ada", tapi lima hukum
 // yang sudah berlaku di halaman utama dan tidak boleh dilanggar oleh halaman baru:
 //
 //   1. ANTI-KARANGAN — setiap angka di /tulisan harus ada di respons /api/github-repos, pada
@@ -10,6 +10,9 @@
 //      benar dikonsumsi halaman itu, bukan dengan fetch tambahan.
 //   4. IDENTITAS MESIN BUKAN UNTUK PUBLIK — heap, runtime, komit, dan ping postgres null di wire
 //      bagi yang tidak membawa sesi admin sah (bagian 2b), dan "—" di halaman bagi pengunjung.
+//   5. CSP DIPATUHI, BUKAN DIPASANG — tidak ada pelanggaran securitypolicyviolation di rute mana
+//      pun, termasuk jalur Draco/wasm di panggung 3D, dan tidak ada source liar di policy-nya
+//      (bagian 2c).
 //
 // Bagian 5 adalah penjaga langkah berikutnya (tautan masuk di bar bawah HUD yang posisinya
 // fixed): tinggi dokumen tidak boleh berubah dan setiap sasaran interaktif yang lewat di
@@ -372,11 +375,7 @@ const palsu = await bacaWire(`${namaKukiSesi}=${tokenPalsu}`);
 for (const jalur of FIELD_MESIN) {
   cek(`${jalur} tetap tertutup untuk token karangan`, isi(palsu.body, jalur), null);
 }
-cek(
-  'token palsu tidak mengubah verdict publik',
-  anonim.body?.status === palsu.body?.status,
-  true
-);
+cek('token palsu tidak mengubah verdict publik', anonim.body?.status === palsu.body?.status, true);
 
 // Efeknya di halaman: sel mesin di /statistik harus tercetak "—" untuk pengunjung, sementara
 // hop dan latency tetap angka. Sebelum pemisahan ini sel 'node' terisi versi Node proses server.
@@ -396,6 +395,91 @@ hasil.push({
   dapat: bocor.length ? bocor.join(' | ') : 'semua "—"',
   harus: '0 sel berisi angka',
 });
+
+// ── 2c · CSP ditegakkan, dan panggung 3D tetap hidup di bawahnya ──
+//
+// Isi policy ini lahir dari hasil ukur, jadi gerbangnya ikut mengukur dan bukan mengecek string
+// impian: nol `securitypolicyviolation` di seluruh rute teknis + profil — dengan panggung 3D
+// dibiarkan jalan, karena justru di sanalah DRACOLoader membuat worker dari URL blob dan
+// mengompilasi wasm-nya (di situ `connect-src 'self'` dan `script-src` tanpa 'wasm-unsafe-eval'
+// pernah mematahkan mobilnya). Report-only ditolak sebagai bentuk: tanpa collector dia tidak bisa
+// pernah merah, jadi dia tidak melindungi apa pun.
+const halamanDepan = await fetch(`${FE}/`, { headers: { 'cache-control': 'no-store' } });
+const csp = halamanDepan.headers.get('content-security-policy') ?? '';
+cek('CSP dikirim ke browser', csp.length > 0, true);
+cek(
+  'yang dipasang adalah enforcement, bukan Report-Only',
+  halamanDepan.headers.get('content-security-policy-report-only'),
+  null
+);
+const DIREKTIF_PENGUNGKING = [
+  "default-src 'self'",
+  "connect-src 'self' blob:",
+  "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
+  "img-src 'self' data: blob:",
+  "font-src 'self'",
+  "worker-src 'self' blob:",
+  "object-src 'none'",
+  "frame-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+];
+for (const d of DIREKTIF_PENGUNGKING) cek(`CSP memuat "${d}"`, csp.includes(d), true);
+// Satu source wildcard (host atau skema liar) membuat seluruh isinya tidak berarti.
+cek('CSP tidak punya source liar', /(^|\s)(\*|\*:|https?:|wss?:)(\s|;|$)/.test(csp), false);
+// Dev dan produksi beda di dua tempat, dan bedanya harus tetap dikunci pada flag produksi —
+// kalau tidak, 'unsafe-eval' dan upgrade-insecure-requests diam-diam ikut ke production.
+const KONFIG_CSP = readFileSync(
+  new URL('../../nextjs-frontend/next.config.ts', import.meta.url),
+  'utf8'
+);
+const barisYangMenyebut = (tek) =>
+  KONFIG_CSP.split('\n')
+    .map((b, i) => ({ b, i }))
+    .filter(({ b }) => b.includes(tek) && !/^\s*(\/\/|\*|\/)/.test(b));
+cek(
+  "'unsafe-eval' hanya muncul di baris yang bercakap dengan flag produksi",
+  barisYangMenyebut("'unsafe-eval'").every(({ b }) => b.includes('produksi')),
+  true
+);
+cek(
+  'upgrade-insecure-requests hanya untuk produksi (HMR dev memakai ws polos)',
+  barisYangMenyebut('upgrade-insecure-requests').every(({ b }) => b.includes('produksi')),
+  true
+);
+cek('di dev policy memang membawa unsafe-eval', csp.includes("'unsafe-eval'"), true);
+
+const halamanCsp = await browser.newPage();
+await halamanCsp.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
+await halamanCsp.evaluateOnNewDocument(() => {
+  window.__lv = [];
+  document.addEventListener('securitypolicyviolation', (e) =>
+    window.__lv.push(`${e.effectiveDirective || e.violatedDirective} ${e.blockedURI || e.sample || ''}`.slice(0, 80))
+  );
+});
+const pelanggarCsp = [];
+let kanvasPanggung = 0;
+for (const r of ['', ...RUTE_TEKNIS, ...RUTE_PROFIL]) {
+  await halamanCsp.goto(`${FE}/${r}`, { waitUntil: 'networkidle2', timeout: 45000 }).catch(() => {});
+  // Gulir: panggung dan model baru diminta saat bab-nya masuk layar, jadi tanpa gulir gerbang
+  // ini buta terhadap jalur Draco.
+  for (const y of [400, 1100, 1900, 2700]) {
+    await halamanCsp.evaluate((v) => window.scrollTo(0, v), y).catch(() => {});
+    await jeda(700);
+  }
+  const lv = await halamanCsp.evaluate(() => window.__lv ?? []).catch(() => []);
+  for (const v of lv) pelanggarCsp.push(`${r || '/'} → ${v}`);
+  if (r === '') kanvasPanggung = await halamanCsp.evaluate(() => document.querySelectorAll('canvas').length);
+}
+cek('panggung 3D benar-benar jalan selama pemindaian', kanvasPanggung >= 2, true);
+hasil.push({
+  nama: 'nol pelanggaran CSP di seluruh rute (dengan panggung 3D dan jalur Draco jalan)',
+  ok: pelanggarCsp.length === 0,
+  dapat: pelanggarCsp.length ? pelanggarCsp.slice(0, 4).join(' | ') : 'nol pelanggaran',
+  harus: '0 securitypolicyviolation',
+});
+await halamanCsp.close();
 
 // ── 3 · mock: sumber menjawab TANPA angka — halaman tidak boleh mengarang bentuk ──
 const payloadKosong = (tambahan = {}) => ({

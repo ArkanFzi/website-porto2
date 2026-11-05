@@ -109,6 +109,26 @@ jobs:
           APP_COMMIT: ${{ github.sha }}
         run: npm run build
 
+      - name: CSP ditegakkan dari hasil build, jalan tikus dev tidak ikut terbawa
+        working-directory: nextjs-frontend
+        # Header dipasang lewat next.config.ts dan nilai itu dibakar ke routes-manifest saat
+        # build — jadi yang ditagih di sini adalah artefak build, bukan file konfigurasi.
+        # `next dev` sengaja membawa dua allowance yang tidak boleh ada di produksi
+        # ('unsafe-eval' untuk stack error React, dan TANPA upgrade-insecure-requests karena HMR
+        # memakai ws:// polos); gerbang ini yang memastikan pemisahan itu benar-benar terjadi.
+        # Pola grep-nya puitif tapi terukur: "'unsafe-eval'" berkutip penuh, jadi 'wasm-unsafe-eval'
+        # (yang memang dipakai DRACOLoader) tidak dianggap pelanggaran.
+        run: |
+          m=.next/routes-manifest.json
+          if ! grep -qF '"Content-Security-Policy"' "$m"; then echo "manifest build tidak memuat Content-Security-Policy sama sekali"; exit 1; fi
+          if grep -qF 'Report-Only' "$m"; then echo "yang terpasang adalah CSP Report-Only — tanpa collector dia tidak pernah bisa merah"; exit 1; fi
+          for d in "default-src 'self'" "connect-src 'self' blob:" "object-src 'none'" "frame-ancestors 'none'" "form-action 'self'" "base-uri 'self'"; do
+            if ! grep -qF "$d" "$m"; then echo "direktif hilang dari hasil build: $d"; exit 1; fi
+          done
+          if grep -qF "'unsafe-eval'" "$m"; then echo "jalan tikus dev 'unsafe-eval' terbawa ke hasil build"; exit 1; fi
+          if ! grep -qF "upgrade-insecure-requests" "$m"; then echo "produksi kehilangan upgrade-insecure-requests"; exit 1; fi
+          echo "CSP build OK (enforcement, source hanya self/blob/data, tanpa unsafe-eval)"
+
       - name: Kontrak API (tripwire)
         run: node tools/ci/api-contract-check.mjs
 

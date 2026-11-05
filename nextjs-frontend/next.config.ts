@@ -19,6 +19,52 @@ function versiNext(): string {
   }
 }
 
+const produksi = process.env.NODE_ENV === "production";
+
+// Isinya hasil ukur, bukan daftar keinginan: setiap request browser di 16 rute (document, script,
+// stylesheet, font, image, fetch, other) berasal dari origin ini sendiri, ditambah satu
+// `data:image/svg+xml` untuk ikon inline. Tidak ada host ketiga — font dilayani next/font dari
+// origin sendiri, tidak ada analytics, dan backend dijangkau lewat rewrite same-origin `/api/*`.
+// Karena itu `default-src 'self'` bisa ditegakkan tanpa daftar domain.
+//
+// Kompromi ditulis apa adanya, tidak disamarkan jadi "situs sudah pakai CSP ketat":
+//  • `'unsafe-inline'` pada script dan style. Nonce per-request adalah alternatifnya, tapi Next
+//    hanya bisa memakainya pada halaman dynamic — seluruh rute situs ini di-prerender (`○ Static`
+//    di output build), dan nonce memaksa semuanya render per request: tanpa cache CDN, dan
+//    bertabrakan dengan PPR. Di sisi style, framer-motion menulis atribut `style` yang berubah
+//    tiap frame, jadi hash (`'unsafe-hashes'`) juga tidak stabil.
+//  • Yang tetap tertutup meskipun inline diizinkan: sumber lintas origin (connect/img/script),
+//    `object`, `frame`, `base-uri`, `form-action`, dan framing. Script yang disuntik lewat XSS
+//    masih bisa berlari, tetapi tidak bisa memanggil server lain — dan curi kredensial sudah
+//    ditutup lebih hulu: cookie HttpOnly + SameSite, `Secure` ditakar dari Host, revokasi sesi
+//    di backend, serta diagnostik infra yang tidak lagi dikirim ke pengunjung.
+//  • `'unsafe-eval'` hanya di development (React memakai eval untuk merangkai stack error server
+//    di browser). Produksi tidak memakainya — dibuktikan oleh pemindaian pelanggaran pada build
+//    produksi yang bersih tanpanya.
+//  • `upgrade-insecure-requests` hanya di production: direktif ini juga menaikkan `ws://` menjadi
+//    `wss://`, dan HMR `next dev` memakai websocket polos di localhost.
+//
+// `blob:` pada connect-src dan `wasm-unsafe-eval` pada script-src bukan tebakan: model 3D di
+// halaman utama (public/models/sf26.glb) dibuka DRACOLoader, yang membuat worker dari URL blob
+// dan mengompilasi wasm-nya. Tanpa keduanya pemindaian pelanggaran mencatat `connect-src blob`
+// dan `script-src wasm-eval` dari chunk three.js, dan mobilnya tidak muncul. `wasm-unsafe-eval`
+// adalah varian sempitnya — dia hanya mengizinkan kompilasi WebAssembly, bukan `eval` string.
+const csp = [
+  "default-src 'self'",
+  `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'${produksi ? "" : " 'unsafe-eval'"}`,
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self'",
+  "connect-src 'self' blob:",
+  "worker-src 'self' blob:",
+  "object-src 'none'",
+  "frame-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+  ...(produksi ? ["upgrade-insecure-requests"] : []),
+].join("; ");
+
 const nextConfig: NextConfig = {
   output: "standalone",
   env: {
@@ -61,17 +107,15 @@ const nextConfig: NextConfig = {
   },
   // Header keamanan pernah nol total: respons produksi hanya membawa x-powered-by dan
   // server: Google Frontend. Yang dipasang di sini adalah yang bisa ditegakkan dan bisa
-  // dibuktikan lewat curl.
-  //
-  // CSP sengaja TIDAK dipasang. Situs ini memuat inline script milik Next, framer-motion,
-  // dan three.js; policy yang benar butuh nonce per-request. Tanpa itu, satu-satunya CSP
-  // yang bisa ditulis adalah report-only yang tidak punya collector — dia akan selalu
-  // "hijau" tanpa pernah melaporkan apa pun. Itu hiasan, bukan kendali.
+  // dibuktikan lewat curl. CSP-nya sendiri dijelaskan di atas (konstanta `csp`); yang dipasang
+  // di sini adalah enforcement, bukan report-only — report-only tanpa collector selalu "hijau"
+  // tanpa pernah melaporkan apa pun, dan itu hiasan, bukan kendali.
   async headers() {
     return [
       {
         source: "/:path*",
         headers: [
+          { key: "Content-Security-Policy", value: csp },
           { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "X-Frame-Options", value: "DENY" },
