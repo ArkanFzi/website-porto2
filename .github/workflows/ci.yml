@@ -976,6 +976,8 @@ jobs:
       - name: PDF dari image — Chromium nyata, data nyata, bukan cuma magic byte
         env:
           PENANDA: ${{ steps.penanda.outputs.penanda }}
+          ADMIN_USER: portfolio-admin
+          ADMIN_PASS: ${{ steps.fixtures.outputs.adminpass }}
         run: |
           set -euo pipefail
           FE=http://127.0.0.1:3000
@@ -1039,13 +1041,30 @@ jobs:
 
           # HUD membaca gitCommit dari /api/telemetry. Nilainya dibakar saat build (next.config.ts
           # `env` + ARG di Dockerfile), jadi satu-satunya bukti yang berarti adalah menanyakannya
-          # ke image yang baru dibangun — bukan ke env job. Sampai langkah ini tidak ada build-arg
-          # APP_COMMIT di jalur Docker, jadi produksi selalu pulang ke "—" meski CI tahu SHA-nya.
+          # ke image yang baru dibangun — bukan ke env job. Dua arah, dua gerbang: identitas mesin
+          # tidak boleh keluar ke pengunjung anonim, dan harus tetap keluar ke sesi admin yang sah —
+          # tanpa arah kedua, "null untuk anonim" juga didapat dari build yang SHA-nya hilang total.
           tel=$(curl -sS --max-time 30 "$FE/api/telemetry" || true)
-          sha_dibakar=$(printf '%s' "$tel" | jq -r '.gitCommit // empty')
-          echo "gitCommit dari image hasil build ini: '${sha_dibakar:-null}' (github.sha=$GITHUB_SHA)"
+          anonim=$(printf '%s' "$tel" | jq -r '.gitCommit // "null"')
+          echo "gitCommit tanpa sesi: '${anonim}'"
+          [ "$anonim" = "null" ] || {
+            echo "identitas mesin bocor ke pengunjung anonim: $(printf '%s' "$tel" | head -c 300)"
+            exit 1
+          }
+
+          JAR=$(mktemp)
+          curl -fsS -c "$JAR" --max-time 30 -X POST -H 'Content-Type: application/json' \
+            -d "$(jq -nc --arg u "$ADMIN_USER" --arg p "$ADMIN_PASS" '{username:$u,password:$p}')" \
+            "$FE/api/login" -o /dev/null
+          grep -q 'porto_sesi' "$JAR" || {
+            echo "login lewat proxy frontend tidak menerbitkan cookie sesi"; rm -f "$JAR"; exit 1
+          }
+          tel_sesi=$(curl -sS -b "$JAR" --max-time 30 "$FE/api/telemetry" || true)
+          rm -f "$JAR"
+          sha_dibakar=$(printf '%s' "$tel_sesi" | jq -r '.gitCommit // "null"')
+          echo "gitCommit dengan sesi admin: '${sha_dibakar}' (github.sha=$GITHUB_SHA)"
           [ "$sha_dibakar" = "$GITHUB_SHA" ] || {
-            echo "APP_COMMIT tidak sampai ke image: $(printf '%s' "$tel" | head -c 300)"
+            echo "APP_COMMIT tidak sampai ke image: $(printf '%s' "$tel_sesi" | head -c 300)"
             exit 1
           }
 
