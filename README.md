@@ -180,8 +180,10 @@ go run . -migrate
 go run .
 ```
 
-`DATABASE_URL` kosong → jatuh ke default `host=localhost … port=5433` di `main.go`.
-`JWT_SECRET` dan `ADMIN_PASS` **wajib** ada; kalau kosong proses langsung `log.Fatalf`.
+`DATABASE_URL`, `JWT_SECRET`, `ADMIN_USER` dan `ADMIN_PASS` **wajib** ada; kalau kosong proses
+langsung `log.Fatalf` lewat `requireEnv`. Tidak ada nilai cadangan lagi — dulu `DATABASE_URL` jatuh
+ke `host=localhost … port=5433` dan `ADMIN_USER` ke `admin`, dua-duanya membuat layanan yang gagal
+konfigurasi terlihat sehat dan setengah kredensialnya bisa ditebak.
 
 Skema **tidak** dibuat lagi saat container start, dan backend tidak menyisipkan data apa pun.
 Sekali di awal — dan setiap kali model berubah — siapkan skema secara eksplisit:

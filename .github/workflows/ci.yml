@@ -929,6 +929,7 @@ jobs:
         env:
           DATABASE_URL: host=127.0.0.1 user=postgres dbname=portfolio_pdf port=5432 sslmode=disable TimeZone=UTC
           JWT_SECRET: ${{ steps.fixtures.outputs.jwt }}
+          ADMIN_USER: portfolio-admin
           ADMIN_PASS: ${{ steps.fixtures.outputs.adminpass }}
         run: |
           set -uo pipefail
@@ -937,12 +938,12 @@ jobs:
           go build -o /tmp/be-pdf .
           /tmp/be-pdf -migrate
 
-          # Dua secret di atas bukan hiasan: requireEnv untuk JWT_SECRET dan ADMIN_PASS dipanggil
-          # sebelum listen (main.go:164 dan :166), jadi melayani tanpa keduanya keluar dengan
-          # "JWT_SECRET must be set". -migrate sendiri tidak menyentuh keduanya — itu sebabnya
+          # Tiga secret di atas bukan hiasan: requireEnv untuk JWT_SECRET, ADMIN_USER dan ADMIN_PASS
+          # dipanggil sebelum listen (main.go:655, :659, :660), jadi melayani tanpa salah satunya
+          # keluar dengan "... must be set". -migrate sendiri tidak menyentuh ketiganya — itu sebabnya
           # langkah "Skema dibuat eksplisit" di job api boleh menjalankannya tanpa secret.
-          # Nama pemakai sengaja tidak diisi: hanya dia yang punya nilai cadangan di backend,
-          # dan jalur PDF tidak pernah sampai ke perbandingan login.
+          # ADMIN_USER tetap perlu meski jalur PDF tidak pernah membandingkan login: nama pemakai
+          # bukan lagi punya nilai cadangan, setengah kredensial yang bisa ditebak tidak boleh default.
           m="ab$(openssl rand -hex 3)"
           psql "$PSQL" -qc "insert into certificates (title, issuer, date, created_at, updated_at) values ('$m', 'penerbit pdf', '2026', now(), now())"
           echo "penanda=$m" >> "$GITHUB_OUTPUT"

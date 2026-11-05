@@ -195,7 +195,7 @@ Dua hal yang membuatnya mudah salah dan sengaja dicatat: **`--command` jangan di
 ENTRYPOINT image sudah binernya, dan menimpa entrypoint dengan `-migrate` membuat container mencari
 program bernama `-migrate` (jebakan yang sama sudah didokumentasikan `ci.yml`, di jalur `docker run`);
 dan **hanya secret `portfolio-database-url`** yang dipasang, karena `-migrate` tidak menyentuh
-`JWT_SECRET`/`ADMIN_PASS` — itu sebabnya langkah migrate di CI juga berjalan tanpa secret aplikasi.
+`JWT_SECRET`/`ADMIN_USER`/`ADMIN_PASS` — itu sebabnya langkah migrate di CI juga berjalan tanpa secret aplikasi.
 
 Terukur 2026-11-04: eksekusi `portfolio-migrate-27tf6` selesai dengan `migrate: skema siap` dan
 `exit(0)`; `gh run rerun 41813026066 --failed` berikutnya hijau sampai "Verifikasi lulus", dan
