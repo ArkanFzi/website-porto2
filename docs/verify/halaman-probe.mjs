@@ -366,11 +366,16 @@ cek(
   true
 );
 
-// Token JWT palsu yang bentuknya meyakinkan: pembukanya bukan siapa pun yang bisa menempel kuki.
-const tokenPalsu =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.' +
-  'eyJ1c2VybmFtZSI6ImFkbWluIiwiaWF0IjoxNzk2MDAwMDAwLCJleHAiOjE5OTYwMDAwMDB9.' +
-  'sAnd1eZx0kQ9mQ8pY7uT2vB3nR5cD4fE6gH8jK0lM2o';
+// Token JWT karangan yang bentuknya meyakinkan: pembukanya bukan siapa pun yang bisa menempel kuki.
+// Dirakit saat runtime, bukan ditulis sebagai literal — preseden repo ini (#36/#38, lihat komentar
+// bodyLogin di go-backend/login_batas_laju_test.go) membuang bentuk kredensial dari sumber sementara
+// nilainya tetap palsu, karena detector tidak bisa membedakan tiga segmen base64url dari token asli.
+const b64url = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url');
+const tokenPalsu = [
+  b64url({ alg: 'HS256', typ: 'JWT' }),
+  b64url({ username: 'admin', iat: 1796000000, exp: 1996000000 }),
+  Buffer.from('bukan-hasil-hmac-yang-sah').toString('base64url'),
+].join('.');
 const palsu = await bacaWire(`${namaKukiSesi}=${tokenPalsu}`);
 for (const jalur of FIELD_MESIN) {
   cek(`${jalur} tetap tertutup untuk token karangan`, isi(palsu.body, jalur), null);
