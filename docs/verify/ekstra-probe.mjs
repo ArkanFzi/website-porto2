@@ -22,10 +22,13 @@ const SEG_KOMPAS = 2; // jarum + ekor
 const PARTIKEL_DEBU = 140;
 const EKSTRA = ['bahasa-logo', 'bilah', 'benang', 'debu', 'jejak', 'kompas', 'roda', 'sangkar', 'sf26-ban', 'sf26-pelek', 'sf26-sasis'];
 
+const pakaiGPU = process.env.PUPPETEER_GPU !== '0' && !process.argv.includes('--swiftshader');
 const browser = await puppeteer.launch({
   executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome',
   headless: 'new',
-  args: ['--no-sandbox', '--disable-dev-shm-usage', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+  args: pakaiGPU
+    ? ['--no-sandbox', '--disable-dev-shm-usage', '--use-gl=angle', '--use-angle=vulkan']
+    : ['--no-sandbox', '--disable-dev-shm-usage', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
 });
 
 // Bilah butuh angka: "tidak ada bentuk tanpa angka" berarti tanpa laporan deretan memang tidak
