@@ -109,6 +109,26 @@ jobs:
           APP_COMMIT: ${{ github.sha }}
         run: npm run build
 
+      - name: CSP ditegakkan dari hasil build, jalan tikus dev tidak ikut terbawa
+        working-directory: nextjs-frontend
+        # Header dipasang lewat next.config.ts dan nilai itu dibakar ke routes-manifest saat
+        # build — jadi yang ditagih di sini adalah artefak build, bukan file konfigurasi.
+        # `next dev` sengaja membawa dua allowance yang tidak boleh ada di produksi
+        # ('unsafe-eval' untuk stack error React, dan TANPA upgrade-insecure-requests karena HMR
+        # memakai ws:// polos); gerbang ini yang memastikan pemisahan itu benar-benar terjadi.
+        # Pola grep-nya puitif tapi terukur: "'unsafe-eval'" berkutip penuh, jadi 'wasm-unsafe-eval'
+        # (yang memang dipakai DRACOLoader) tidak dianggap pelanggaran.
+        run: |
+          m=.next/routes-manifest.json
+          if ! grep -qF '"Content-Security-Policy"' "$m"; then echo "manifest build tidak memuat Content-Security-Policy sama sekali"; exit 1; fi
+          if grep -qF 'Report-Only' "$m"; then echo "yang terpasang adalah CSP Report-Only — tanpa collector dia tidak pernah bisa merah"; exit 1; fi
+          for d in "default-src 'self'" "connect-src 'self' blob:" "object-src 'none'" "frame-ancestors 'none'" "form-action 'self'" "base-uri 'self'"; do
+            if ! grep -qF "$d" "$m"; then echo "direktif hilang dari hasil build: $d"; exit 1; fi
+          done
+          if grep -qF "'unsafe-eval'" "$m"; then echo "jalan tikus dev 'unsafe-eval' terbawa ke hasil build"; exit 1; fi
+          if ! grep -qF "upgrade-insecure-requests" "$m"; then echo "produksi kehilangan upgrade-insecure-requests"; exit 1; fi
+          echo "CSP build OK (enforcement, source hanya self/blob/data, tanpa unsafe-eval)"
+
       - name: Kontrak API (tripwire)
         run: node tools/ci/api-contract-check.mjs
 
@@ -185,10 +205,10 @@ jobs:
           # DATABASE_URL dipakai biner (pgx menerima TimeZone); psql memakai conninfo sendiri
           # karena libpq menolak opsi itu: "invalid connection option \"TimeZone\"".
           PSQL='host=127.0.0.1 user=postgres dbname=portfolio_db port=5432 sslmode=disable'
-          T() { psql "$PSQL" -tAc "select count(distinct table_name) from information_schema.tables where table_schema = current_schema() and table_name in ('certificates','experiences','contact_messages','journeys','kunjungans')"; }
+          T() { psql "$PSQL" -tAc "select count(distinct table_name) from information_schema.tables where table_schema = current_schema() and table_name in ('certificates','experiences','contact_messages','journeys','kunjungans','revokasi_sesi')"; }
 
           [ "$(T)" = "0" ] || { echo "DB uji tidak kosong: $(T) tabel sudah ada"; exit 1; }
-          echo "tabel sebelum apa pun: $(T)/5"
+          echo "tabel sebelum apa pun: $(T)/6"
 
           set +e
           out=$(/tmp/portfolio-be 2>&1); rc=$?
@@ -202,8 +222,8 @@ jobs:
           # -migrate: langkah ini sengaja TIDAK punya JWT_SECRET/ADMIN_PASS di env di atas.
           /tmp/portfolio-be -migrate
           /tmp/portfolio-be -migrate
-          echo "tabel setelah -migrate dua kali: $(T)/5"
-          [ "$(T)" = "5" ] || { echo "-migrate tidak menyiapkan seluruh skema"; exit 1; }
+          echo "tabel setelah -migrate dua kali: $(T)/6"
+          [ "$(T)" = "6" ] || { echo "-migrate tidak menyiapkan seluruh skema"; exit 1; }
 
           echo "baris setelah -migrate: certificates=$(psql "$PSQL" -tAc 'select count(*) from certificates') experiences=$(psql "$PSQL" -tAc 'select count(*) from experiences') journeys=$(psql "$PSQL" -tAc 'select count(*) from journeys')"
           [ "$(psql "$PSQL" -tAc 'select count(*) from certificates')" = "0" ] || { echo "-migrate masih menanam seed"; exit 1; }
@@ -235,7 +255,7 @@ jobs:
           psql "$PSQL" -qc 'create database portfolio_img'
           PI='host=127.0.0.1 user=postgres dbname=portfolio_img port=5432 sslmode=disable'
           IMG_URL="host=127.0.0.1 user=postgres dbname=portfolio_img port=5432 sslmode=disable TimeZone=UTC"
-          TI() { psql "$PI" -tAc "select count(distinct table_name) from information_schema.tables where table_schema = current_schema() and table_name in ('certificates','experiences','contact_messages','journeys','kunjungans')"; }
+          TI() { psql "$PI" -tAc "select count(distinct table_name) from information_schema.tables where table_schema = current_schema() and table_name in ('certificates','experiences','contact_messages','journeys','kunjungans','revokasi_sesi')"; }
           [ "$(TI)" = "0" ] || { echo "portfolio_img tidak kosong: $(TI)"; exit 1; }
 
           set +e
@@ -250,8 +270,8 @@ jobs:
           # Inti N2: flag lewat image, TANPA override --entrypoint. Dua kali jalan = idempoten.
           docker run --rm --network host -e DATABASE_URL="$IMG_URL" portfolio-be:ci -migrate
           docker run --rm --network host -e DATABASE_URL="$IMG_URL" portfolio-be:ci -migrate
-          echo "tabel setelah -migrate lewat image: $(TI)/5"
-          [ "$(TI)" = "5" ] || { echo "-migrate tidak tercapai dari image (ENTRYPOINT belum terpasang?)"; exit 1; }
+          echo "tabel setelah -migrate lewat image: $(TI)/6"
+          [ "$(TI)" = "6" ] || { echo "-migrate tidak tercapai dari image (ENTRYPOINT belum terpasang?)"; exit 1; }
           [ "$(psql "$PI" -tAc 'select count(*) from certificates')" = "0" ] || { echo "-migrate dari image menanam seed"; exit 1; }
 
           # Entrypoint yang berubah tidak boleh mengubah cara kontainer melayani.
@@ -909,6 +929,7 @@ jobs:
         env:
           DATABASE_URL: host=127.0.0.1 user=postgres dbname=portfolio_pdf port=5432 sslmode=disable TimeZone=UTC
           JWT_SECRET: ${{ steps.fixtures.outputs.jwt }}
+          ADMIN_USER: portfolio-admin
           ADMIN_PASS: ${{ steps.fixtures.outputs.adminpass }}
         run: |
           set -uo pipefail
@@ -917,12 +938,12 @@ jobs:
           go build -o /tmp/be-pdf .
           /tmp/be-pdf -migrate
 
-          # Dua secret di atas bukan hiasan: requireEnv untuk JWT_SECRET dan ADMIN_PASS dipanggil
-          # sebelum listen (main.go:164 dan :166), jadi melayani tanpa keduanya keluar dengan
-          # "JWT_SECRET must be set". -migrate sendiri tidak menyentuh keduanya — itu sebabnya
+          # Tiga secret di atas bukan hiasan: requireEnv untuk JWT_SECRET, ADMIN_USER dan ADMIN_PASS
+          # dipanggil sebelum listen (main.go:655, :659, :660), jadi melayani tanpa salah satunya
+          # keluar dengan "... must be set". -migrate sendiri tidak menyentuh ketiganya — itu sebabnya
           # langkah "Skema dibuat eksplisit" di job api boleh menjalankannya tanpa secret.
-          # Nama pemakai sengaja tidak diisi: hanya dia yang punya nilai cadangan di backend,
-          # dan jalur PDF tidak pernah sampai ke perbandingan login.
+          # ADMIN_USER tetap perlu meski jalur PDF tidak pernah membandingkan login: nama pemakai
+          # bukan lagi punya nilai cadangan, setengah kredensial yang bisa ditebak tidak boleh default.
           m="ab$(openssl rand -hex 3)"
           psql "$PSQL" -qc "insert into certificates (title, issuer, date, created_at, updated_at) values ('$m', 'penerbit pdf', '2026', now(), now())"
           echo "penanda=$m" >> "$GITHUB_OUTPUT"
@@ -955,6 +976,8 @@ jobs:
       - name: PDF dari image — Chromium nyata, data nyata, bukan cuma magic byte
         env:
           PENANDA: ${{ steps.penanda.outputs.penanda }}
+          ADMIN_USER: portfolio-admin
+          ADMIN_PASS: ${{ steps.fixtures.outputs.adminpass }}
         run: |
           set -euo pipefail
           FE=http://127.0.0.1:3000
@@ -1018,13 +1041,30 @@ jobs:
 
           # HUD membaca gitCommit dari /api/telemetry. Nilainya dibakar saat build (next.config.ts
           # `env` + ARG di Dockerfile), jadi satu-satunya bukti yang berarti adalah menanyakannya
-          # ke image yang baru dibangun — bukan ke env job. Sampai langkah ini tidak ada build-arg
-          # APP_COMMIT di jalur Docker, jadi produksi selalu pulang ke "—" meski CI tahu SHA-nya.
+          # ke image yang baru dibangun — bukan ke env job. Dua arah, dua gerbang: identitas mesin
+          # tidak boleh keluar ke pengunjung anonim, dan harus tetap keluar ke sesi admin yang sah —
+          # tanpa arah kedua, "null untuk anonim" juga didapat dari build yang SHA-nya hilang total.
           tel=$(curl -sS --max-time 30 "$FE/api/telemetry" || true)
-          sha_dibakar=$(printf '%s' "$tel" | jq -r '.gitCommit // empty')
-          echo "gitCommit dari image hasil build ini: '${sha_dibakar:-null}' (github.sha=$GITHUB_SHA)"
+          anonim=$(printf '%s' "$tel" | jq -r '.gitCommit // "null"')
+          echo "gitCommit tanpa sesi: '${anonim}'"
+          [ "$anonim" = "null" ] || {
+            echo "identitas mesin bocor ke pengunjung anonim: $(printf '%s' "$tel" | head -c 300)"
+            exit 1
+          }
+
+          JAR=$(mktemp)
+          curl -fsS -c "$JAR" --max-time 30 -X POST -H 'Content-Type: application/json' \
+            -d "$(jq -nc --arg u "$ADMIN_USER" --arg p "$ADMIN_PASS" '{username:$u,password:$p}')" \
+            "$FE/api/login" -o /dev/null
+          grep -q 'porto_sesi' "$JAR" || {
+            echo "login lewat proxy frontend tidak menerbitkan cookie sesi"; rm -f "$JAR"; exit 1
+          }
+          tel_sesi=$(curl -sS -b "$JAR" --max-time 30 "$FE/api/telemetry" || true)
+          rm -f "$JAR"
+          sha_dibakar=$(printf '%s' "$tel_sesi" | jq -r '.gitCommit // "null"')
+          echo "gitCommit dengan sesi admin: '${sha_dibakar}' (github.sha=$GITHUB_SHA)"
           [ "$sha_dibakar" = "$GITHUB_SHA" ] || {
-            echo "APP_COMMIT tidak sampai ke image: $(printf '%s' "$tel" | head -c 300)"
+            echo "APP_COMMIT tidak sampai ke image: $(printf '%s' "$tel_sesi" | head -c 300)"
             exit 1
           }
 

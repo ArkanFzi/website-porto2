@@ -26,7 +26,7 @@ Yang berubah sejak audit itu: form kontak menulis ke `contact_messages` dan menj
 `/api/cv` ikut memuat daftar sertifikat; `seedData()` + `AutoMigrate` tidak lagi jalan saat start;
 inbox admin (`GET`/`DELETE /api/admin/contact`) sudah terbukti menghitung POST publik lewat API —
 di CI, pada DB sementara runner (`ci.yml` langkah "Kontrak inbox admin"); dan sesi admin pindah dari
-`localStorage` ke cookie HttpOnly (`porto_sesi`) dengan `POST /api/auth/logout` (#65, `31709a0`).
+`localStorage` ke cookie HttpOnly (`porto_sesi`) dengan `POST /api/auth/logout` (#65, `31709a0`). Logout sekarang juga mencabut sesinya di server: ambang waktu terbit disimpan di tabel `revokasi_sesi`, jadi sesi yang tertinggal di peramban lain mati seketika — bukan hanya hilang dari peramban yang menekan tombol.
 
 Dua klaim lama di bawah sudah tidak berlaku dan itu yang perlu dibaca hati-hati:
 
@@ -48,9 +48,10 @@ Dua klaim lama di bawah sudah tidak berlaku dan itu yang perlu dibaca hati-hati:
 | `GET /api/health` — cek koneksi ke Postgres | jalan |
 | `/api/cv` — PDF dari halaman `/cv-layout` lewat Puppeteer | jalan, tapi **tanpa daftar sertifikat** |
 | `/api/github-repos`, `/api/github-profile` | jalan |
+| `GET /api/telemetry` — bahan HUD `/statistik`, bar telemetri, dan bilah panggung | jalan. Yang publik: verdict `status`, `latencyMs`/`latencySamples`, `backend.rttMs`, `clientFrames`, `watch`. Yang hanya dikirim ke request dengan sesi admin sah: `heapMb`, `runtime.node`, `runtime.next`, `gitCommit`, `backend.db` — penilaiannya dikerjakan backend, dan untuk yang lain field itu `null` sehingga halaman menulis "—" |
 | Form kontak | **jalan penuh** — `ChapterPaddock.tsx` mengirim ke `POST /api/contact` di Go, pesan masuk ke `contact_messages` dan dijawab `201 {id}`; stub lama `src/app/api/contact/route.ts` (menahan 1 s lalu menjawab `success: true` tanpa menulis apa pun) sudah dihapus. Notifikasi email **terbukti hidup di produksi**: POST 2026-10-06 00:51 UTC menjawab `201` dalam 28,75 ms dan 3,171 s kemudian mencetak `contact 4e8d174a-…: email terkirim ke muhammadarkanfauzi9@gmail.com`, pesannya sampai ke Gmail. Kalau kredensial hilang, #31 membuat jalurnya berhenti **sebelum** socket dibuka dan tercatat sebagai `email dilewati` — bukan disamarkan jadi kegagalan Gmail. **`Reply-To` sekarang dipasang** (#37, `29757ca`): tombol Balas membalas ke alamat pengunjung, dan nilai yang bukan alamat tidak pernah masuk header (gerbang `mail.ParseAddress` di dalam paket, dengan 6 input jahat sebagai test). Yang masih tersisa dari baris ini: `subject` dibakar di `ChapterPaddock.tsx:49` sebagai `Editorial Telemetry Dispatch` — bukan pilihan pengunjung, dan header `Reply-To` pada pesan yang benar-benar datang baru terbukti oleh satu POST produksi lagi |
 | Halaman admin (`/admin`, `/admin/dashboard`, `/admin/login`) | **hidup bertiga** — `/admin` (`page.tsx`) menulis & menghapus sertifikat/pengalaman lewat `authFetch`, `/admin/dashboard` membaca & menghapus kotak masuk lewat `GET`/`DELETE /api/admin/contact`, `/admin/login` membuka sesi. `/admin/projects` **tidak ada** (lihat catatan rekonsiliasi di atas), dan `Sidebar` hanya menautkan `/admin/dashboard` — jadi CRUD di `/admin` reachable lewat URL, bukan lewat menu |
-| Login admin (`POST /api/auth/login` + JWT) | **dipakai** — `/admin/login` memanggilnya; `POST /api/login` yang lama masih terdaftar dan menunjuk handler yang sama, jadi keduanya menerbitkan sesi yang sama. Kredensialnya tidak lagi lewat body: `Set-Cookie: porto_sesi` (HttpOnly, SameSite=Lax, Secure saat `X-Forwarded-Proto: https`), `Authorization: Bearer` tetap diterima untuk sesi yang terbit sebelum #65, dan `POST /api/auth/logout` menghapus cookie-nya |
+| Login admin (`POST /api/auth/login` + JWT) | **dipakai** — `/admin/login` memanggilnya; `POST /api/login` yang lama masih terdaftar dan menunjuk handler yang sama, jadi keduanya menerbitkan sesi yang sama. Kredensialnya tidak lagi lewat body: `Set-Cookie: porto_sesi` (HttpOnly, SameSite=Lax, `Secure` untuk setiap host yang bukan loopback — bukan dari `X-Forwarded-Proto`, yang kiriman klien), `Authorization: Bearer` tetap diterima untuk sesi yang terbit sebelum #65, dan `POST /api/auth/logout` menghapus cookie-nya **sekaligus** mencabut sesi itu di server (ambang di `revokasi_sesi`) |
 
 `/api/cv` dulu kosong daftar sertifikatnya karena `src/app/cv-layout/page.tsx` memanggil
 `http://localhost:8080` secara hardcoded — origin itu tidak ada di dalam container frontend.
@@ -89,9 +90,11 @@ inbox admin menjawab **500** kalau DB gagal — sebelum PR #29 yang sama itu men
 - **Go 1.25**, **Gin** (HTTP), **GORM** + `gorm.io/driver/postgres`
 - **JWT** (`golang-jwt/v5`, HS256, kedaluwarsa 24 jam) untuk rute `/api/certificates` dan
   `/api/experience` yang protected. Sejak perubahan ini kredensialnya dibawa sebagai **cookie
-  HttpOnly** `porto_sesi` (`SameSite=Lax`, `Secure` saat `X-Forwarded-Proto: https`), bukan lagi
+  HttpOnly** `porto_sesi` (`SameSite=Lax`, `Secure` di host selain loopback), bukan lagi
   string di `localStorage`; `Authorization: Bearer` masih diterima supaya sesi yang terbit sebelum
-  deploy tidak berubah jadi 401. `POST /api/auth/logout` menghapus cookie-nya.
+  deploy tidak berubah jadi 401. `POST /api/auth/logout` menghapus cookie-nya dan menaikkan ambang
+  `revokasi_sesi` — sesi yang terbit sebelum logout ditolak, lewat cookie maupun `Bearer`. Token tanpa
+  `iat` (terbit sebelum revokasi ada) hanya diterima selama belum pernah ada logout.
 - **`gomail`** untuk SMTP — tersambung ke form kontak dan **terbukti mengirim di produksi** sejak #33
   (`EMAIL_USER` ← `portfolio-email-user`, `EMAIL_PASS` ← `portfolio-email-pass`, keduanya lewat
   `--set-secrets` di `deploy.yml`). Kalau keduanya hilang: `SendEmail` mengembalikan `ErrNotConfigured`
@@ -168,7 +171,7 @@ cd go-backend
 cat > .env <<'ENV'
 DATABASE_URL=host=localhost user=postgres password=<sandi-postgres-lokal> dbname=portfolio_db port=5432 sslmode=disable TimeZone=Asia/Jakarta
 JWT_SECRET=ganti-dengan-nilai-acak-32-byte
-ADMIN_USER=admin
+ADMIN_USER=porto-admin
 ADMIN_PASS=ganti-dengan-sandi-lokal
 ADMIN_EMAIL=kamu@example.com
 CORS_ORIGINS=http://localhost:3000
@@ -177,8 +180,10 @@ go run . -migrate
 go run .
 ```
 
-`DATABASE_URL` kosong → jatuh ke default `host=localhost … port=5433` di `main.go`.
-`JWT_SECRET` dan `ADMIN_PASS` **wajib** ada; kalau kosong proses langsung `log.Fatalf`.
+`DATABASE_URL`, `JWT_SECRET`, `ADMIN_USER` dan `ADMIN_PASS` **wajib** ada; kalau kosong proses
+langsung `log.Fatalf` lewat `requireEnv`. Tidak ada nilai cadangan lagi — dulu `DATABASE_URL` jatuh
+ke `host=localhost … port=5433` dan `ADMIN_USER` ke `admin`, dua-duanya membuat layanan yang gagal
+konfigurasi terlihat sehat dan setengah kredensialnya bisa ditebak.
 
 Skema **tidak** dibuat lagi saat container start, dan backend tidak menyisipkan data apa pun.
 Sekali di awal — dan setiap kali model berubah — siapkan skema secara eksplisit:

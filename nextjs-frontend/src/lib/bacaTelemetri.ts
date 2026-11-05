@@ -14,16 +14,18 @@
  *  selamanya, dan bilahnya butuh data meski panel tidak pernah dibuka. */
 import type { BuketMenit } from "./buketMenit";
 
-// Kontrak GET /api/telemetry (lihat src/app/api/telemetry/route.ts). Field yang bisa null
-// berarti tidak ada pengukuran, dan yang menampilkannya wajib menulis "—" — bukan angka
-// pengganti.
+// Kontrak GET /api/telemetry (lihat src/app/api/telemetry/route.ts). Field yang bisa null berarti
+// tidak ada pengukuran, dan yang menampilkannya wajib menulis "—" — bukan angka pengganti.
+// Empat field bertanda ★ punya sebab null kedua: dia identitas mesin (isi heap, versi runtime,
+// komit yang melayani, hasil ping postgres) dan hanya dikirim ke request yang membawa sesi admin
+// sah. Untuk pengunjung biasa "—" di situ bukan kegagalan ukur.
 export interface PayloadTelemetri {
   status: string;
   latencyMs: number;
   latencySamples: number[];
-  heapMb: number | null;
-  backend: { reachable: boolean; db: "ok" | "error" | null; rttMs: number | null };
-  runtime: { node: string | null; next: string | null };
+  heapMb: number | null; // ★
+  backend: { reachable: boolean; db: "ok" | "error" | null; rttMs: number | null }; // db ★
+  runtime: { node: string | null; next: string | null }; // ★ dua-duanya
   watch: {
     hijau: number;
     total: number;
@@ -42,7 +44,7 @@ export interface PayloadTelemetri {
     buket: BuketMenit[];
     sejak: string;
   } | null;
-  gitCommit: string | null;
+  gitCommit: string | null; // ★
   timestamp: string;
 }
 

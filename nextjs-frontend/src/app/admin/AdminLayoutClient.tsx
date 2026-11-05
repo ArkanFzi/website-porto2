@@ -1,0 +1,54 @@
+"use client";
+
+import { useEffect, useSyncExternalStore } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { adaSesi } from "@/lib/auth";
+import { Sidebar } from "@/components/Admin/Sidebar";
+
+const BELUM_TERSEDIA = "belum-terbaca";
+const SESI_KOSONG = "tanpa-sesi";
+const SESI_ADA = "ada-sesi";
+
+const EMPTY_SUBSCRIBE = () => () => {};
+// Penanda kehadiran sesi, bukan kredensial (lihat src/lib/auth.ts). Gerbang ini hanya
+// menentukan spinner vs redirect; yang menahan data admin tetap cookie di AuthMiddleware.
+const getStatusSesi = () => (adaSesi() ? SESI_ADA : SESI_KOSONG);
+// Nilai hidrasi sengaja dibedakan dari kedua nilai client agar efek mount pertama
+// tidak melempar ke login hanya karena localStorage belum sempat terbaca.
+const getInitialStatus = () => BELUM_TERSEDIA;
+
+export default function AdminLayoutClient({
+    children,
+}: {
+    children: React.ReactNode;
+}) {
+    const router = useRouter();
+    const pathname = usePathname();
+    const status = useSyncExternalStore(EMPTY_SUBSCRIBE, getStatusSesi, getInitialStatus);
+
+    useEffect(() => {
+        if (pathname === "/admin/login") return;
+        if (status === SESI_KOSONG) router.push("/admin/login");
+    }, [pathname, router, status]);
+
+    // Login page layout — render independently of auth state
+    if (pathname === "/admin/login") {
+        return <main className="min-h-screen bg-[#050000]">{children}</main>;
+    }
+
+    if (status !== SESI_ADA) {
+        return (
+            <div className="min-h-screen bg-[#050000] flex items-center justify-center">
+                <div className="w-8 h-8 border-4 border-rosso border-t-transparent rounded-full animate-spin"></div>
+            </div>
+        );
+    }
+
+    // Dashboard layout
+    return (
+        <div className="min-h-screen bg-[#050000] flex text-gray-200">
+            <Sidebar />
+            <main className="flex-1 p-8 overflow-y-auto">{children}</main>
+        </div>
+    );
+}

@@ -253,7 +253,11 @@ export const ChapterPaddock: React.FC = () => {
           </span>
         </div>
 
-        {/* Right: Minimalist Social Channels & Admin Portal Link */}
+        {/* Right: Minimalist Social Channels. Pintu /admin sengaja tidak ada di sini:
+            selama chip itu dirender, URL admin ikut terkumpul Google lewat tautan homepage
+            (robots Disallow menahan crawl, bukan indexing), dan tooltipnya menyebut mesin +
+            tujuan datanya. Admin masuk lewat URL yang diketik; tidak ada verifier yang
+            bergantung pada tautan ini (browser-probe.mjs membuat sesinya sendiri). */}
         <div className="flex flex-col sm:flex-row items-center gap-6">
           <nav className="flex flex-wrap items-center justify-center gap-6 sm:gap-8" aria-label="Social Links">
             {SALURAN.map((ch) => (
@@ -269,14 +273,6 @@ export const ChapterPaddock: React.FC = () => {
               </a>
             ))}
           </nav>
-
-          <a
-            href="/admin"
-            className="px-2.5 py-1 rounded border border-white/20 hover:border-white text-[9px] font-mono tracking-widest text-white/70 hover:text-white uppercase transition-colors"
-            title="Manage Certificates, Experiences, and Journey in PostgreSQL"
-          >
-            ADMIN [CRUD]
-          </a>
         </div>
 
       </div>

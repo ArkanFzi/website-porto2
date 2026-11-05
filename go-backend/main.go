@@ -5,18 +5,23 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"log"
+	"math"
+	"net"
 	"net/http"
 	"net/mail"
+	"net/netip"
 	"os"
 	"os/signal"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unicode/utf8"
@@ -192,38 +197,169 @@ func requireEnv(key string) string {
 	return v
 }
 
-// parseToken satu-satunya jalan menilai Bearer token: HS256 dengan secret kita, tidak kedaluwarsa.
-func parseToken(authHeader string) error {
+// ambangRevokasi menyimpan "sesi yang terbit sebelum waktu ini tidak berlaku lagi". Dia dibaca
+// pada SETIAP request terproteksi, jadi nilainya dipegang di memori: satu query DB di jalur auth
+// berarti setiap klik admin membayar round-trip, dan kegagalan DB berubah jadi 401 massal.
+// Diisi saat boot (muatRevokasi) dan dinaikkan saat logout; DB tetap sumber kebenarannya.
+var ambangRevokasi atomic.Pointer[time.Time]
+
+func revokasiTerpasang() time.Time {
+	if t := ambangRevokasi.Load(); t != nil {
+		return *t
+	}
+	return time.Time{}
+}
+
+// tulisRevokasiDB menaikkan ambang dan tidak pernah menurunkannya. Dua logout yang hampir
+// bersamaan bisa sampai ke DB dalam urutan apa pun; tanpa GREATEST yang terakhir menang dan
+// "mengampuni" sesi yang sudah dicabut yang pertama.
+func tulisRevokasiDB(ambang time.Time) error {
+	return DB.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "id"}},
+		DoUpdates: clause.Assignments(map[string]any{
+			"sebelum": gorm.Expr("greatest(" + tabelRevokasi + ".sebelum, EXCLUDED.sebelum)"),
+		}),
+	}).Create(&RevokasiSesi{ID: 1, Sebelum: ambang}).Error
+}
+
+// bacaRevokasi mengembalikan nol waktu kalau barisnya memang belum pernah ada — itu keadaan
+// belum pernah ada yang keluar, bukan kegagalan. Find, bukan First: First menghasilkan
+// ErrRecordNotFound yang dicetak gorm sebagai record not found di log setiap boot dingin, dan
+// bunyi itu menyerupai kerusakan padahal tidak ada yang rusak.
+func bacaRevokasiDB() (time.Time, error) {
+	var baris []RevokasiSesi
+	if err := DB.Select("sebelum").Limit(1).Find(&baris).Error; err != nil {
+		return time.Time{}, err
+	}
+	if len(baris) == 0 {
+		return time.Time{}, nil
+	}
+	return baris[0].Sebelum.UTC(), nil
+}
+
+// tulisRevokasi dan bacaRevokasi adalah titik sisip test, mengikuti simpanPesan/pengirimEmail:
+// `go test` berjalan tanpa DB, dan jalur "keluar lalu sesi lama ditolak" justru yang paling
+// penting dibuktikan — tidak bisa dibuktikan kalau ia hanya bisa lewat Postgres sungguhan.
+var (
+	tulisRevokasi = tulisRevokasiDB
+	bacaRevokasi  = bacaRevokasiDB
+)
+
+// muatRevokasi memulihkan ambang setelah proses dingin. Tanpa ini revokasi hanya hidup selama
+// satu instance: Cloud Run menScale ke nol, dan sesi yang sudah "keluar" kembali sah.
+func muatRevokasi() {
+	ambang, err := bacaRevokasi()
+	if err != nil {
+		log.Fatalf("revokasi: gagal membaca ambang sesi: %v", err)
+	}
+	if ambang.IsZero() {
+		return
+	}
+	terpasang := ambang
+	ambangRevokasi.Store(&terpasang)
+}
+
+// sesiSah satu-satunya jalan menilai kredensial admin: HS256 dengan secret kita, belum
+// kedaluwarsa, dan terbit sesudah ambang revokasi terakhir.
+func sesiSah(authHeader string) error {
 	if !strings.HasPrefix(authHeader, "Bearer ") {
 		return errors.New("tidak ada Bearer token")
 	}
-	_, err := jwt.Parse(authHeader[7:], func(t *jwt.Token) (interface{}, error) {
+	claims := jwt.MapClaims{}
+	token, err := jwt.ParseWithClaims(authHeader[7:], claims, func(t *jwt.Token) (interface{}, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, errors.New("unexpected signing method")
 		}
 		return jwtSecret, nil
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	if !token.Valid {
+		return errors.New("token tidak valid")
+	}
+	return sesudahRevokasi(claims)
 }
 
-// sesiCookie adalah satu-satunya jalan membawa kredensial admin sesudah PR ini. Selama token
-// hanya hidup sebagai string di localStorage (dan di body JSON login), satu XSS cukup untuk
-// mencurinya utuh-utuh selama 24 jam dan tidak ada revokasi di server yang bisa mengusirnya.
-// Cookie HttpOnly tidak terbaca document.cookie, jadi yang bisa dicuri skrip tinggal penanda
-// UI belaka — bukan kredensial.
+// sesudahRevokasi membandingkan waktu terbit token dengan ambang. Keduanya dipegang pada presisi
+// mikrodeten (lihat waktuTerbit), jadi satu logout mencabut sesi yang sedang dipakai SAAT ITU
+// JUGA, tanpa ikut menolak login baru yang terjadi sepersekian detik sesudahnya.
+//
+// Token tanpa iat terbit sebelum revokasi ada dan tidak bisa dibandingkan, jadi dia hanya diterima
+// selama belum pernah ada yang keluar; sesudah itu ditolak. Pilihan sadar: sesi yang tidak bisa
+// dicabut tidak boleh kebal terhadap tombol keluar.
+func sesudahRevokasi(claims jwt.MapClaims) error {
+	ambang := revokasiTerpasang()
+	if ambang.IsZero() {
+		return nil
+	}
+	diterbitkan, ada := waktuTerbit(claims)
+	if !ada {
+		return errors.New("token tanpa iat: tidak bisa direvokasi")
+	}
+	if diterbitkan.Before(ambang) {
+		return errors.New("sesi sudah direvokasi")
+	}
+	return nil
+}
+
+// waktuTerbit membaca klaim iat apa adanya, bukan lewat MapClaims.GetIssuedAt: fungsi itu memotong
+// NumericDate ke jwt.TimePrecision (satu detik), dan pecahan itulah yang membedakan "login sesaat
+// sesudah keluar" dari "sesi yang baru saja dicabut". Parser golang-jwt mengaktifkan UseNumber,
+// jadi bentuk normalnya json.Number; float64 diterima untuk klaim yang dirakit tangan.
+func waktuTerbit(claims jwt.MapClaims) (time.Time, bool) {
+	var detik float64
+	switch v := claims["iat"].(type) {
+	case json.Number:
+		f, err := v.Float64()
+		if err != nil {
+			return time.Time{}, false
+		}
+		detik = f
+	case float64:
+		detik = v
+	default:
+		return time.Time{}, false
+	}
+	return time.Unix(0, int64(math.Round(detik*1e6))*int64(time.Microsecond)).UTC(), true
+}
+
+// sesiCookie adalah satu-satunya jalan membawa kredensial admin sesudah pemindahan ini. Selama
+// token hanya hidup sebagai string di localStorage (dan di body JSON login), satu XSS cukup untuk
+// mencurinya utuh-utuh selama 24 jam. Cookie HttpOnly tidak terbaca document.cookie, jadi yang
+// bisa dicuri skrip tinggal penanda UI belaka — bukan kredensial. Yang tetap tidak ada: daftar
+// hitam per-token. Ambang revokasi mencabut sesi sampai batas waktu, bukan yang dicuri saja.
 const (
 	namaCookieSesi = "porto_sesi"
 	masaSesi       = 24 * time.Hour // dipakai bersama: exp JWT dan Max-Age cookie tidak boleh beda
 )
 
-// cookieSeksure menakar atribut Secure dari skema yang dilihat proxy. Cloud Run selalu mengirim
-// X-Forwarded-Proto: https; development berjalan di http://localhost dan browser membuang cookie
-// Secure di luar HTTPS — kalau Secure dipaksa benar, login lokal tampak rusak tanpa pesan error.
+// cookieSeksure menakar atribut Secure dari nama host yang dituju, BUKAN dari X-Forwarded-Proto.
+// Header itu dikirim klien dan gin default mempercayai semua proxy, jadi siapa pun bisa menempel
+// "X-Forwarded-Proto: https" pada request http polos — aturan lama membuat atribut keras paling
+// penting pada cookie kredensial bisa dinonaktifkan dari sisi penyerang. Host tidak bisa
+// dipalsukan ke browser: untuk menerima cookie https-only, penyerang harus benar-benar berdiri di
+// hostname aslinya. Development tetap hidup karena localhost bukan hostname produksi.
 func cookieSeksure(c *gin.Context) bool {
 	if c.Request.TLS != nil {
 		return true
 	}
-	return c.GetHeader("X-Forwarded-Proto") == "https"
+	return !hostLoopback(c.Request.Host)
+}
+
+// hostLoopback: localhost dan alamat loopback, dengan atau tanpa port. Hanya ini yang boleh
+// menerima kredensial di jalur http.
+func hostLoopback(host string) bool {
+	nama := host
+	if tanpaPort, _, err := net.SplitHostPort(host); err == nil {
+		nama = tanpaPort
+	}
+	nama = strings.TrimSuffix(strings.ToLower(nama), ".")
+	if nama == "localhost" || strings.HasSuffix(nama, ".localhost") {
+		return true
+	}
+	ip, err := netip.ParseAddr(nama)
+	return err == nil && ip.IsLoopback()
 }
 
 func pasangCookieSesi(c *gin.Context, token string) {
@@ -249,11 +385,33 @@ func ambilBearer(c *gin.Context) string {
 	return ""
 }
 
-// handleLogout menghapus cookie dari sisi server karena inilah satu-satunya jalan "keluar" yang
-// benar: token JWT tidak punya daftar hitam, jadi sesi yang ditinggal tetap sah sampai exp.
+// handleLogout adalah satu-satunya jalan "keluar" yang benar: dia menghapus cookie di peramban
+// DAN mencabut sesinya di server. Pencabutan hanya untuk pemanggil yang memang membawa sesi sah:
+// kalau tidak, satu POST anonim ke rute publik ini cukup untuk mengusir admin yang sedang bekerja.
+//
+// Ambangnya satu nilai, jadi keluar mencabut semua sesi yang terbit lebih awal — bukan hanya yang
+// ini. Untuk satu admin, itu yang diinginkan: keluar dari perangkat yang hilang tidak boleh
+// menyisakan sesi kedua yang masih hidup.
 func handleLogout(c *gin.Context) {
 	hapusCookieSesi(c)
-	c.JSON(http.StatusOK, gin.H{"message": "Sesi dihapus dari peramban"})
+
+	bearer := ambilBearer(c)
+	if bearer == "" || sesiSah(bearer) != nil {
+		c.JSON(http.StatusOK, gin.H{"sesi": "dihapus dari peramban"})
+		return
+	}
+	// Dibulatkan ke mikrodeten = presisi kolom timestamptz Postgres, jadi nilai yang disimpan di
+	// baris dan yang dipakai menolak request adalah angka yang sama; kalau berbeda, boot
+	// berikutnya membaca ambang yang lebih rendah daripada yang sedang berlaku.
+	ambang := time.Now().UTC().Truncate(time.Microsecond)
+	if err := tulisRevokasi(ambang); err != nil {
+		log.Printf("logout: ambang revokasi gagal ditulis (client %s): %v", c.ClientIP(), err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Cookie dihapus, tapi server gagal mencabut sesinya"})
+		return
+	}
+	terpasang := ambang
+	ambangRevokasi.Store(&terpasang)
+	c.JSON(http.StatusOK, gin.H{"sesi": "ditutup"})
 }
 
 // AuthMiddleware validates JWT tokens for protected routes
@@ -265,7 +423,7 @@ func AuthMiddleware() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		if err := parseToken(bearer); err != nil {
+		if err := sesiSah(bearer); err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
 			c.Abort()
 			return
@@ -349,6 +507,25 @@ type Kunjungan struct {
 
 func (Kunjungan) TableName() string { return tabelKunjungan }
 
+// tabelRevokasi disebut dengan namanya di SQL upsert (GREATEST harus merujuk baris yang sudah
+// ada), jadi namanya dikunci di satu tempat seperti tabelKunjungan — bukan diserahkan ke inflection.
+const tabelRevokasi = "revokasi_sesi"
+
+// RevokasiSesi satu baris (id selalu 1): ambang waktu terbit sesi. Semua JWT yang terbit sebelum
+// nilai kolom sebelum ditolak, walaupun tanda tangan dan exp-nya benar.
+//
+// Ini bukan daftar hitam per-token. Token JWT tidak bisa ditarik dari sisi server, jadi selama
+// tidak ada ambang, keluar hanya menghapus cookie di satu peramban dan kredensialnya tetap sah
+// 24 jam di mana pun ia tersimpan. Satu baris dipilih karena yang berhak punya sesi di situs ini
+// satu orang; daftar hitam per-token menyisakan berkas yang harus dibersihkan dan tidak menambah
+// apa pun di atas ambang.
+type RevokasiSesi struct {
+	ID      uint      `gorm:"primaryKey" json:"id"`
+	Sebelum time.Time `gorm:"column:sebelum;not null" json:"sebelum"`
+}
+
+func (RevokasiSesi) TableName() string { return tabelRevokasi }
+
 var DB *gorm.DB
 
 // simpanPesan dan pengirimEmail adalah titik sisip test. Di produksi keduanya implementasi
@@ -402,10 +579,10 @@ func tungguSelesai(wg *sync.WaitGroup, batas time.Duration) bool {
 }
 
 // managedTables adalah tabel yang harus sudah ada sebelum satu request pun dilayani.
-var managedTables = []string{"certificates", "experiences", "contact_messages", "journeys", tabelKunjungan}
+var managedTables = []string{"certificates", "experiences", "contact_messages", "journeys", tabelKunjungan, tabelRevokasi}
 
 func migrateSchema() {
-	if err := DB.AutoMigrate(&Certificate{}, &Experience{}, &ContactMessage{}, &Journey{}, &Kunjungan{}); err != nil {
+	if err := DB.AutoMigrate(&Certificate{}, &Experience{}, &ContactMessage{}, &Journey{}, &Kunjungan{}, &RevokasiSesi{}); err != nil {
 		log.Fatalf("migrate: gagal menyiapkan skema: %v", err)
 	}
 	log.Println("migrate: skema siap")
@@ -442,8 +619,22 @@ func initDB() {
 	var err error
 	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		// Pesan pgx menyebut identitas koneksi, bukan hanya sebabnya. Terukur dengan Postgres
+		// mati: failed to connect to `user=porto_admin database=portfolio`: 127.0.0.1:65432 ...
+		// Sandinya tidak ikut tercetak, jadi yang dibuang di sini nama pengguna + alamat
+		// instance — bukan kerahasiaan mutlak, dan penyensoran ini best-effort: kalau bentuk
+		// pesannya berubah, yang tersisa adalah pesan utuh (sebab tetap terbaca, identitas ikut).
+		log.Fatalf("db: DATABASE_URL ditolak Postgres: %s", sebabKoneksi(err.Error()))
 	}
+}
+
+// sebabKoneksi memotong bagian depan pesan koneksi sampai backtick penutup konfigurasi, sehingga
+// yang pulang ke log hanya alasannya (connection refused, password authentication failed).
+func sebabKoneksi(pesan string) string {
+	if i := strings.Index(pesan, "`: "); i >= 0 {
+		return strings.TrimSpace(pesan[i+3:])
+	}
+	return pesan
 }
 
 func main() {
@@ -459,12 +650,27 @@ func main() {
 	}
 
 	verifySchema()
+	muatRevokasi()
 
 	jwtSecret = []byte(requireEnv("JWT_SECRET"))
-	adminUser = getEnv("ADMIN_USER", "admin")
+	// requireEnv, bukan getEnv(..., "admin"). Nama pengguna adalah setengah kredensial yang
+	// tersedia publik: ia tertulis di deploy.yml, README, dan .env.example selama nilainya
+	// default. Yang menahan pintu sekarang cuma satu setengah yang lain.
+	adminUser = requireEnv("ADMIN_USER")
 	adminPass = requireEnv("ADMIN_PASS")
 
 	r := gin.Default()
+	// Kepercayaan proxy sengaja TIDAK ditutup (default gin: mempercayai semua). Bukan kelalaian:
+	// c.ClientIP() adalah satu-satunya bahan kunci pengunjung (kunciPengunjung = SHA-256(IP+hari+
+	// salt)), jadi trust-none membuat SEMUA pengunjung yang datang lewat satu proxy menghasilkan
+	// kunci yang sama — tabel kunjungan menyatu dan uniqueLast24h jatuh ke 1. Terukur di
+	// kunjungan_proxy_test.go: dua X-Forwarded-For berbeda, trust-all membedakan, trust-none menyatu.
+	//
+	// Yang membuat ini masih aman sesudah sesi diperkeras: tidak ada keputusan keamanan yang
+	// membaca header proxy. Atribut Secure ditakar dari Request.Host (cookieSeksure), pembatas laju
+	// bersifat global, dan ClientIP hanya dipakai di baris log + kunci kunjungan. Kalau salah satu
+	// itu berubah jadi per-IP, daftar proxy terpercaya harus ditetapkan dari alamat yang terukur di
+	// platform — bukan dari rentang yang ditebak.
 
 	corsOrigins := []string{"http://localhost:3000", "https://arkfazone-portofolio.elarisnoir.my.id"}
 	if env := os.Getenv("CORS_ORIGINS"); env != "" {
@@ -489,7 +695,7 @@ func main() {
 	// membuat authFetch frontend membuang sesi admin yang masih berlaku.
 	r.NoRoute(func(c *gin.Context) {
 		if strings.HasPrefix(c.Request.URL.Path, "/api/admin/") {
-			if err := parseToken(ambilBearer(c)); err != nil {
+			if err := sesiSah(ambilBearer(c)); err != nil {
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 				return
 			}
@@ -1071,9 +1277,15 @@ func handleLogin(c *gin.Context) {
 		return
 	}
 
+	terbit := time.Now().UTC().Truncate(time.Microsecond)
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"username": creds.Username,
-		"exp":      time.Now().Add(masaSesi).Unix(),
+		// iat adalah pegangan revokasi: tanpa waktu terbit, ambang sesi sebelum ini mati tidak
+		// bisa dibandingkan dengan apa pun. Ditulis pecah (detik.mikrodeten) — sah sebagai
+		// NumericDate (RFC 7519) dan dibaca lewat waktuTerbit, karena GetIssuedAt memotongnya
+		// ke detik dan pemotongan itu membuat logout gagal mencabut sesi yang barusan dibuat.
+		"iat": float64(terbit.UnixMicro()) / 1e6,
+		"exp": terbit.Add(masaSesi).Unix(),
 	})
 	tokenString, err := token.SignedString(jwtSecret)
 	if err != nil {

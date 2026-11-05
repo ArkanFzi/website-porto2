@@ -30,7 +30,10 @@ func cariCookie(t *testing.T, rec *httptest.ResponseRecorder) *http.Cookie {
 // fungsi ini. Defer menaruh secret kembali begitu helper pulang, jadi request verifikasi susulan
 // menilai cookie dengan secret kosong dan seluruh test "sesi sah" gagal 401: kegagalan yang
 // bunyinya seperti bug middleware, padahal bug test.
-func loginLewatProxy(t *testing.T, xfForwardedProto string) *httptest.ResponseRecorder {
+//
+// host dipakai apa adanya: aturan Secure ditakar dari nama host yang dituju, bukan dari
+// X-Forwarded-Proto — header itu kiriman klien.
+func loginLewatProxy(t *testing.T, host string) *httptest.ResponseRecorder {
 	t.Helper()
 	pulihkan := sesiAdmin()
 	t.Cleanup(pulihkan)
@@ -39,8 +42,8 @@ func loginLewatProxy(t *testing.T, xfForwardedProto string) *httptest.ResponseRe
 	r.POST("/api/auth/login", handleLogin)
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(bodyLogin(userAdmin, sandiTes)))
 	req.Header.Set("Content-Type", "application/json")
-	if xfForwardedProto != "" {
-		req.Header.Set("X-Forwarded-Proto", xfForwardedProto)
+	if host != "" {
+		req.Host = host
 	}
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
@@ -50,10 +53,15 @@ func loginLewatProxy(t *testing.T, xfForwardedProto string) *httptest.ResponseRe
 	return rec
 }
 
+// Produksi selalu HTTPS, jadi Secure harus sudah terpasang tanpa ada satu pun header yang
+// memintanya. Ini kebalikan aturan lama: dulu cookie di https://... lewat jalur http (atau tanpa
+// X-Forwarded-Proto) boleh tanpa Secure.
+const hostProduksi = "arkfazone-portfolio.elarisnoir.my.id"
+
 // Kredensial hanya lewat cookie. Kalau field token masih muncul di body, seluruh isi file ini
 // jadi hiasan: skrip di halaman login tinggal membaca respons yang sedang lewat.
 func TestBodyLoginTidakLagiMemuatToken(t *testing.T) {
-	rec := loginLewatProxy(t, "https")
+	rec := loginLewatProxy(t, hostProduksi)
 	body := rec.Body.String()
 	if strings.Contains(body, `"token"`) {
 		t.Fatalf("body login masih memuat token: %s", body)
@@ -64,14 +72,14 @@ func TestBodyLoginTidakLagiMemuatToken(t *testing.T) {
 }
 
 func TestSesiCookieDipasangDenganAtributKeras(t *testing.T) {
-	rec := loginLewatProxy(t, "https")
+	rec := loginLewatProxy(t, hostProduksi)
 	cookie := cariCookie(t, rec)
 
 	if !cookie.HttpOnly {
 		t.Error("HttpOnly tidak dipasang: document.cookie masih bisa membaca kredensial")
 	}
 	if !cookie.Secure {
-		t.Error("Secure tidak dipasang padahal X-Forwarded-Proto: https")
+		t.Error("Secure tidak dipasang padahal host yang dituju bukan loopback")
 	}
 	if cookie.SameSite != http.SameSiteLaxMode {
 		t.Errorf("SameSite harap Lax(%d), dapat %d", http.SameSiteLaxMode, cookie.SameSite)
@@ -92,11 +100,71 @@ func TestSesiCookieDipasangDenganAtributKeras(t *testing.T) {
 // Development berjalan di http://localhost dan browser membuang cookie Secure di luar HTTPS.
 // Tanpa kelonggaran ini login lokal tampak rusak tanpa pesan error apa pun.
 func TestSesiCookieTanpaSecureDiLokasiNonTLS(t *testing.T) {
-	rec := loginLewatProxy(t, "")
-	if cookie := cariCookie(t, rec); cookie.Secure {
-		t.Fatal("Secure dipaksa di jalur non-TLS: development local tidak bisa login")
-	} else if !cookie.HttpOnly {
-		t.Error("HttpOnly ikut hilang padahal yang dilonggarkan hanya Secure")
+	for _, host := range []string{"localhost:3001", "127.0.0.1:8080", "[::1]:8080", "porto.localhost:3000"} {
+		t.Run(host, func(t *testing.T) {
+			rec := loginLewatProxy(t, host)
+			cookie := cariCookie(t, rec)
+			if cookie.Secure {
+				t.Errorf("Secure dipaksa di %s: development tidak bisa login", host)
+			}
+			if !cookie.HttpOnly {
+				t.Error("HttpOnly ikut hilang padahal yang dilonggarkan hanya Secure")
+			}
+		})
+	}
+}
+
+// X-Forwarded-Proto adalah header kiriman klien. Kalau ia masih ikut menakar Secure, satu baris
+// header tambahan pada request http polos cukup untuk memindahkan kredensial ke jalur yang tidak
+// terenkripsi — atau sebaliknya, menolaknya.
+func TestSecureTidakBisaDipalsukanLewatHeader(t *testing.T) {
+	probes := []struct {
+		nama  string
+		host  string
+		proto string
+		harap bool
+	}{
+		{"host produksi tanpa header", hostProduksi, "", true},
+		{"host produksi dengan header http", hostProduksi, "http", true},
+		{"localhost dengan header https", "localhost:3001", "https", false},
+	}
+	for _, p := range probes {
+		t.Run(p.nama, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(bodyLogin(userAdmin, sandiTes)))
+			pulihkan := sesiAdmin()
+			t.Cleanup(pulihkan)
+			resetLogin()
+			req.Header.Set("Content-Type", "application/json")
+			req.Host = p.host
+			if p.proto != "" {
+				req.Header.Set("X-Forwarded-Proto", p.proto)
+			}
+			rec := httptest.NewRecorder()
+			r := gin.New()
+			r.POST("/api/auth/login", handleLogin)
+			r.ServeHTTP(rec, req)
+			if cookie := cariCookie(t, rec); cookie.Secure != p.harap {
+				t.Fatalf("Secure harap %v, dapat %v (host=%s XFP=%q)",
+					p.harap, cookie.Secure, p.host, req.Header.Get("X-Forwarded-Proto"))
+			}
+		})
+	}
+}
+
+func TestHostLoopbackDikenali(t *testing.T) {
+	hampir := []string{"localhost", "localhost:3001", "LOCALHOST:8080", "127.0.0.1", "127.0.0.42:80",
+		"[::1]:8080", "::1", "porto.localhost:3000"}
+	for _, h := range hampir {
+		if !hostLoopback(h) {
+			t.Errorf("hostLoopback(%q) = false, padahal development", h)
+		}
+	}
+	bukan := []string{hostProduksi, "arkfazone-portfolio.elarisnoir.my.id:443", "10.0.0.5:8080",
+		"169.254.169.254", "example.com", ""}
+	for _, h := range bukan {
+		if hostLoopback(h) {
+			t.Errorf("hostLoopback(%q) = true, padahal kredensial di sana harus Secure", h)
+		}
 	}
 }
 
@@ -118,7 +186,7 @@ func aksesTerproteksi(ubah func(*http.Request)) *httptest.ResponseRecorder {
 
 // Inti pemindahan: cookie saja, tanpa header apa pun, sudah cukup untuk masuk.
 func TestCookieSajaDiterimaMiddleware(t *testing.T) {
-	rec := loginLewatProxy(t, "https")
+	rec := loginLewatProxy(t, hostProduksi)
 	nilai := cariCookie(t, rec).Value
 
 	got := aksesTerproteksi(func(r *http.Request) { r.AddCookie(&http.Cookie{Name: namaCookieSesi, Value: nilai}) })
@@ -143,7 +211,7 @@ func TestTanpaKredensialSamaSekaliDitolak(t *testing.T) {
 // Jalur lama tetap hidup selama rollout: sesi yang sudah tersimpan di localStorage pengunjung
 // sebelum deploy tidak boleh berubah jadi 401 tanpa penjelasan, dan ia kedaluwarsa sendiri.
 func TestBearerLamaTetapDiterima(t *testing.T) {
-	rec := loginLewatProxy(t, "https")
+	rec := loginLewatProxy(t, hostProduksi)
 	nilai := cariCookie(t, rec).Value
 
 	got := aksesTerproteksi(func(r *http.Request) { r.Header.Set("Authorization", "Bearer "+nilai) })
@@ -152,15 +220,16 @@ func TestBearerLamaTetapDiterima(t *testing.T) {
 	}
 }
 
-// "Keluar" harus benar-benar menghapus kredensial di peramban. JWT di sini tidak punya daftar
-// hitam, jadi satu-satunya jalan membuat tombol keluar berarti adalah Max-Age negatif.
+// "Keluar" harus benar-benar menghapus kredensial di peramban pemanggil. Nilai cookie di sini
+// sengaja bukan JWT: yang membawa sesi tidak sah hanya boleh kehilangan cookie-nya sendiri, dan
+// itu jalur yang diuji terpisah di revokasi_sesi_test.go.
 func TestLogoutMenghapusCookieSesi(t *testing.T) {
 	defer sesiAdmin()()
 
 	r := gin.New()
 	r.POST("/api/auth/logout", handleLogout)
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
-	req.Header.Set("X-Forwarded-Proto", "https")
+	req.Host = hostProduksi
 	req.AddCookie(&http.Cookie{Name: namaCookieSesi, Value: "sesi-lama"})
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)

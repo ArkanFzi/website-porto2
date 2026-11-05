@@ -215,8 +215,10 @@ export default function ArsipHidup() {
               <Sel nama="timestamp" label="response timestamp" nilai={teks(t?.timestamp)} />
               <p className="font-mono text-tag leading-relaxed text-titanium pt-4">
                 The latency window and the frame window live inside a single Node process, so a
-                second instance keeps its own numbers. Without a build-time commit stamp the field
-                is left empty rather than filled with an old hash.
+                second instance keeps its own numbers. Machine identity — build commit, runtimes,
+                heap, the postgres ping — is only sent to a request carrying a valid admin session,
+                so here it is em-dash by design; an empty field is not an old hash or a missing
+                stamp.
               </p>
             </>
           }
