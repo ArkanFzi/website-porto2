@@ -130,6 +130,9 @@ jobs:
           echo "public/opengraph-image.png = $b byte"
           [ "$b" -le $((212 * 1024)) ] || { echo "og:image melewati 212 KB"; exit 1; }
 
+      - name: JSON-LD di artefak build di-parse, tipe yang wajib ada tidak hilang
+        run: node tools/ci/jsonld-check.mjs
+
       - name: CSP ditegakkan dari hasil build, jalan tikus dev tidak ikut terbawa
         working-directory: nextjs-frontend
         # Header dipasang lewat next.config.ts dan nilai itu dibakar ke routes-manifest saat

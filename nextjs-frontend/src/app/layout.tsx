@@ -2,7 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { Inter, Playfair_Display, Space_Mono } from "next/font/google";
 import "./globals.css";
 import { PortfolioModeProvider } from "@/context/PortfolioModeContext";
-import { OG_GAMBAR, SITE_URL } from "@/lib/site";
+import { jsonLd, OG_GAMBAR, SITE_URL } from "@/lib/site";
+import { NAMA, PERAN, SALURAN } from "@/lib/profil";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -55,6 +56,31 @@ export const viewport: Viewport = {
   colorScheme: "light",
 };
 
+// sameAs tidak diketik ulang: dia disaring dari SALURAN, daftar yang memang diterbitkan
+// ChapterPaddock di halaman depan. Saluran yang bukan profil identitas (mailto:, wa.me)
+// dibuang — itu jalan masuk, bukan akun.
+const PROFIL_IDENTITAS = new Set(["GITHUB", "LINKEDIN", "INSTAGRAM"]);
+
+// Person + WebSite dalam satu script: Google menerima array di application/ld+json, dan dua
+// node berarti dua kali parse untuk satu fakta yang sama.
+const STRUKTUR_SITUS = [
+  {
+    "@context": "https://schema.org",
+    "@type": "Person",
+    name: NAMA,
+    url: SITE_URL,
+    jobTitle: PERAN,
+    sameAs: SALURAN.filter((s) => PROFIL_IDENTITAS.has(s.nama)).map((s) => s.url),
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: NAMA,
+    url: SITE_URL,
+    inLanguage: "en",
+  },
+];
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -67,6 +93,10 @@ export default function RootLayout({
           {/* Film Grain Texture Overlay */}
           <div className="film-grain" aria-hidden="true" />
           {children}
+          <script
+            type="application/ld+json"
+            dangerouslySetInnerHTML={jsonLd(STRUKTUR_SITUS)}
+          />
         </PortfolioModeProvider>
       </body>
     </html>

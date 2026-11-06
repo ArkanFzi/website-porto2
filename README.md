@@ -213,6 +213,7 @@ BACKEND_URL=http://localhost:8080 npm run dev
 ```bash
 cd nextjs-frontend && npm run lint && npx tsc --noEmit
 node tools/ci/api-contract-check.mjs          # ratchet kontrak API (harus sesuai baseline)
+node tools/ci/jsonld-check.mjs                # JSON-LD dari artefak build harus sah
 cd go-backend && gofmt -l . && go vet ./...   # gofmt harus kosong
 go test ./...                                 # sekarang ada isinya: paket mailer
 go run ./cmd/audit-ignored .                  # rc=0: nol error gorm / r.Run yang dibuang

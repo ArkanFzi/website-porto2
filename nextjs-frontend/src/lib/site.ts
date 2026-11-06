@@ -27,3 +27,10 @@ export const EMAIL_KONTAK = "muhammadarkanfauzi9@gmail.com";
 
 // Host telanjang untuk teks bergaya shell/UI yang tidak butuh skema.
 export const SITE_HOST = SITE_URL.replace(/^https?:\/\//, "").replace(/\/$/, "");
+
+// Pembungkus <script type="application/ld+json">. JSON.stringify TIDAK meng-escape "<", jadi
+// satu nilai yang mengandung "</script>" akan menutup tag dan isinya dieksekusi peramban —
+// ini alasan klassik "JSON in HTML", bukan teori: \u003c tetap JSON yang sama setelah di-parse.
+export const jsonLd = (data: unknown) => ({
+  __html: JSON.stringify(data).replace(/</g, "\\u003c"),
+});

@@ -3,7 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ESAI, cariEsai, menitBaca } from "@/data/esai";
 import { GerakDokumen } from "@/components/Editorial/GerakRute";
-import { OG_GAMBAR } from "@/lib/site";
+import { jsonLd, OG_GAMBAR, SITE_URL } from "@/lib/site";
+import { NAMA } from "@/lib/profil";
 
 // Naskahnya ada di dalam bundel (src/data/esai.ts), bukan di basis data: tidak ada tabel yang
 // boleh di-DDL untuk tiga tulisan, dan halaman ini harus tetap ter-prerender tanpa backend.
@@ -120,6 +121,22 @@ export default async function EsaiHalaman({ params }: Props) {
         </footer>
 
         <GerakDokumen />
+
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={jsonLd({
+            "@context": "https://schema.org",
+            "@type": "Article",
+            headline: esai.judul,
+            description: esai.ringkas,
+            // Tanggal naskah, bukan tanggal render: ESAI.ditulis adalah fakta sumber yang
+            // sudah tercetak di halaman ("written 2026-11-02"), jadi Article ikut memakainya.
+            datePublished: esai.ditulis,
+            inLanguage: "en",
+            url: `${SITE_URL}/tulisan/esai/${esai.slug}`,
+            author: { "@type": "Person", name: NAMA, url: SITE_URL },
+          })}
+        />
       </div>
     </main>
   );
