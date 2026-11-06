@@ -30,7 +30,12 @@ export const metadata: Metadata = {
   title: "M. Arkan Fauzi — Systems Architect & Creative Technologist // #16",
   description: "Interactive editorial portfolio of M. Arkan Fauzi (@ArkanFzi): a Swiss-grid editorial page carried by one real-time WebGL chiaroscuro shader, with telemetry measured live from the running services.",
   keywords: ["Arkan Fauzi", "Full Stack Engineer", "WebGL", "Three.js", "Scuderia Ferrari", "Creative Technologist"],
-  alternates: { canonical: "/" },
+  // Canonical sengaja TIDAK ada di sini. Metadata layout diwarisi semua rute yang tidak
+  // menyetel sendiri, dan pada build terukur itu berarti lima halaman memancarkan
+  // href="https://<domain>" sebagai halaman aslinya: admin.html, admin/dashboard.html,
+  // admin/login.html, cv-layout.html dan _not-found.html. Yang terakhir paling parah —
+  // halaman 404 mengklaim bahwa homepage-lah bentuk kanoniknya. Pemilik canonical "/"
+  // sekarang src/app/page.tsx; rute lain sudah memilikinya sendiri.
   openGraph: {
     url: "/",
     siteName: "M. Arkan Fauzi",

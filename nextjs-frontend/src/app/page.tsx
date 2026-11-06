@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { daftarReposGitHub, ringkasRepos } from "@/lib/server/github";
 import { daftarPerjalanan } from "@/lib/server/journey";
 import { daftarSertifikat } from "@/lib/server/certificates";
@@ -7,6 +8,10 @@ import { bahasaPerBaris, peringkatPerBaris, saringArtefak } from "@/lib/ukurForm
 import EditorialPageClient from "@/components/Editorial/EditorialPageClient";
 
 export const revalidate = 60;
+
+export const metadata: Metadata = {
+  alternates: { canonical: "/" },
+};
 
 export default async function Home() {
   const [repos, perjalanan, certificates, experiences] = await Promise.all([
