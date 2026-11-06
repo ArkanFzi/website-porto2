@@ -26,10 +26,13 @@ if (!mode || !berkas) {
   process.exit(2);
 }
 
+const pakaiGPU = process.env.PUPPETEER_GPU !== '0' && !process.argv.includes('--swiftshader');
 const browser = await puppeteer.launch({
   executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome',
   headless: 'new',
-  args: ['--no-sandbox', '--disable-dev-shm-usage', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+  args: pakaiGPU
+    ? ['--no-sandbox', '--disable-dev-shm-usage', '--use-gl=angle', '--use-angle=vulkan']
+    : ['--no-sandbox', '--disable-dev-shm-usage', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
 });
 const page = await browser.newPage();
 await page.setViewport({ ...VIEWPORT, deviceScaleFactor: 1 });

@@ -47,10 +47,19 @@ const RUTE_PROFIL = ruteTerurut('RUTE_PROFIL');
 
 const diLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(FE);
 
+// Lingkungan build target tidak bisa dibaca dari respons mana pun, jadi yang tahu adalah orang yang
+// menjalankan probe. Default-nya `diLocalhost` — sama seperti asumsi buta gerbang lama, yang menuntut
+// `'unsafe-eval'` di header apa pun targetnya dan karenanya selalu merah di produksi. Build produksi
+// di loopback diumumkan sendiri: `DEV_TARGET=0 FE_URL=http://localhost:3002`.
+const SASARAN_DEV = process.env.DEV_TARGET !== undefined ? process.env.DEV_TARGET !== '0' : diLocalhost;
+
+const pakaiGPU = process.env.PUPPETEER_GPU !== '0' && !process.argv.includes('--swiftshader');
 const browser = await puppeteer.launch({
   executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome',
   headless: 'new',
-  args: ['--no-sandbox', '--disable-dev-shm-usage', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+  args: pakaiGPU
+    ? ['--no-sandbox', '--disable-dev-shm-usage', '--use-gl=angle', '--use-angle=vulkan']
+    : ['--no-sandbox', '--disable-dev-shm-usage', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
 });
 
 const hasil = [];
@@ -453,7 +462,19 @@ cek(
   barisYangMenyebut('upgrade-insecure-requests').every(({ b }) => b.includes('produksi')),
   true
 );
-cek('di dev policy memang membawa unsafe-eval', csp.includes("'unsafe-eval'"), true);
+// Dua gerbang sumber di atas menyimpulkan flag dari teks `next.config.ts`; yang ini mengukur header
+// yang benar-benar datang, jadi `'unsafe-eval'` yang lolos ke produksi dan `upgrade-insecure-requests`
+// yang ikut ke dev sama-sama tertangkap di sini — bukan hanya di prediksi.
+cek(
+  'unsafe-eval hanya ada di target dev',
+  csp.includes("'unsafe-eval'"),
+  SASARAN_DEV
+);
+cek(
+  'upgrade-insecure-requests hanya ada di target non-dev',
+  csp.includes('upgrade-insecure-requests'),
+  !SASARAN_DEV
+);
 
 const halamanCsp = await browser.newPage();
 await halamanCsp.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
@@ -1287,8 +1308,9 @@ pageWaktu.on('request', (req) => {
   if (!req.url().includes('/api/telemetry')) return req.continue();
   return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(payloadRitme()) });
 });
-const rWaktu = await pageWaktu.goto(`${FE}/kinerja`, { waitUntil: 'domcontentloaded', timeout: 45000 });
-cek('/kinerja menjawab 200', rWaktu.status(), 200);
+const jawabKinerja = await fetch(`${FE}/kinerja`, { cache: 'no-store' });
+cek('/kinerja menjawab 200', jawabKinerja.status, 200);
+await pageWaktu.goto(`${FE}/kinerja`, { waitUntil: 'domcontentloaded', timeout: 45000 });
 await jeda(2500);
 const awalWaktu = await bacaWaktu(pageWaktu);
 console.log('waktu    ', JSON.stringify(awalWaktu));
@@ -1400,8 +1422,9 @@ const pageSangkar = await browser.newPage();
 const galatSangkar = [];
 pageSangkar.on('pageerror', (e) => galatSangkar.push(String(e)));
 await pageSangkar.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
-const rSangkar = await pageSangkar.goto(`${FE}/interaksi`, { waitUntil: 'domcontentloaded', timeout: 45000 });
-cek('/interaksi menjawab 200', rSangkar.status(), 200);
+const jawabInteraksi = await fetch(`${FE}/interaksi`, { cache: 'no-store' });
+cek('/interaksi menjawab 200', jawabInteraksi.status, 200);
+await pageSangkar.goto(`${FE}/interaksi`, { waitUntil: 'domcontentloaded', timeout: 45000 });
 // Dibaca dengan ditanya, bukan dengan ditidurkan. `window.__sangkar` dan `window.__render`
 // ditulis dari frame, jadi keduanya baru ada setelah kanvas benar-benar menghasilkan frame
 // pertamanya — di SwiftShader bawah beban itu bisa lewat dari jeda tetap 1200 ms dan gerbang
@@ -1521,9 +1544,10 @@ const pageMeja = await browser.newPage();
 const galatMeja = [];
 pageMeja.on('pageerror', (e) => galatMeja.push(String(e)));
 await pageMeja.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
-const rMeja = await pageMeja.goto(`${FE}/potret`, { waitUntil: 'domcontentloaded', timeout: 45000 });
-cek('/potret menjawab 200', rMeja.status(), 200);
-cek('/potret mendeklarasikan canonical sendiri', (rMeja.headers()['content-type'] || '').includes('text/html'), true);
+const jawabPotret = await fetch(`${FE}/potret`, { cache: 'no-store' });
+cek('/potret menjawab 200', jawabPotret.status, 200);
+await pageMeja.goto(`${FE}/potret`, { waitUntil: 'domcontentloaded', timeout: 45000 });
+cek('/potret mendeklarasikan canonical sendiri', (jawabPotret.headers.get('content-type') || '').includes('text/html'), true);
 // Di dev, window.__meja baru tertulis ±1,7 s setelah goto (compile rute + hidrasi + frame
 // pertama). Jam tetap yang lebih pendek dari itu meruntuhkan delapan gerbang di bawahnya
 // sekaligus, jadi tunggu verifiernya benar-benar ada — gerbangnya tetap menilai "ada".
@@ -1625,8 +1649,9 @@ const pagePeta = await browser.newPage();
 const galatPeta = [];
 pagePeta.on('pageerror', (e) => galatPeta.push(String(e)));
 await pagePeta.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
-const rPeta = await pagePeta.goto(`${FE}/proyek`, { waitUntil: 'domcontentloaded', timeout: 45000 });
-cek('/proyek menjawab 200', rPeta.status(), 200);
+const jawabProyek = await fetch(`${FE}/proyek`, { cache: 'no-store' });
+cek('/proyek menjawab 200', jawabProyek.status, 200);
+await pagePeta.goto(`${FE}/proyek`, { waitUntil: 'domcontentloaded', timeout: 45000 });
 // Yang ditagih gerbang ini adalah keadaan DUDUK, jadi yang benar adalah menunggu sampai
 // diam dengan batas atas, bukan tidur buta: gerak masuk 700 ms baru dimulai saat kanvas
 // mendapat frame pertama, dan itu terjadi setelah hidrasi — pada 1,6 detik buta ia pernah
@@ -1734,8 +1759,9 @@ const pageIris = await browser.newPage();
 const galatIris = [];
 pageIris.on('pageerror', (e) => galatIris.push(String(e)));
 await pageIris.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
-const rIris = await pageIris.goto(`${FE}/transisi`, { waitUntil: 'domcontentloaded', timeout: 45000 });
-cek('/transisi menjawab 200', rIris.status(), 200);
+const jawabTransisi = await fetch(`${FE}/transisi`, { cache: 'no-store' });
+cek('/transisi menjawab 200', jawabTransisi.status, 200);
+await pageIris.goto(`${FE}/transisi`, { waitUntil: 'domcontentloaded', timeout: 45000 });
 await jeda(1600);
 
 // Rata-rata luma sebuah klip, diukur dari screenshot sungguhan yang didekode halaman sendiri.

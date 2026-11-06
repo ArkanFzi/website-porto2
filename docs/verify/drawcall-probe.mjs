@@ -61,7 +61,7 @@ const jalurTulis = iTulis >= 0 ? resolve(argv[iTulis + 1]) : null;
 // satu-satunya alasan flag itu ada adalah kartu /05 yang mengklaim fps; klaim itu tidak boleh
 // lagi bersumber dari peranti lunak. String perangkat selalu ikut ditulis, jadi tidak ada
 // cara menuliskan angka GPU ke anggaran SwiftShader atau sebaliknya.
-const GPU = argv.includes('--gpu');
+const GPU = argv.includes('--gpu') || process.env.PUPPETEER_GPU === '1';
 const ARG_PERANGKAT = GPU
   ? ['--no-sandbox', '--disable-dev-shm-usage', '--use-gl=angle', '--use-angle=vulkan']
   : ['--no-sandbox', '--disable-dev-shm-usage', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'];
