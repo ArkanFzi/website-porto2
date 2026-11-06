@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Playfair_Display, Space_Mono } from "next/font/google";
 import "./globals.css";
 import { PortfolioModeProvider } from "@/context/PortfolioModeContext";
@@ -41,6 +41,17 @@ export const metadata: Metadata = {
     siteName: "M. Arkan Fauzi",
     type: "website",
   },
+};
+
+// themeColor dan colorScheme hidup di `viewport`, bukan di dalam `metadata`: sejak Next 14
+// keduanya di sana deprecated dan tidak menghasilkan apa pun. Dua-duanya nilai literal karena
+// <meta> tidak bisa membaca CSS var — #F7F5F0 adalah --bg-paper (globals.css:5) dan halaman ini
+// terang oleh background-color itu sendiri (globals.css:46), jadi colorScheme "light" adalah
+// laporan apa adanya, bukan selera: browser memakai nilai ini untuk scrollbar, form control,
+// dan warna tab baru.
+export const viewport: Viewport = {
+  themeColor: "#F7F5F0",
+  colorScheme: "light",
 };
 
 export default function RootLayout({
