@@ -7,7 +7,7 @@ import {
   Prolog,
   SundulPanggung,
 } from "@/components/Editorial/PanggungFrame";
-import { EMAIL_KONTAK } from "@/lib/site";
+import { EMAIL_KONTAK, OG_GAMBAR } from "@/lib/site";
 import { LOKASI, NAMA, PERAN, SALURAN } from "@/lib/profil";
 import { RUTE_PROFIL } from "@/lib/rute";
 import { GerakDokumen } from "@/components/Editorial/GerakRute";
@@ -23,6 +23,7 @@ export const metadata: Metadata = {
     "LinkedIn for the work itself, plus a headless-Chromium generated dossier PDF.",
   alternates: { canonical: "/kontak" },
   openGraph: {
+    images: [OG_GAMBAR],
     url: "/kontak",
     siteName: NAMA,
     type: "profile",

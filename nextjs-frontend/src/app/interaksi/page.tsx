@@ -9,6 +9,7 @@ import {
   Prolog,
   SundulPanggung,
 } from "@/components/Editorial/PanggungFrame";
+import { OG_GAMBAR } from "@/lib/site";
 
 // Panggung kedua yang satu ini tidak membaca telemetri: satu-satunya angkanya adalah sudut
 // yang diperintahkan pengunjung sendiri, dan itu datang dari lib/putaran.ts — modul yang sama
@@ -19,6 +20,7 @@ export const metadata: Metadata = {
     "The front page's hover cage taken out of its choreography and given its own route: one wireframe box, one draw call, and the same rotation module the editorial HUD uses, with the commanded angle printed beside it.",
   alternates: { canonical: "/interaksi" },
   openGraph: {
+    images: [OG_GAMBAR],
     url: "/interaksi",
     siteName: "M. Arkan Fauzi",
     type: "website",

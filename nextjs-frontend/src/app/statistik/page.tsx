@@ -9,6 +9,7 @@ import {
   Prolog,
   SundulPanggung,
 } from "@/components/Editorial/PanggungFrame";
+import { OG_GAMBAR } from "@/lib/site";
 
 // Semua angka di halaman ini datang dari satu sumber: GET /api/telemetry pada proses Node yang
 // menjawab request itu. Halaman ini tidak menambah polling sendiri (lihat ArsipHidup), dan tidak
@@ -19,6 +20,7 @@ export const metadata: Metadata = {
     "Every number the front-page HUD paints, printed with its measuring rule: handler duration, backend probe, browser frame rhythm, runtime, and the scope each figure is valid for.",
   alternates: { canonical: "/statistik" },
   openGraph: {
+    images: [OG_GAMBAR],
     url: "/statistik",
     siteName: "M. Arkan Fauzi",
     type: "website",

@@ -9,6 +9,7 @@ import {
   Prolog,
   SundulPanggung,
 } from "@/components/Editorial/PanggungFrame";
+import { OG_GAMBAR } from "@/lib/site";
 
 // Rute ini punya shader diafragmanya sendiri. Material panggung utama dan dua holder
 // module-levelnya sengaja tidak diimpor sama sekali — halaman-probe menjaganya lewat gerbang
@@ -19,6 +20,7 @@ export const metadata: Metadata = {
     "A two-text passage whose only navigation is an aperture: one slider with a real slider role, one quad of paper closing over the page, and both paragraphs present in the DOM at every value.",
   alternates: { canonical: "/transisi" },
   openGraph: {
+    images: [OG_GAMBAR],
     url: "/transisi",
     siteName: "M. Arkan Fauzi",
     type: "website",

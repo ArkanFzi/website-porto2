@@ -10,6 +10,7 @@ import {
 import { LOKASI, NAMA, PENDIDIKAN, PERAN, REKAMAN, RINGKAS, STACK } from "@/lib/profil";
 import { RUTE_PROFIL } from "@/lib/rute";
 import { GerakDokumen } from "@/components/Editorial/GerakRute";
+import { OG_GAMBAR } from "@/lib/site";
 
 // Isi halaman ini tidak diketik ulang di dua tempat: nama, peran, rekaman, pendidikan,
 // dan stack dibaca dari lib/profil.ts, sumber yang sama yang dipakai bab penutup halaman
@@ -23,6 +24,7 @@ export const metadata: Metadata = {
     "published on GitHub.",
   alternates: { canonical: "/tentang" },
   openGraph: {
+    images: [OG_GAMBAR],
     url: "/tentang",
     siteName: NAMA,
     type: "profile",

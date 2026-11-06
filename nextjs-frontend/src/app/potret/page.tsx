@@ -9,6 +9,7 @@ import {
   Prolog,
   SundulPanggung,
 } from "@/components/Editorial/PanggungFrame";
+import { OG_GAMBAR } from "@/lib/site";
 
 // Rute ini memakai material panggung utama apa adanya, tapi tidak memakai mesinnya: tidak ada
 // registry portal, tidak ada koreografi bab, dan tidak ada holder sapuan yang dibagi.
@@ -18,6 +19,7 @@ export const metadata: Metadata = {
     "The editorial portrait's chiaroscuro material with its chapter machine removed: six controls that each write one uniform, with the commanded value and the uniform value printed side by side.",
   alternates: { canonical: "/potret" },
   openGraph: {
+    images: [OG_GAMBAR],
     url: "/potret",
     siteName: "M. Arkan Fauzi",
     type: "website",

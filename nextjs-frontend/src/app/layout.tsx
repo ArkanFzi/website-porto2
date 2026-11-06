@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter, Playfair_Display, Space_Mono } from "next/font/google";
 import "./globals.css";
 import { PortfolioModeProvider } from "@/context/PortfolioModeContext";
-import { SITE_URL } from "@/lib/site";
+import { OG_GAMBAR, SITE_URL } from "@/lib/site";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -40,6 +40,7 @@ export const metadata: Metadata = {
     url: "/",
     siteName: "M. Arkan Fauzi",
     type: "website",
+    images: [OG_GAMBAR],
   },
 };
 

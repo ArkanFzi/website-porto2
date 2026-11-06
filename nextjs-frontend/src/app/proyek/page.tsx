@@ -11,6 +11,7 @@ import {
   Prolog,
   SundulPanggung,
 } from "@/components/Editorial/PanggungFrame";
+import { OG_GAMBAR } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "PROYEK — twenty repositories on one map, one draw call // M. Arkan Fauzi",
@@ -18,6 +19,7 @@ export const metadata: Metadata = {
     "Every public non-fork repository the GitHub API returns for this account, drawn as one InstancedMesh whose bar heights are the star counts printed beside them.",
   alternates: { canonical: "/proyek" },
   openGraph: {
+    images: [OG_GAMBAR],
     url: "/proyek",
     siteName: "M. Arkan Fauzi",
     type: "website",

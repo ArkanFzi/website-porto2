@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ESAI, cariEsai, menitBaca } from "@/data/esai";
 import { GerakDokumen } from "@/components/Editorial/GerakRute";
+import { OG_GAMBAR } from "@/lib/site";
 
 // Naskahnya ada di dalam bundel (src/data/esai.ts), bukan di basis data: tidak ada tabel yang
 // boleh di-DDL untuk tiga tulisan, dan halaman ini harus tetap ter-prerender tanpa backend.
@@ -26,6 +27,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     description: esai.ringkas,
     alternates: { canonical: jalur },
     openGraph: {
+      images: [OG_GAMBAR],
       url: jalur,
       siteName: "M. Arkan Fauzi",
       type: "article",

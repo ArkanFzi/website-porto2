@@ -9,6 +9,7 @@ import {
   SundulPanggung,
   CatatanPenutup,
 } from "@/components/Editorial/PanggungFrame";
+import { OG_GAMBAR } from "@/lib/site";
 
 // Satu angka, dua lukisan. Halaman ini tidak memanggil /api/telemetry sendiri dan tidak
 // mengirim laporan ritme frame: ia membaca store yang sama dengan HUD dan panggung utama,
@@ -19,6 +20,7 @@ export const metadata: Metadata = {
     "A second WebGL stage with nothing but the p95 frame time visitors report: the same figure painted as a DOM square and as a line geometry, from the same height function, with no shape at all when there is no number.",
   alternates: { canonical: "/kinerja" },
   openGraph: {
+    images: [OG_GAMBAR],
     url: "/kinerja",
     siteName: "M. Arkan Fauzi",
     type: "website",

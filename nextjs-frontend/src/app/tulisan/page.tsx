@@ -16,6 +16,7 @@ import {
   TOTAL_COMMIT,
   type EntriRiwayat,
 } from "@/data/riwayatCommit";
+import { OG_GAMBAR } from "@/lib/site";
 
 // Halaman ini sengaja server component: angkanya dibaca dari modul server yang sama dengan
 // halaman utama (`lib/server/github`), jadi tidak ada satu pun pemanggilan /api baru dari
@@ -28,6 +29,7 @@ export const metadata: Metadata = {
     "Every public repository behind the editorial archive, listed from the same GitHub fields the front page reads: name, description, language, stars, forks. No repo dates, because the payload does not carry any. Includes a dated snapshot of this repository's own commit history.",
   alternates: { canonical: "/tulisan" },
   openGraph: {
+    images: [OG_GAMBAR],
     url: "/tulisan",
     siteName: "M. Arkan Fauzi",
     type: "website",

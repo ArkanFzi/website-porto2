@@ -109,6 +109,27 @@ jobs:
           APP_COMMIT: ${{ github.sha }}
         run: npm run build
 
+      - name: og:image terpasang di artefak build, bukan hanya di sumber
+        working-directory: nextjs-frontend
+        run: |
+          # Anak yang menyetel openGraph mengganti SELURUH objek induk, termasuk images — jadi
+          # rute baru yang menulis openGraph tanpa images: kehilangan og:image tanpa satu pun
+          # test yang bisa melihatnya. Yang ditagih di sini adalah HTML hasil build.
+          total=$(find .next/server/app -name '*.html' | wc -l)
+          ada=$(grep -rl 'property="og:image"' .next/server/app --include='*.html' | wc -l)
+          echo "og:image: $ada/$total HTML"
+          # Satu-satunya pengecualian yang sah: _global-error.html, yang 'use client' dan
+          # memang tidak bisa mengekspor metadata.
+          [ "$ada" -ge $((total - 1)) ] || { echo "ada halaman tanpa og:image"; exit 1; }
+          grep -q 'property="og:image"' .next/server/app/index.html || { echo "index.html tanpa og:image"; exit 1; }
+          # Plafon platform (Facebook 8 MB, X 5 MB) jauh di atas yang masuk akal untuk kartu
+          # statis, jadi angka yang dipakai adalah maksAsetTunggal perf-budget.json: 212 KB.
+          # Aset ini sengaja TIDAK dimasukkan ke perf-budget — anggaran itu mengukur apa yang
+          # diunduh browser saat memuat /, dan og:image hanya diunduh crawler sosial.
+          b=$(stat -c%s public/opengraph-image.png)
+          echo "public/opengraph-image.png = $b byte"
+          [ "$b" -le $((212 * 1024)) ] || { echo "og:image melewati 212 KB"; exit 1; }
+
       - name: CSP ditegakkan dari hasil build, jalan tikus dev tidak ikut terbawa
         working-directory: nextjs-frontend
         # Header dipasang lewat next.config.ts dan nilai itu dibakar ke routes-manifest saat
