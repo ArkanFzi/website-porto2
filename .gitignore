@@ -74,3 +74,6 @@ docker-compose.yml
 hero_ref.mp4
 
 
+
+# AI tool artifacts
+.qoder/
